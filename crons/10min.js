@@ -1,0 +1,62 @@
+// Conosole log
+console.log("Starting 10min cron job...");
+
+// Load environment variables first
+import { loadEnvironmentVariables } from "../helper/envLoader.js";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from project root
+// Assuming project root is two directories up from the crons folder
+try {
+  loadEnvironmentVariables(path.resolve(__dirname, ".."));
+} catch (error) {
+  console.warn(`Error loading environment variables: ${error.message}`);
+  process.exit(1);
+}
+
+// Import necessary modules
+import {
+  isDatabaseConnected,
+  connectToDatabase,
+  disconnectFromDatabase,
+} from "../helper/dbManager.js";
+import { Ballot } from "../schema/Ballot.js";
+import { aggregateVotes } from "./10minAggregateVotes.js";
+
+// connect db
+if (!isDatabaseConnected()) {
+  await connectToDatabase();
+}
+
+// aggregate votes
+await aggregateVotes();
+
+// !! add a lock to prevent multiple instances of this script from running at the same time
+
+// get all ballots that ended in the last 10 minutes
+const now = new Date();
+const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
+const ballots = await Ballot.find({
+  votePeriodEnd: { $gte: tenMinutesAgo, $lt: now },
+  resultBeacon: null,
+});
+
+// process each ballot
+for (const ballot of ballots) {
+  console.log("ROLLUP: Ballot", ballot.name);
+  // import finalization script
+  const { rollupBallot } = await import("../config/" + ballot.rollupScript);
+  // run finalization script
+  await rollupBallot(ballot._id);
+}
+
+// disconnect from db
+await disconnectFromDatabase();
+
+// Conosole log
+console.log("Finished 10min cron job.");
+process.exit(0);

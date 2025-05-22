@@ -1,0 +1,11 @@
+.DS_Store
+node_modules
+/public
+/backup/data
+/logs
+deploy*.sh
+npm-debug.log
+yarn-error.log
+
+.env*
+!.env.example
