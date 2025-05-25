@@ -2,7 +2,11 @@
 node_modules
 /public
 /backup/data
+/scripts
 /logs
+/preprod-logs
+/mainnet-logs
+/.vscode
 deploy*.sh
 npm-debug.log
 yarn-error.log
