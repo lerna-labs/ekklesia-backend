@@ -8,8 +8,8 @@ import { Ballot } from "../schema/Ballot.js";
 const API_URL = process.env.API_URL;
 const API_TOKEN = process.env.API_TOKEN;
 const validationCacheTime = 2; // hours
-const ASSET_POLICY_ID = "a0028f350aaabe0545fdcb56b039bfb08e4bb4d8c4d7c3c7d481c235"
-const ASSET_NAME = "484f534b59";
+const ASSET_POLICY_ID = "c5eba81b126522687cc4eefdd606a1e592700f5c326fb2cb704c8e4f"
+const ASSET_NAME = "4b4e465459";
 
 /**
  * Validate if the given address is a registered drep.
@@ -51,45 +51,39 @@ export async function validateVoter(voterId, ballotId) {
 
     try {
         console.log("Fetching voter data from API...", voterId);
-        const voterData = await fetch(API_URL + "/drep_info", {
+        const voterData = await fetch(API_URL + "/address_assets?policy_id=eq." + ASSET_POLICY_ID, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 authorization: `Bearer ${API_TOKEN}`,
             },
             body: JSON.stringify({
-                _drep_ids: [voterId],
+                _addresses: [voterId],
             }),
         });
         if (!voterData.ok) {
             console.error("Error fetching voter data: ", voterData.statusText);
             throw new Error("Failed to fetch voter data");
         }
-        const voterInfo = await voterData.json();
+        const voterWallet = await voterData.json();
 
         // check if result is empty
-        if (voterInfo.length === 0) {
+        if (voterWallet.length === 0) {
             console.error("Voter not found in API: ", voterId);
             validated = false;
             await saveVoterValidation(voterId, ballotId, validated);
             await saveVotingPower(voterId, ballotId, 0);
             return validated;
-        }
-
-        // check if voter is registered
-        if (voterInfo[0].registered === true) {
-            console.log("Voter is registered DRep: ", voterInfo[0].registered);
+        } else {
+            console.log("Voter has asset: ", voterWallet[0]);
             validated = true;
             await saveVoterValidation(voterId, ballotId, validated);
-            await saveVotingPower(voterId, ballotId, voterInfo[0].amount);
+            await saveVotingPower(voterId, ballotId, voterWallet[0].quantity);
             return validated;
-        } else {
-            console.error("Voter is not registered DRep: ", voterInfo[0].registered);
-            validated = false;
-            await saveVoterValidation(voterId, ballotId, validated);
-            await saveVotingPower(voterId, ballotId, 0);
-            return validated;
+
         }
+
+
     } catch (error) {
         console.error("Error fetching voter data: ", error);
         throw new Error("Failed to fetch voter data");

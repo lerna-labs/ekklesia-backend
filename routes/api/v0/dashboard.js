@@ -326,8 +326,11 @@ router.put(
       });
     }
 
+    // account for drep 105/129 addresses
+    if (addressBech32.cip129) addressBech32 = addressBech32.cip129;
+
     // check if address in request body matches voterId
-    if (addressBech32.cip129 !== voterId) {
+    if (addressBech32 !== voterId) {
       console.error("Address validation error", addressBech32, voterId);
       return res.status(400).json({
         status: "error",
@@ -335,6 +338,7 @@ router.put(
       });
     }
     // !! validate voter against ballot
+    // is this needed? we already validated voter in the middleware
 
     // CHECK IF TRANSACTION IS IN TRANSACTION COLLECTION
     // !! validate merkleRoot
