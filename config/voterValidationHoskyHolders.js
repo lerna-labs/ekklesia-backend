@@ -75,7 +75,7 @@ export async function validateVoter(voterId, ballotId) {
             await saveVotingPower(voterId, ballotId, 0);
             return validated;
         } else {
-            console.log("Voter has asset: ", voterWallet[0]);
+            // console.log("Voter has asset: ", voterWallet[0]);
             validated = true;
             await saveVoterValidation(voterId, ballotId, validated);
             await saveVotingPower(voterId, ballotId, voterWallet[0].quantity);
