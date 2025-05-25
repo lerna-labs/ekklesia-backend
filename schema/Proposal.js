@@ -31,7 +31,7 @@ const proposalSchema = new Schema(
       required: true,
       ref: "Ballot",
     },
-    ipfs: {
+    ipfsHash: {
       type: String,
       required: false,
       default: null, // Optional field for IPFS hash

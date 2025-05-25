@@ -28,6 +28,11 @@ const { Schema } = mongoose;
  */
 const ballotSchema = new Schema(
   {
+    ipfsHash: {
+      type: String,
+      required: false,
+      default: null, // Optional field for IPFS hash
+    },
     name: {
       type: String,
       required: true,
