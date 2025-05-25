@@ -99,39 +99,7 @@ let allowedVoterCountCache = null;
 let allowedVoterCountTimestamp = null;
 // !! NEEDS TO BE STORED IN DB
 export async function allowedVoterCount() {
-    // Check if cache exists and is less than 8 hours old
-    if (
-        allowedVoterCountCache &&
-        allowedVoterCountTimestamp &&
-        Date.now() - allowedVoterCountTimestamp <
-        1000 * 60 * 60 * validationCacheTime
-    ) {
-        // console.log("Using cached allowed voter count");
-        return allowedVoterCountCache;
-    }
-
-    try {
-        console.log("Fetching allowed voter count from API...");
-        const response = await fetch(API_URL + "/asset_summary?_asset_policy=" + ASSET_POLICY_ID + "&_asset_name=" + ASSET_NAME, {
-            method: "GET",
-            headers: {
-                "Content-Type": "application/json",
-                authorization: `Bearer ${API_TOKEN}`,
-            },
-        });
-        const responseJson = await response.json();
-        const totalCount = responseJson[0].addresses
-        if (!totalCount) {
-            throw new Error("Failed to fetch total count from API");
-        }
-        allowedVoterCountCache = totalCount;
-        allowedVoterCountTimestamp = Date.now();
-        // console.log("Allowed voter count: ", allowedVoterCountCache);
-    } catch (error) {
-        console.error("Error fetching allowed voter count: ", error);
-        throw new Error("Failed to fetch allowed voter count");
-    }
-    return allowedVoterCountCache;
+    return 2177
 }
 
 /**
@@ -142,37 +110,7 @@ let totalWeightCache = null;
 let totalWeightTimestamp = null;
 // !! NEEDS TO BE STORED IN DB
 export async function getTotalWeight() {
-    // Check if cache exists and is less than 8 hours old
-    if (
-        totalWeightCache &&
-        totalWeightTimestamp &&
-        Date.now() - totalWeightTimestamp < 1000 * 60 * 60 * validationCacheTime
-    ) {
-        // console.log("Using cached total weight");
-        return totalWeightCache;
-    }
-    try {
-        console.log("Fetching total weight from API...");
-        const response = await fetch(API_URL + "/drep_epoch_summary?limit=1", {
-            method: "GET",
-            headers: {
-                "Content-Type": "application/json",
-                authorization: `Bearer ${API_TOKEN}`,
-            },
-        });
-        // get the total count from the response headers
-        const totals = await response.json();
-
-        totalWeightCache = totals[0]?.amount || 0;
-        totalWeightTimestamp = Date.now();
-        console.log("Total weight: ", totalWeightCache);
-        return;
-    } catch (error) {
-        console.error("Error fetching total weight: ", error);
-        throw new Error("Failed to fetch total weight");
-    }
-
-    return totalWeightCache;
+    return 0
 }
 
 /**
