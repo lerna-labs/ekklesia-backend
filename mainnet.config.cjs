@@ -13,7 +13,7 @@ module.exports = {
       },
       max_memory_restart: "1G",
       env: {
-        NODE_ENV: "production",
+        NODE_ENV: "mainnet",
         exec_mode: "cluster",
         instances: "max",
       },
@@ -37,7 +37,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 */1 * * *",
       env: {
-        NODE_ENV: "production",
+        NODE_ENV: "mainnet",
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       error_file: path.resolve(__dirname, "logs/backup-error.log"),
@@ -56,7 +56,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "*/10 * * * *",
       env: {
-        NODE_ENV: "production",
+        NODE_ENV: "mainnet",
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       error_file: path.resolve(__dirname, "logs/cron10min-error.log"),
@@ -75,7 +75,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 * * * *",
       env: {
-        NODE_ENV: "production",
+        NODE_ENV: "mainnet",
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       error_file: path.resolve(__dirname, "logs/cron1h-error.log"),
