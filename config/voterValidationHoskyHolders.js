@@ -8,8 +8,8 @@ import { Ballot } from "../schema/Ballot.js";
 const API_URL = process.env.API_URL;
 const API_TOKEN = process.env.API_TOKEN;
 const validationCacheTime = 2; // hours
-const ASSET_POLICY_ID = "c5eba81b126522687cc4eefdd606a1e592700f5c326fb2cb704c8e4f"
-const ASSET_NAME = "4b4e465459";
+const ASSET_POLICY_ID = "a0028f350aaabe0545fdcb56b039bfb08e4bb4d8c4d7c3c7d481c235"
+const ASSET_NAME = "484f534b59";
 
 /**
  * Validate if the given address is a registered drep.
