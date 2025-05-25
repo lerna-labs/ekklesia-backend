@@ -6,7 +6,7 @@ module.exports = {
       name: "preprod-server",
       script: path.resolve(__dirname, "server.js"),
       watch: true,
-      ignore_watch: ["node_modules", "logs", "backup", "scripts", "public"],
+      ignore_watch: ["node_modules", "logs", "backup", "scripts", "public", "preprod-logs", "mainnet-logs"],
       watch_options: {
         followSymlinks: false,
         usePolling: true,
