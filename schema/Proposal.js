@@ -31,13 +31,38 @@ const proposalSchema = new Schema(
       required: true,
       ref: "Ballot",
     },
+    ipfs: {
+      type: String,
+      required: false,
+      default: null, // Optional field for IPFS hash
+    },
     name: {
       type: String,
       required: true,
     },
+    description: {
+      type: String,
+      required: false,
+      default: "",
+    },
+    category: {
+      type: Array,
+      required: false,
+      default: [],
+    },
+    tags: {
+      type: Array,
+      required: false,
+      default: [],
+    },
     data: {
       type: Object,
       required: false,
+    },
+    voteType: {
+      type: String,
+      required: true,
+      default: "default",
     },
     voteOptions: {
       type: Array,
