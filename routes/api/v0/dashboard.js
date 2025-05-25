@@ -360,7 +360,7 @@ router.put(
     if (!transaction) {
       return res.status(400).json({
         status: "error",
-        message: "checkout data not found",
+        message: "Checkout data not found",
       });
     }
 
@@ -405,7 +405,7 @@ router.put(
     if (!voteUpdates || voteUpdates.modifiedCount === 0) {
       return res.status(400).json({
         status: "error",
-        message: "failed to update votes",
+        message: "Failed to update votes",
       });
     }
 
@@ -432,7 +432,7 @@ router.put(
 
     return res.status(200).json({
       status: "ok",
-      message: "votes submitted",
+      message: "Votes submitted",
       transaction: transactionUpdate._id.toString(),
     });
   }
@@ -739,7 +739,7 @@ router.put(
     if (!transaction) {
       return res.status(400).json({
         status: "error",
-        message: "checkout data not found",
+        message: "Checkout data not found",
       });
     }
 
@@ -824,7 +824,7 @@ router.put(
       if (!voteUpdates || voteUpdates.modifiedCount === 0) {
         return res.status(400).json({
           status: "error",
-          message: "failed to update votes",
+          message: "Failed to update votes",
         });
       }
 
@@ -851,7 +851,7 @@ router.put(
 
       return res.status(200).json({
         status: "ok",
-        message: "votes submitted",
+        message: "Votes submitted",
         transaction: transactionUpdate._id.toString(),
       });
     }
