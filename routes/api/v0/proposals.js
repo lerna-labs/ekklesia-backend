@@ -22,31 +22,31 @@ import { verifyToken } from "../../../helper/verifyToken.js";
  * @returns {Array} 200 - List of unique committee names sorted alphabetically
  * @returns {Object} 500 - Error if committees cannot be fetched
  */
-router.get("/committees", cacheControl(1000), async (req, res) => {
-  try {
-    // Use MongoDB aggregation to do the work at the database level
-    const committees = await Proposal.aggregate([
-      // Project only the committee field we need
-      { $project: { committee: "$data.data.committee" } },
-      // Filter out null or empty committees
-      { $match: { committee: { $exists: true, $ne: null, $ne: "" } } },
-      // Group by committee name to get distinct values
-      { $group: { _id: "$committee" } },
-      // Sort alphabetically
-      { $sort: { _id: 1 } },
-      // Final projection to get the expected format
-      { $project: { _id: 0, committee: "$_id" } },
-    ]);
+// router.get("/committees", cacheControl(1000), async (req, res) => {
+//   try {
+//     // Use MongoDB aggregation to do the work at the database level
+//     const committees = await Proposal.aggregate([
+//       // Project only the committee field we need
+//       { $project: { committee: "$data.data.committee" } },
+//       // Filter out null or empty committees
+//       { $match: { committee: { $exists: true, $ne: null, $ne: "" } } },
+//       // Group by committee name to get distinct values
+//       { $group: { _id: "$committee" } },
+//       // Sort alphabetically
+//       { $sort: { _id: 1 } },
+//       // Final projection to get the expected format
+//       { $project: { _id: 0, committee: "$_id" } },
+//     ]);
 
-    // Extract committee names from result objects
-    const committeeList = committees.map((item) => item.committee);
+//     // Extract committee names from result objects
+//     const committeeList = committees.map((item) => item.committee);
 
-    return res.status(200).json(committeeList);
-  } catch (error) {
-    console.error("Error fetching committees:", error);
-    return res.status(500).json({ error: "Failed to fetch committees" });
-  }
-});
+//     return res.status(200).json(committeeList);
+//   } catch (error) {
+//     console.error("Error fetching committees:", error);
+//     return res.status(500).json({ error: "Failed to fetch committees" });
+//   }
+// });
 
 /**
  * @route GET /api/v0/proposals/roadmaps
@@ -56,31 +56,31 @@ router.get("/committees", cacheControl(1000), async (req, res) => {
  * @returns {Array} 200 - List of unique roadmap names sorted alphabetically
  * @returns {Object} 500 - Error if roadmaps cannot be fetched
  */
-router.get("/roadmaps", cacheControl(1000), async (req, res) => {
-  try {
-    // Use MongoDB aggregation to do the work at the database level
-    const roadmaps = await Proposal.aggregate([
-      // Project only the roadmap field we need
-      { $project: { roadmap: "$data.data.roadmap" } },
-      // Filter out null or empty roadmaps
-      { $match: { roadmap: { $exists: true, $ne: null, $ne: "" } } },
-      // Group by roadmap to get distinct values
-      { $group: { _id: "$roadmap" } },
-      // Sort alphabetically
-      { $sort: { _id: 1 } },
-      // Final projection to get the expected format
-      { $project: { _id: 0, roadmap: "$_id" } },
-    ]);
+// router.get("/roadmaps", cacheControl(1000), async (req, res) => {
+//   try {
+//     // Use MongoDB aggregation to do the work at the database level
+//     const roadmaps = await Proposal.aggregate([
+//       // Project only the roadmap field we need
+//       { $project: { roadmap: "$data.data.roadmap" } },
+//       // Filter out null or empty roadmaps
+//       { $match: { roadmap: { $exists: true, $ne: null, $ne: "" } } },
+//       // Group by roadmap to get distinct values
+//       { $group: { _id: "$roadmap" } },
+//       // Sort alphabetically
+//       { $sort: { _id: 1 } },
+//       // Final projection to get the expected format
+//       { $project: { _id: 0, roadmap: "$_id" } },
+//     ]);
 
-    // Extract roadmap names from result objects
-    const roadmapList = roadmaps.map((item) => item.roadmap);
+//     // Extract roadmap names from result objects
+//     const roadmapList = roadmaps.map((item) => item.roadmap);
 
-    return res.status(200).json(roadmapList);
-  } catch (error) {
-    console.error("Error fetching roadmaps:", error);
-    return res.status(500).json({ error: "Failed to fetch roadmaps" });
-  }
-});
+//     return res.status(200).json(roadmapList);
+//   } catch (error) {
+//     console.error("Error fetching roadmaps:", error);
+//     return res.status(500).json({ error: "Failed to fetch roadmaps" });
+//   }
+// });
 
 /**
  * @route GET /api/v0/proposals/types
@@ -90,31 +90,31 @@ router.get("/roadmaps", cacheControl(1000), async (req, res) => {
  * @returns {Array} 200 - List of unique proposal types sorted alphabetically
  * @returns {Object} 500 - Error if proposal types cannot be fetched
  */
-router.get("/types", cacheControl(1000), async (req, res) => {
-  try {
-    // Use MongoDB aggregation to do the work at the database level
-    const types = await Proposal.aggregate([
-      // Project only the type field we need
-      { $project: { type: "$data.data.type" } },
-      // Filter out null or empty types
-      { $match: { type: { $exists: true, $ne: null, $ne: "" } } },
-      // Group by type to get distinct values
-      { $group: { _id: "$type" } },
-      // Sort alphabetically
-      { $sort: { _id: 1 } },
-      // Final projection to get the expected format
-      { $project: { _id: 0, type: "$_id" } },
-    ]);
+// router.get("/types", cacheControl(1000), async (req, res) => {
+//   try {
+//     // Use MongoDB aggregation to do the work at the database level
+//     const types = await Proposal.aggregate([
+//       // Project only the type field we need
+//       { $project: { type: "$data.data.type" } },
+//       // Filter out null or empty types
+//       { $match: { type: { $exists: true, $ne: null, $ne: "" } } },
+//       // Group by type to get distinct values
+//       { $group: { _id: "$type" } },
+//       // Sort alphabetically
+//       { $sort: { _id: 1 } },
+//       // Final projection to get the expected format
+//       { $project: { _id: 0, type: "$_id" } },
+//     ]);
 
-    // Extract type names from result objects
-    const typeList = types.map((item) => item.type);
+//     // Extract type names from result objects
+//     const typeList = types.map((item) => item.type);
 
-    return res.status(200).json(typeList);
-  } catch (error) {
-    console.error("Error fetching proposal types:", error);
-    return res.status(500).json({ error: "Failed to fetch proposal types" });
-  }
-});
+//     return res.status(200).json(typeList);
+//   } catch (error) {
+//     console.error("Error fetching proposal types:", error);
+//     return res.status(500).json({ error: "Failed to fetch proposal types" });
+//   }
+// });
 
 /**
  * @route GET /api/v0/proposals/:proposalId

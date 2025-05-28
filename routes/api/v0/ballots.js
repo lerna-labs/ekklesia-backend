@@ -703,6 +703,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       _id: 1,
       name: 1,
       description: 1,
+      ipfsHash: 1,
       data: 1,
       ballotId: 1,
       voteOptions: 1,
