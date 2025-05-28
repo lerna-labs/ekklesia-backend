@@ -5,11 +5,12 @@ import { Result } from "../schema/Result.js";
 
 export async function aggregateVotes() {
   const now = new Date();
-  const tenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
+  const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
+  const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
 
   // Get all votes that were submittedAt in the last 11 minutes
   const proposalIds = await Vote.find({
-    submittedAt: { $gte: tenMinutesAgo, $lt: now },
+    submittedAt: { $gte: fifteenMinutesAgo, $lt: now },
   }).distinct("proposalId");
 
   if (proposalIds.length === 0) {
