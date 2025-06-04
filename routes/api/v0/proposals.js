@@ -14,107 +14,39 @@ import { cacheControl } from "../../../helper/cacheControl.js";
 import { getProposal } from "../../../helper/middleWare.js";
 import { verifyToken } from "../../../helper/verifyToken.js";
 
-/**
- * @route GET /api/v0/proposals/committees
- * @description Get a list of all unique committee names from proposals
- * @access Public
- *
- * @returns {Array} 200 - List of unique committee names sorted alphabetically
- * @returns {Object} 500 - Error if committees cannot be fetched
- */
-// router.get("/committees", cacheControl(1000), async (req, res) => {
-//   try {
-//     // Use MongoDB aggregation to do the work at the database level
-//     const committees = await Proposal.aggregate([
-//       // Project only the committee field we need
-//       { $project: { committee: "$data.data.committee" } },
-//       // Filter out null or empty committees
-//       { $match: { committee: { $exists: true, $ne: null, $ne: "" } } },
-//       // Group by committee name to get distinct values
-//       { $group: { _id: "$committee" } },
-//       // Sort alphabetically
-//       { $sort: { _id: 1 } },
-//       // Final projection to get the expected format
-//       { $project: { _id: 0, committee: "$_id" } },
-//     ]);
+// NEW ROUTE FOR TAGS
+router.get("/tags", async (req, res) => {
+  // Fetch all proposals to extract unique tags
+  const proposals = await Proposal.find({}, "tags").lean();
+  // Use a Set to collect unique tags
+  const uniqueTags = new Set();
+  proposals.forEach((proposal) => {
+    if (proposal.tags && Array.isArray(proposal.tags)) {
+      proposal.tags.forEach((tag) => uniqueTags.add(tag));
+    }
+  });
+  // Convert the Set back to an array
+  const tagsArray = Array.from(uniqueTags);
+  // Return the unique tags as a JSON response
+  return res.status(200).json(tagsArray);
+});
 
-//     // Extract committee names from result objects
-//     const committeeList = committees.map((item) => item.committee);
-
-//     return res.status(200).json(committeeList);
-//   } catch (error) {
-//     console.error("Error fetching committees:", error);
-//     return res.status(500).json({ error: "Failed to fetch committees" });
-//   }
-// });
-
-/**
- * @route GET /api/v0/proposals/roadmaps
- * @description Get a list of all unique roadmap names from proposals
- * @access Public
- *
- * @returns {Array} 200 - List of unique roadmap names sorted alphabetically
- * @returns {Object} 500 - Error if roadmaps cannot be fetched
- */
-// router.get("/roadmaps", cacheControl(1000), async (req, res) => {
-//   try {
-//     // Use MongoDB aggregation to do the work at the database level
-//     const roadmaps = await Proposal.aggregate([
-//       // Project only the roadmap field we need
-//       { $project: { roadmap: "$data.data.roadmap" } },
-//       // Filter out null or empty roadmaps
-//       { $match: { roadmap: { $exists: true, $ne: null, $ne: "" } } },
-//       // Group by roadmap to get distinct values
-//       { $group: { _id: "$roadmap" } },
-//       // Sort alphabetically
-//       { $sort: { _id: 1 } },
-//       // Final projection to get the expected format
-//       { $project: { _id: 0, roadmap: "$_id" } },
-//     ]);
-
-//     // Extract roadmap names from result objects
-//     const roadmapList = roadmaps.map((item) => item.roadmap);
-
-//     return res.status(200).json(roadmapList);
-//   } catch (error) {
-//     console.error("Error fetching roadmaps:", error);
-//     return res.status(500).json({ error: "Failed to fetch roadmaps" });
-//   }
-// });
-
-/**
- * @route GET /api/v0/proposals/types
- * @description Get a list of all unique proposal types
- * @access Public
- *
- * @returns {Array} 200 - List of unique proposal types sorted alphabetically
- * @returns {Object} 500 - Error if proposal types cannot be fetched
- */
-// router.get("/types", cacheControl(1000), async (req, res) => {
-//   try {
-//     // Use MongoDB aggregation to do the work at the database level
-//     const types = await Proposal.aggregate([
-//       // Project only the type field we need
-//       { $project: { type: "$data.data.type" } },
-//       // Filter out null or empty types
-//       { $match: { type: { $exists: true, $ne: null, $ne: "" } } },
-//       // Group by type to get distinct values
-//       { $group: { _id: "$type" } },
-//       // Sort alphabetically
-//       { $sort: { _id: 1 } },
-//       // Final projection to get the expected format
-//       { $project: { _id: 0, type: "$_id" } },
-//     ]);
-
-//     // Extract type names from result objects
-//     const typeList = types.map((item) => item.type);
-
-//     return res.status(200).json(typeList);
-//   } catch (error) {
-//     console.error("Error fetching proposal types:", error);
-//     return res.status(500).json({ error: "Failed to fetch proposal types" });
-//   }
-// });
+// NEW ROUTE FOR CATEGORIES
+router.get("/categories", async (req, res) => {
+  // Fetch all proposals to extract unique categories
+  const proposals = await Proposal.find({}, "category").lean();
+  // Use a Set to collect unique categories 
+  const uniqueCategories = new Set();
+  proposals.forEach((proposal) => {
+    if (proposal.category && Array.isArray(proposal.category)) {
+      proposal.category.forEach((category) => uniqueCategories.add(category));
+    }
+  });
+  // Convert the Set back to an array
+  const categoriesArray = Array.from(uniqueCategories);
+  // Return the unique categories as a JSON response
+  return res.status(200).json(categoriesArray);
+});
 
 /**
  * @route GET /api/v0/proposals/:proposalId

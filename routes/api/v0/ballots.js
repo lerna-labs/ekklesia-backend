@@ -331,14 +331,13 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
   const {
     page = 1,
     limit = 10,
-    committee,
-    roadmap,
-    type,
     search,
     sort,
     direction = "desc",
-    hasVoted, // New filter parameter
-    thresholdReached, // New filter parameter for threshold status
+    hasVoted,
+    thresholdReached,
+    tags, // New parameter for filtering by tags
+    categories, // New parameter for filtering by categories
   } = req.query;
   const pageNum = parseInt(page, 10);
   const limitNum = parseInt(limit, 10);
@@ -386,19 +385,16 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
 
   if (sort) {
     // Validate sort parameter
-    if (!["cost", "name", "commentCount", "voteCount"].includes(sort)) {
+    if (!["name", "commentCount", "voteCount"].includes(sort)) {
       return res.status(400).json({
         status: "error",
         message:
-          "Invalid sort field, must be 'cost', 'name', 'commentCount', or 'voteCount'",
+          "Invalid sort field, must be 'name', 'commentCount', or 'voteCount'",
       });
     }
 
     // Set sort field based on parameter with _id as secondary sort field
     switch (sort) {
-      case "cost":
-        sortField = { "data.cost": sortDirection, _id: 1 };
-        break;
       case "name":
         sortField = { name: sortDirection, _id: 1 };
         break;
@@ -453,20 +449,23 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
     }));
   }
 
-  // Add committee filter if provided - Fix path to reflect actual data structure
-  if (committee) {
-    matchStage["data.data.committee"] = committee;
+  // Add tags filter if provided (filter by array containing at least one of the specified tags)
+  if (tags) {
+    const tagsList = tags.split(',').map(tag => tag.trim());
+    if (tagsList.length > 0) {
+      matchStage.tags = { $in: tagsList };
+    }
   }
 
-  // Add roadmap filter if provided - Fix path to reflect actual data structure
-  if (roadmap) {
-    matchStage["data.data.roadmap"] = roadmap;
+  // Add categories filter if provided (filter by array containing at least one of the specified categories)
+  if (categories) {
+    const categoriesList = categories.split(',').map(category => category.trim());
+    if (categoriesList.length > 0) {
+      matchStage.categories = { $in: categoriesList };
+    }
   }
 
-  // Add type filter if provided - Fix path to reflect actual data structure
-  if (type) {
-    matchStage["data.data.type"] = type;
-  }
+  console.log("Match Stage:", matchStage);
 
   // Build base aggregation pipeline with common stages
   const aggregationPipeline = [
@@ -741,7 +740,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
     // Fetch the proposals from the database
     const proposals = await Proposal.aggregate(aggregationPipeline);
 
-    // Return proposals with pagination metadata
+    // Return proposals with pagination metadata and updated filters
     return res.status(200).json({
       data: proposals.length > 0 ? proposals : [],
       pagination: {
@@ -756,7 +755,9 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       },
       filters: {
         hasVoted: hasVoted,
-        thresholdReached: thresholdReached, // Add the threshold filter to response
+        thresholdReached: thresholdReached,
+        tags: tags ? tags.split(',').map(tag => tag.trim()) : undefined,
+        categories: categories ? categories.split(',').map(category => category.trim()) : undefined
       },
     });
   } catch (error) {

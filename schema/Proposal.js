@@ -45,7 +45,7 @@ const proposalSchema = new Schema(
       required: false,
       default: "",
     },
-    category: {
+    categories: {
       type: Array,
       required: false,
       default: [],
