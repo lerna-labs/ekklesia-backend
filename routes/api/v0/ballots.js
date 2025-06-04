@@ -700,6 +700,8 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       _id: 1,
       name: 1,
       description: 1,
+      categories: 1,
+      tags: 1,
       ipfsHash: 1,
       data: 1,
       ballotId: 1,
@@ -707,7 +709,10 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       commentCount: 1,
       voteCount: 1,
       result: 1,
-      thresholdReached: 1,
+      // Only include thresholdReached if ballot has a non-zero threshold
+      ...(req.ballot.voteThreshold !== 0 && {
+        thresholdReached: 1,
+      }),
       // Only include user-specific fields when a user is logged in
       ...(voterId && {
         voterVote: "$userVote.value",
