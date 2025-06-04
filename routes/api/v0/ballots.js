@@ -465,8 +465,6 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
     }
   }
 
-  console.log("Match Stage:", matchStage);
-
   // Build base aggregation pipeline with common stages
   const aggregationPipeline = [
     // Match proposals for the given ballot and filters if specified
