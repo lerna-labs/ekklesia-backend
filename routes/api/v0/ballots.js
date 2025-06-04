@@ -769,4 +769,62 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
   }
 });
 
+/**
+  * @route GET /api/v0/ballots/:ballotId/categories
+  * @description Get all unique categories from proposals in a specific ballot
+  * @access Public
+  *
+  * @param {string} req.params.ballotId - The ID of the ballot to get categories for
+  *
+  * @returns {Array} 200 - List of unique categories from proposals in the ballot
+  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
+  * @returns {Object} 500 - Server error
+  */
+router.get("/:ballotId/categories", getBallot, async (req, res) => {
+  const ballot = req.ballot.toObject();
+  try {
+    // Fetch all proposals for the ballot and extract unique categories
+    const proposals = await Proposal.find({ ballotId: ballot._id }).select("categories");
+    const categories = [...new Set(proposals.flatMap((proposal) => proposal.categories))];
+
+    // Return the list of unique categories
+    return res.status(200).json(categories);
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Server error while fetching categories",
+    });
+  }
+});
+
+/**
+ * @route GET /api/v0/ballots/:ballotId/tags
+ * @description Get all unique tags from proposals in a specific ballot
+ * @access Public
+ *
+ * @param {string} req.params.ballotId - The ID of the ballot to get tags for
+ *
+ * @returns {Array} 200 - List of unique tags from proposals in the ballot
+ * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
+ * @returns {Object} 500 - Server error
+ */
+router.get("/:ballotId/tags", getBallot, async (req, res) => {
+  const ballot = req.ballot.toObject();
+  try {
+    // Fetch all proposals for the ballot and extract unique tags
+    const proposals = await Proposal.find({ ballotId: ballot._id }).select("tags");
+    const tags = [...new Set(proposals.flatMap((proposal) => proposal.tags))];
+
+    // Return the list of unique tags
+    return res.status(200).json(tags);
+  } catch (error) {
+    console.error("Error fetching tags:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Server error while fetching tags",
+    });
+  }
+});
+
 export default router;
