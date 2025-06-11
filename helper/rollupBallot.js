@@ -1,11 +1,11 @@
-import {getAddressType} from "./validateAddress.js";
-import {MerkleTree} from "merkletreejs";
+import { getAddressType } from "./validateAddress.js";
+import { MerkleTree } from "merkletreejs";
 import crypto from "crypto";
 
 const hashFunction = (data) => {
     return crypto.createHash("sha256")
-                 .update(data)
-                 .digest();
+        .update(data)
+        .digest();
 };
 
 export async function rollupBallot($results, $weight) {
@@ -84,12 +84,19 @@ export async function rollupBallot($results, $weight) {
 
             if (results.voter_weights[voter_key_id] === undefined) {
                 if ($weight) {
-                    for (const voter of $weight) {
-                        if (voter.drep_key_id === voter_key_id) {
-                            results.voter_weights[voter_key_id] = voter.amount.toString();
-                            break;
-                        }
+
+                    // If weights are supplied, find the voter's weight
+                    const voter = $weight.find(v => getAddressType(v.voterId).keyHash === voter_key_id);
+                    if (voter) {
+                        results.voter_weights[voter_key_id] = voter.votingPower.toString();
                     }
+
+                    // for (const voter of $weight) {
+                    //     if (voter.drep_key_id === voter_key_id) {
+                    //         results.voter_weights[voter_key_id] = voter.amount.toString();
+                    //         break;
+                    //     }
+                    // }
 
                     if (results.voter_weights[voter_key_id] === undefined) {
                         // If the voter weight is still undefined, they are a
