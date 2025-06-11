@@ -28,11 +28,6 @@ const { Schema } = mongoose;
  */
 const ballotSchema = new Schema(
   {
-    ipfsHash: {
-      type: String,
-      required: false,
-      default: null, // Optional field for IPFS hash
-    },
     name: {
       type: String,
       required: true,
@@ -40,6 +35,11 @@ const ballotSchema = new Schema(
     description: {
       type: String,
       required: true,
+    },
+    ipfsHash: {
+      type: String,
+      required: false,
+      default: null, // Optional field for IPFS hash
     },
     voterType: {
       type: String,
@@ -86,7 +86,7 @@ const ballotSchema = new Schema(
       type: Date,
       required: true,
     },
-    resultBeaconToken: {
+    resultTxHash: {
       default: null,
       type: String,
     },
