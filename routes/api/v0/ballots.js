@@ -705,6 +705,8 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       ipfsHash: 1,
       data: 1,
       ballotId: 1,
+      voteType: 1,
+      voterBudget: 1,
       voteOptions: 1,
       commentCount: 1,
       voteCount: 1,
