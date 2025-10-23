@@ -7,12 +7,12 @@ const { Schema } = mongoose;
  *
  * @typedef {Object} Proposal
  * @property {ObjectId} ballotId - The ID of the ballot this proposal belongs to (references Ballot)
- * @property {String} name - The name of the proposal
+ * @property {String} title - The title of the proposal
  * @property {Object} data - Additional data related to the proposal (optional)
  * @property {Array} voteOptions - Available voting options for this proposal
- *                                 Default: [{value: 1, label: "Yes"},
- *                                          {value: -1, label: "No"},
- *                                          {value: 0, label: "Abstain"}]
+ *                                 Default: [{id: 1, value: 1, label: "Yes"},
+ *                                          {id: 2, value: -1, label: "No"},
+ *                                          {id: 3, value: 0, label: "Abstain"}]
  * @property {Date} createdAt - Timestamp when the proposal was created (immutable)
  * @property {Date} updatedAt - Timestamp when the proposal was last updated
  *
@@ -36,7 +36,7 @@ const proposalSchema = new Schema(
       required: false,
       default: null, // Optional field for IPFS hash
     },
-    name: {
+    title: {
       type: String,
       required: true,
     },
@@ -62,15 +62,20 @@ const proposalSchema = new Schema(
     voteType: {
       type: String,
       required: true,
-      default: "default",
+      default: "default", // TODO : Define possible vote types
+    },
+    voterBudget: {
+      type: Number,
+      required: false,
+      default: 1,
     },
     voteOptions: {
       type: Array,
       required: true,
       default: [
-        { value: 1, label: "Yes" },
-        { value: -1, label: "No" },
-        { value: 0, label: "Abstain" },
+        { id: 1, cost: 1, label: "Yes" },
+        { id: 2, cost: 1, label: "No" },
+        { id: 3, cost: 1, label: "Abstain" },
       ],
     },
     createdAt: {

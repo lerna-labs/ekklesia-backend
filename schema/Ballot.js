@@ -6,7 +6,7 @@ const { Schema } = mongoose;
  * Represents a registered ballot in the voting system
  *
  * @typedef {Object} Ballot
- * @property {String} name - Name of the ballot
+ * @property {String} title - Title of the ballot
  * @property {String} description - Description of the ballot
  * @property {String} voterType - Type of voters eligible for this ballot (e.g., 'stake', 'drep', 'pool')
  * @property {String} voterDescription - Human-readable description of eligible voters
@@ -28,7 +28,7 @@ const { Schema } = mongoose;
  */
 const ballotSchema = new Schema(
   {
-    name: {
+    title: {
       type: String,
       required: true,
     },
