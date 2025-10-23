@@ -62,7 +62,7 @@ const proposalSchema = new Schema(
     voteType: {
       type: String,
       required: true,
-      default: "default", // TODO : Define possible vote types
+      default: "default",// default, budget, ranked
     },
     voterBudget: {
       type: Number,
