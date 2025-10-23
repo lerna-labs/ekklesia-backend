@@ -43,7 +43,7 @@ export async function createTransaction(voterId, ballotId) {
     delete voteObj.createdAt;
     delete voteObj.updatedAt;
     delete voteObj.submittedAt;
-    delete voteObj.submittedValue;
+    delete voteObj.submittedVote;
     return voteObj;
   });
 
