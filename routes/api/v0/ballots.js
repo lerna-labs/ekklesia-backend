@@ -717,7 +717,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       }),
       // Only include user-specific fields when a user is logged in
       ...(voterId && {
-        voterVote: "$userVote.value",
+        voterVote: "$userVote.vote",
         hasVoted: 1,
       }),
     },

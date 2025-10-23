@@ -60,33 +60,45 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
 
   // Validate the vote data
   const { vote } = req.body;
-  // Check if vote is present and is a valid number (including zero)
-  if (vote === undefined || vote === null || vote === "") {
+  // Check if vote is present and is an array
+  if (!vote || !Array.isArray(vote) || vote.length === 0) {
     return res.status(400).json({
       status: "error",
       message: "Vote data is required",
     });
   }
 
-  // check if vote is in voteOptions
-  const allowedValues = proposal.voteOptions.map((option) => option.value);
-  if (!allowedValues.includes(vote)) {
+  // Get allowed option IDs from proposal.voteOptions
+  const allowedOptionIds = proposal.voteOptions.map((option) => option.id);
+
+  // Check if all values in the vote array are present in the allowed option IDs
+  const invalidVotes = vote.filter(voteId => !allowedOptionIds.includes(voteId));
+  if (invalidVotes.length > 0) {
     return res.status(400).json({
       status: "error",
       message: "Vote value is not allowed",
     });
   }
 
-  // Convert vote to number
-  // not really needed since we are checking if vote is in voteOptions
-  const voteValue = Number(vote);
+  // Calculate total cost by looking up the cost for each vote ID
+  const totalCost = vote.reduce((acc, voteId) => {
+    const voteOption = proposal.voteOptions.find(option => option.id === voteId);
+    return acc + (voteOption ? voteOption.cost : 0);
+  }, 0);
+
+  if (proposal.voterBudget && totalCost > proposal.voterBudget) {
+    return res.status(400).json({
+      status: "error",
+      message: `Total cost (${totalCost}) exceeds your budget of ${proposal.voterBudget}`,
+    });
+  }
 
   // Build the vote data
   const voteData = {
     ballotId: proposal.ballotId,
     proposalId,
     voterId,
-    value: voteValue,
+    vote,
   };
 
   // save the vote to the database and return the saved vote
