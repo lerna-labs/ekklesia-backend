@@ -96,7 +96,7 @@ const proposalSchema = new Schema(
 
 // Indexes for faster queries
 proposalSchema.index({ ballotId: 1 });
-proposalSchema.index({ name: 1 });
+proposalSchema.index({ title: 1 });
 
 // Pre-save middleware to update the updatedAt field
 proposalSchema.pre("save", function (next) {

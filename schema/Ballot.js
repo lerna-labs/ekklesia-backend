@@ -131,7 +131,7 @@ const ballotSchema = new Schema(
 );
 
 // Indexes for faster queries
-ballotSchema.index({ name: 1 });
+ballotSchema.index({ title: 1 });
 ballotSchema.index({ voterType: 1 });
 
 // Replace is_live with a more descriptive status virtual property

@@ -22,7 +22,7 @@ import { getBallot } from "../../../helper/middleWare.js";
  * @param {Object} req.query
  * @param {string} [req.query.voterType] - Filter by voter type
  * @param {string} [req.query.status] - Filter by status ('live', 'closed', or 'upcoming')
- * @param {string} [req.query.search] - Search term for ballot name or ID
+ * @param {string} [req.query.search] - Search term for ballot title or ID
  * @param {number} [req.query.page=1] - Page number for pagination
  * @param {number} [req.query.limit=10] - Number of items per page (max 100)
  *
@@ -55,11 +55,11 @@ router.get("/", async (req, res) => {
       });
     }
 
-    // Create search criteria that matches either name or ID
+    // Create search criteria that matches either title or ID
     const searchQuery = validator.escape(search);
 
     // Set up the OR query
-    matchStage.$or = [{ name: { $regex: new RegExp(searchQuery, "i") } }];
+    matchStage.$or = [{ title: { $regex: new RegExp(searchQuery, "i") } }];
 
     // Check if search might be a valid MongoDB ObjectID (24 hex characters)
     if (validator.isMongoId(search)) {
@@ -311,8 +311,8 @@ router.get("/:ballotId", getBallot, async (req, res) => {
  * @param {string} [req.query.committee] - Filter by committee
  * @param {string} [req.query.roadmap] - Filter by roadmap
  * @param {string} [req.query.type] - Filter by proposal type
- * @param {string} [req.query.search] - Search term for proposal name or ID
- * @param {string} [req.query.sort] - Sort field ('cost', 'name', 'commentCount', 'voteCount')
+ * @param {string} [req.query.search] - Search term for proposal title or ID
+ * @param {string} [req.query.sort] - Sort field ('cost', 'title', 'commentCount', 'voteCount')
  * @param {string} [req.query.direction='desc'] - Sort direction ('asc' or 'desc')
  * @param {string} [req.query.hasVoted] - Filter by whether authenticated user has voted ('true'/'false')
  * @param {string} [req.query.thresholdReached] - Filter by threshold status ('true'/'false')
@@ -385,18 +385,18 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
 
   if (sort) {
     // Validate sort parameter
-    if (!["name", "commentCount", "voteCount"].includes(sort)) {
+    if (!["title", "commentCount", "voteCount"].includes(sort)) {
       return res.status(400).json({
         status: "error",
         message:
-          "Invalid sort field, must be 'name', 'commentCount', or 'voteCount'",
+          "Invalid sort field, must be 'title', 'commentCount', or 'voteCount'",
       });
     }
 
     // Set sort field based on parameter with _id as secondary sort field
     switch (sort) {
-      case "name":
-        sortField = { name: sortDirection, _id: 1 };
+      case "title":
+        sortField = { title: sortDirection, _id: 1 };
         break;
       case "commentCount":
         sortField = { commentCount: sortDirection, _id: 1 };
@@ -425,8 +425,8 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
     // Sanitize search input
     const searchQuery = validator.escape(search);
 
-    // Set up the OR query to match name or ID
-    matchStage.$or = [{ name: { $regex: new RegExp(searchQuery, "i") } }];
+    // Set up the OR query to match title or ID
+    matchStage.$or = [{ title: { $regex: new RegExp(searchQuery, "i") } }];
 
     // Check if search might be a valid MongoDB ObjectID
     if (validator.isMongoId(search)) {
@@ -698,7 +698,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
   aggregationPipeline.push({
     $project: {
       _id: 1,
-      name: 1,
+      title: 1,
       description: 1,
       categories: 1,
       tags: 1,
