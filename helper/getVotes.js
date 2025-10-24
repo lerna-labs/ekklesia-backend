@@ -43,14 +43,14 @@ export async function getVotes(
     ];
   }
   // fetch votes from the database
-  const votes = await Vote.find(voteSelect).select("value proposalId ballotId");
+  const votes = await Vote.find(voteSelect).select("vote proposalId ballotId");
 
   // create array of individual ballotIds
   const ballotIds = votes.map((vote) => vote.ballotId);
   // get all ballots for the votes
   const ballots = await Ballot.find({
     _id: { $in: ballotIds },
-  }).select("_id name description votePeriodStart votePeriodEnd");
+  }).select("_id title description votePeriodStart votePeriodEnd");
   const plainBallots = ballots.map((ballot) =>
     ballot.toObject({ virtuals: true })
   );
@@ -61,7 +61,7 @@ export async function getVotes(
   const proposals = await Proposal.find({
     _id: { $in: proposalIds },
   })
-    .select("_id name ballotId voteOptions data")
+    .select("_id title ballotId voteOptions") // NOTE: This returned data and voteOptions before, but why
     .lean();
 
   // build data
@@ -72,15 +72,34 @@ export async function getVotes(
     );
     // add votes to each proposal object
     ballot.proposals.forEach((proposal) => {
-      proposal.vote = votes.filter(
+      proposal.voteData = votes.filter(
         (vote) => String(vote.proposalId) === String(proposal._id)
       );
-      // convert vote to label if voteLabels is true
+
+      const voteIds = proposal.voteData[0].vote;
+      // convert vote to labels if voteLabels is true
       if (voteLabels) {
-        proposal.vote = proposal.voteOptions.find(
-          (el) => el.value === proposal.vote[0].value
-        );
+        proposal.vote = voteIds.map((voteId) => {
+          const option = proposal.voteOptions.find(
+            (el) => el.id === voteId
+          );
+          return option ? option.label : voteId;
+        });
       }
+
+      // remove data.voteOptions from proposal object
+      delete proposal.voteOptions;
+
+      // remove voteData from proposal object
+      delete proposal.voteData;
+
+      // TODO CLEANUP
+      // convert vote to label if voteLabels is true
+      // if (voteLabels) {
+      //   proposal.vote = proposal.voteOptions.find(
+      //     (el) => el.value === proposal.vote[0].value
+      //   );
+      // }
     });
   }
 
@@ -115,7 +134,7 @@ export async function getPendingVoteCount(voterId) {
   // get all ballots for the pending votes
   const ballots = await Ballot.find({
     _id: { $in: ballotIds },
-  }).select("_id name description votePeriodStart votePeriodEnd");
+  }).select("_id title description votePeriodStart votePeriodEnd");
 
   // Convert to plain objects to access virtual properties
   const plainBallots = ballots.map((ballot) =>
@@ -158,7 +177,7 @@ export async function getSubmittedVotes(voterId) {
   // get all ballots for the votes
   const ballots = await Ballot.find({
     _id: { $in: ballotIds },
-  }).select("_id name description votePeriodStart votePeriodEnd");
+  }).select("_id title description votePeriodStart votePeriodEnd");
   const plainBallots = ballots.map((ballot) =>
     ballot.toObject({ virtuals: true })
   );
@@ -168,7 +187,7 @@ export async function getSubmittedVotes(voterId) {
   const proposals = await Proposal.find({
     _id: { $in: proposalIds },
   })
-    .select("_id name ballotId data voteOptions")
+    .select("_id title ballotId data voteOptions")
     .lean();
   // build data
   for (let ballot of plainBallots) {
