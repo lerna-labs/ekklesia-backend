@@ -53,6 +53,8 @@ export async function createTransaction(voterId, ballotId) {
     voterId,
     votes: cleanVotes,
   };
+
+  console.log("Creating merkle tree with vote data:", voteData);
   const merkleTree = createVoterTree(voteData);
 
   // store transaction in db

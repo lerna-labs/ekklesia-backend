@@ -86,10 +86,10 @@ export async function aggregateVotes() {
     ]);
 
     // Add console logging to help debug
-    // console.log(
-    //   "Vote aggregation results:",
-    //   JSON.stringify(voteAggregation, null, 2)
-    // );
+    console.log(
+      "Vote aggregation results:",
+      JSON.stringify(voteAggregation, null, 2)
+    );
 
     const resultsWithLabels = proposal.voteOptions.map((option) => {
       // Find if there's a matching result from the aggregation

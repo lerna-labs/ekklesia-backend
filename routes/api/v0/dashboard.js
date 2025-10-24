@@ -382,19 +382,19 @@ router.put(
 
     // UPDATE ALL VOTES
     const bulkOps = [];
-    for (const vote of transaction.votes) {
+    for (const voteData of transaction.votes) {
       // Create an update operation for each vote
       bulkOps.push({
         updateOne: {
           filter: {
             voterId: voterId,
             ballotId: ballotId,
-            proposalId: vote.proposalId,
+            proposalId: voteData.proposalId,
           },
           update: {
             $set: {
               submittedAt: new Date(),
-              submittedValue: vote.value, // Use the value from transaction
+              submittedVote: voteData.vote, // Use the value from transaction
             },
           },
         },
