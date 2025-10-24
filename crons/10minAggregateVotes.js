@@ -5,15 +5,13 @@ import { Result } from "../schema/Result.js";
 
 export async function aggregateVotes() {
   const now = new Date();
-  const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
-  const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
+  // Use 12 minutes to ensure overlap and catch all votes
+  const twelveMinutesAgo = new Date(now.getTime() - 12 * 60 * 1000);
 
-  // Get all votes that were submittedAt in the last 11 minutes
-  // const proposalIds = await Vote.find({
-  //   submittedAt: { $gte: fifteenMinutesAgo, $lt: now },
-  // }).distinct("proposalId");
-
-  const proposalIds = await Vote.find({}).distinct("proposalId");
+  // Get all proposalIds that have votes submitted in the last 12 minutes
+  const proposalIds = await Vote.find({
+    submittedAt: { $gte: twelveMinutesAgo, $lt: now },
+  }).distinct("proposalId");
 
   if (proposalIds.length === 0) {
     console.log("No proposals to process");
@@ -30,19 +28,19 @@ export async function aggregateVotes() {
       continue;
     }
 
-    // Check if we've already processed this proposal in the last 10 minutes
-    const lastResult = await Result.findOne({
+    // Check if there are actually new votes in the last 12 minutes for this proposal
+    const recentVotesCount = await Vote.countDocuments({
       proposalId: proposalId,
-    }).sort({ updatedAt: -1 });
+      submittedAt: { $gte: twelveMinutesAgo, $lt: now },
+    });
 
-    if (lastResult && lastResult.updatedAt > tenMinutesAgo) {
-      console.log(
-        `Skipping proposal ${proposalId}: already processed at ${lastResult.updatedAt}`
-      );
+    if (recentVotesCount === 0) {
+      console.log(`Skipping proposal ${proposalId}: no recent votes`);
       continue;
     }
 
     const voteAggregation = await Vote.aggregate([
+      // Add time filter to only aggregate ALL votes for proposals with recent activity
       { $match: { proposalId } },
       {
         $lookup: {
@@ -71,9 +69,16 @@ export async function aggregateVotes() {
           },
         },
       },
+      // Unwind the submittedVote array to handle multiple vote options
+      {
+        $unwind: {
+          path: "$submittedVote",
+          preserveNullAndEmptyArrays: false,
+        },
+      },
       {
         $group: {
-          _id: "$submittedValue",
+          _id: "$submittedVote",
           count: { $sum: 1 },
           votingPower: { $sum: "$votingPower" },
         },
@@ -96,11 +101,11 @@ export async function aggregateVotes() {
     const resultsWithLabels = proposal.voteOptions.map((option) => {
       // Find if there's a matching result from the aggregation
       const matchingResult = voteAggregation.find(
-        (result) => result._id == option.value
+        (result) => result._id == option.id
       );
 
       return {
-        value: option.value,
+        id: option.id,
         label: option.label,
         count: matchingResult ? matchingResult.count : 0,
         votingPower: matchingResult ? matchingResult.votingPower : 0,
