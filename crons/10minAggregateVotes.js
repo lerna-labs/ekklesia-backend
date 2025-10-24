@@ -9,9 +9,11 @@ export async function aggregateVotes() {
   const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
 
   // Get all votes that were submittedAt in the last 11 minutes
-  const proposalIds = await Vote.find({
-    submittedAt: { $gte: fifteenMinutesAgo, $lt: now },
-  }).distinct("proposalId");
+  // const proposalIds = await Vote.find({
+  //   submittedAt: { $gte: fifteenMinutesAgo, $lt: now },
+  // }).distinct("proposalId");
+
+  const proposalIds = await Vote.find({}).distinct("proposalId");
 
   if (proposalIds.length === 0) {
     console.log("No proposals to process");
