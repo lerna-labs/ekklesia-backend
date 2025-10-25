@@ -509,6 +509,15 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
         as: "allVotes",
       },
     },
+    // Add this lookup stage after the votes lookup and before the addFields stage
+    {
+      $lookup: {
+        from: "votercaches",
+        localField: "ballotId",
+        foreignField: "ballotId",
+        as: "voterCaches",
+      },
+    },
     // Calculate voteCount after we have the result data
     {
       $addFields: {
@@ -519,20 +528,59 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
             cond: { $ne: ["$$vote.submittedAt", null] },
           },
         },
-        voteCount: {
-          $cond: {
-            if: { $ifNull: ["$result", false] },
-            then: {
-              $reduce: {
-                input: "$result.results",
-                initialValue: 0,
-                in: { $add: ["$$value", "$$this.count"] },
+        // Calculate total voting power of unique voters who voted
+        votingPower: {
+          $sum: {
+            $map: {
+              input: {
+                // Get unique voters first  
+                $setUnion: [
+                  {
+                    $map: {
+                      input: {
+                        $filter: {
+                          input: "$allVotes",
+                          as: "vote",
+                          cond: { $ne: ["$$vote.submittedAt", null] },
+                        }
+                      },
+                      as: "vote",
+                      in: "$$vote.voterId"
+                    }
+                  }
+                ]
               },
-            },
-            else: 0, // Return 0 if no results are available
-          },
+              as: "uniqueVoterId",
+              in: {
+                // Get voting power for this voter from voterCache
+                $let: {
+                  vars: {
+                    voterCache: {
+                      $arrayElemAt: [
+                        {
+                          $filter: {
+                            input: "$voterCaches",
+                            as: "cache",
+                            cond: {
+                              $and: [
+                                { $eq: ["$$cache.voterId", "$$uniqueVoterId"] },
+                                { $eq: ["$$cache.ballotId", "$ballotId"] }
+                              ]
+                            }
+                          }
+                        },
+                        0
+                      ]
+                    }
+                  },
+                  in: { $ifNull: ["$$voterCache.votingPower", 1] }
+                }
+              }
+            }
+          }
         },
-        // Calculate threshold reached
+        // Calculate threshold reached 
+        // ! REMOVE this is no longer valid for multi-option votes
         thresholdReached: {
           $cond: {
             if: { $ifNull: ["$result", false] },
@@ -709,7 +757,20 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       voterBudget: 1,
       voteOptions: 1,
       commentCount: 1,
-      voteCount: 1,
+      voteCount: {
+        $size: {
+          $setUnion: [
+            {
+              $map: {
+                input: "$validVotes",
+                as: "vote",
+                in: "$$vote.voterId"
+              }
+            }
+          ]
+        },
+      },
+      votingPower: 1, // Add this line
       result: 1,
       // Only include thresholdReached if ballot has a non-zero threshold
       ...(req.ballot.voteThreshold !== 0 && {

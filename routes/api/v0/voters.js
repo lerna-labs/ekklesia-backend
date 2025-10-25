@@ -81,7 +81,7 @@ router.get("/", cacheControl(300), async (req, res) => {
   try {
     // Build match conditions for filtering
     let matchConditions = {
-      submittedValue: { $exists: true },
+      submittedVote: { $exists: true },
     };
 
     // Escape special regex characters in search string
@@ -110,10 +110,10 @@ router.get("/", cacheControl(300), async (req, res) => {
       },
       ...(search
         ? [
-            {
-              $match: { _id: searchRegex },
-            },
-          ]
+          {
+            $match: { _id: searchRegex },
+          },
+        ]
         : []),
       {
         $count: "total",
@@ -139,10 +139,10 @@ router.get("/", cacheControl(300), async (req, res) => {
       },
       ...(search
         ? [
-            {
-              $match: { _id: searchRegex },
-            },
-          ]
+          {
+            $match: { _id: searchRegex },
+          },
+        ]
         : []),
     ];
 
@@ -215,6 +215,8 @@ router.get("/", cacheControl(300), async (req, res) => {
       }
     );
 
+    console.log(pipeline);
+
     const voters = await Vote.aggregate(pipeline);
 
     if (!voters || voters.length === 0) {
@@ -279,7 +281,7 @@ router.get("/types", cacheControl(300), async (req, res) => {
   try {
     const voters = await Vote.aggregate([
       {
-        $match: { submittedValue: { $exists: true } },
+        $match: { submittedVote: { $exists: true } },
       },
       {
         $group: { _id: "$voterId" },
@@ -387,7 +389,7 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
     {
       $match: {
         voterId: voterIdValidated,
-        submittedValue: { $exists: true },
+        submittedVote: { $exists: true },
       },
     },
     {
@@ -473,16 +475,16 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
             (v) => v.proposalId?.toString() === p._id.toString()
           );
           if (
-            vote?.submittedValue === undefined ||
-            vote?.submittedValue === null
+            vote?.submittedVote === undefined ||
+            vote?.submittedVote === null
           )
             return null; // Skip if no vote found
 
           return {
             proposalId: p._id,
             voteOptions: p.voteOptions,
-            name: p.name,
-            vote: vote.submittedValue,
+            title: p.title,
+            vote: vote.submittedVote,
           };
         })
         .filter(Boolean); // Remove null entries (proposals without votes)
@@ -492,7 +494,7 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
 
       return {
         _id: item._id,
-        name: item.ballot.name,
+        title: item.ballot.title,
         votePeriodStart: item.ballot.votePeriodStart,
         votePeriodEnd: item.ballot.votePeriodEnd,
         voteWeighted: item.ballot.voteWeighted,
