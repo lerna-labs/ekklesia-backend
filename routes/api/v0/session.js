@@ -237,7 +237,21 @@ router.put("/", validateSessionRequest, async (req, res) => {
   // Log the successful login
   console.log("Login successful:", signerAddress);
 
-  // ! SEND SIGNERADDRESS TO HYDRA
+  // Ping Hydra (non-blocking)
+  console.log("Pinging Hydra for voterId:", signerAddress);
+  fetch(`${process.env.HYDRA_URL}/register`, {
+    method: "POST",
+    headers: {
+      apikey: `${process.env.HYDRA_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      voterId: signerAddress
+    }),
+  })
+    .then(response => response.json())
+    .then(data => console.log("Hydra response:", data))
+    .catch(error => console.error("Failed to ping Hydra:", error));
 
   // Set the cookie on the response
   res.cookie("token", token, {
