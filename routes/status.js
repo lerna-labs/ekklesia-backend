@@ -53,6 +53,20 @@ router.get("/", async (req, res) => {
     return `${days}d ${hours}h ${minutes}m ${secs}s`;
   };
 
+  // Check Hydra Status
+  let hydraStatus = "unknown";
+  try {
+    const response = await fetch(`${process.env.HYDRA_URL}/health`, {
+      headers: {
+        apikey: `${process.env.HYDRA_TOKEN}`,
+      },
+    });
+    const data = await response.json();
+    hydraStatus = data.status || "unknown";
+  } catch (error) {
+    console.error(`Failed to check Hydra status: ${error.message}`);
+  }
+
   return res.json({
     status: "operational",
     message: "System is operational",
@@ -82,6 +96,9 @@ router.get("/", async (req, res) => {
       message: isDatabaseConnected()
         ? "Database connection is healthy"
         : "Database connection is down, attempting to reconnect automatically",
+    },
+    hydra: {
+      health: hydraStatus,
     },
   });
 });
