@@ -237,6 +237,8 @@ router.put("/", validateSessionRequest, async (req, res) => {
   // Log the successful login
   console.log("Login successful:", signerAddress);
 
+  // ! SEND SIGNERADDRESS TO HYDRA
+
   // Set the cookie on the response
   res.cookie("token", token, {
     expires: expiryDate,
