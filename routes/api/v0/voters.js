@@ -215,8 +215,6 @@ router.get("/", cacheControl(300), async (req, res) => {
       }
     );
 
-    console.log(pipeline);
-
     const voters = await Vote.aggregate(pipeline);
 
     if (!voters || voters.length === 0) {
@@ -449,7 +447,7 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
         votes: 1,
         ballot: 1,
         proposalDetails: 1,
-        votingPower: "$voterPower.votingPower", // Changed from weight to votingPower
+        votingPower: "$voterPower.votingPower",
       },
     },
     {
@@ -480,11 +478,16 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
           )
             return null; // Skip if no vote found
 
+          // vote.submittedVote is an array of voteOption ids - extract the label from p.voteOptions
+          const voteLabels = vote.submittedVote.map((id) => {
+            const option = p.voteOptions.find((o) => o.id.toString() === id.toString());
+            return option ? option.label : null;
+          }).filter(Boolean);
+
           return {
             proposalId: p._id,
-            voteOptions: p.voteOptions,
             title: p.title,
-            vote: vote.submittedVote,
+            vote: voteLabels,
           };
         })
         .filter(Boolean); // Remove null entries (proposals without votes)
