@@ -58,7 +58,7 @@ router.get("/", async (req, res) => {
   try {
     const response = await fetch(`${process.env.HYDRA_URL}/health`, {
       headers: {
-        apikey: `${process.env.HYDRA_TOKEN}`,
+        "x-api-key": `${process.env.HYDRA_TOKEN}`,
       },
     });
     const data = await response.json();

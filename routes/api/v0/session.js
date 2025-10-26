@@ -242,7 +242,7 @@ router.put("/", validateSessionRequest, async (req, res) => {
   fetch(`${process.env.HYDRA_URL}/register`, {
     method: "POST",
     headers: {
-      apikey: `${process.env.HYDRA_TOKEN}`,
+      "x-api-key": `${process.env.HYDRA_TOKEN}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
