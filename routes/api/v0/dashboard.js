@@ -221,7 +221,7 @@ router.post(
     if (addressBech32 !== voterId) {
       return res.status(400).json({
         status: "error",
-        message: "given address does not match voterId",
+        message: "Given address does not match voterId",
       });
     }
 
@@ -615,7 +615,6 @@ router.post(
     transactionResponse.dataHex = stringToHex(transactionResponse.merkleRoot);
     transactionResponse.voterIdHex = signerAddress;
     transactionResponse.voterId = signerAddress;
-    console.log(transactionResponse);
     return res.status(200).json(transactionResponse);
   }
 );
@@ -733,7 +732,7 @@ router.put(
     const transaction = await Transaction.findOne({
       voterId,
       ballotId,
-      // status: "created",
+      status: { $in: ["created", "pending"] },
       merkleRoot,
     });
     if (!transaction) {
@@ -762,8 +761,6 @@ router.put(
         message: isParty.error,
       });
     }
-
-    // !! SUBMIT THE TRANSACTION
 
     // add current signature to multisig array
     req.body.signature.signedAt = new Date();

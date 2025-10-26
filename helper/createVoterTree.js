@@ -20,7 +20,7 @@ export function createVoterTree(data) {
     const voteData = {
       proposalId: vote.proposalId,
       voterId: vote.voterId || voterId, // Use vote.voterId if available, otherwise use the parent voterId
-      value: vote.value,
+      vote: vote.vote,
       ballotId,
     };
 
