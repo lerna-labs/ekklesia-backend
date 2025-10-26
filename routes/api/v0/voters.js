@@ -218,8 +218,8 @@ router.get("/", cacheControl(300), async (req, res) => {
     const voters = await Vote.aggregate(pipeline);
 
     if (!voters || voters.length === 0) {
-      return res.status(404).json({
-        status: "error",
+      return res.status(200).json({
+        status: "msg",
         message: "No voters found",
       });
     }
