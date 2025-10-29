@@ -337,11 +337,8 @@ router.put(
         message: "given address does not match voterId",
       });
     }
-    // !! validate voter against ballot
-    // is this needed? we already validated voter in the middleware
 
     // CHECK IF TRANSACTION IS IN TRANSACTION COLLECTION
-    // !! validate merkleRoot
     const merkleRoot = req.body.data;
     if (!merkleRoot) {
       return res.status(400).json({

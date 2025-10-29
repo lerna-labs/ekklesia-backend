@@ -68,11 +68,14 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
     });
   }
 
+  // Remove duplicate votes
+  const uniqueVotes = [...new Set(vote)];
+
   // Get allowed option IDs from proposal.voteOptions
   const allowedOptionIds = proposal.voteOptions.map((option) => option.id);
 
   // Check if all values in the vote array are present in the allowed option IDs
-  const invalidVotes = vote.filter(voteId => !allowedOptionIds.includes(voteId));
+  const invalidVotes = uniqueVotes.filter(voteId => !allowedOptionIds.includes(voteId));
   if (invalidVotes.length > 0) {
     return res.status(400).json({
       status: "error",
@@ -81,7 +84,7 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   }
 
   // Calculate total cost by looking up the cost for each vote ID
-  const totalCost = vote.reduce((acc, voteId) => {
+  const totalCost = uniqueVotes.reduce((acc, voteId) => {
     const voteOption = proposal.voteOptions.find(option => option.id === voteId);
     return acc + (voteOption ? voteOption.cost : 0);
   }, 0);
@@ -98,7 +101,7 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
     ballotId: proposal.ballotId,
     proposalId,
     voterId,
-    vote,
+    vote: uniqueVotes,
   };
 
   // save the vote to the database and return the saved vote

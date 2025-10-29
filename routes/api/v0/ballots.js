@@ -335,7 +335,6 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
     sort,
     direction = "desc",
     hasVoted,
-    thresholdReached,
     tags, // New parameter for filtering by tags
     categories, // New parameter for filtering by categories
   } = req.query;
@@ -363,17 +362,6 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
     return res.status(400).json({
       status: "error",
       message: "hasVoted must be 'true' or 'false'",
-    });
-  }
-
-  // Validate thresholdReached parameter
-  if (
-    thresholdReached !== undefined &&
-    !["true", "false"].includes(thresholdReached)
-  ) {
-    return res.status(400).json({
-      status: "error",
-      message: "thresholdReached must be 'true' or 'false'",
     });
   }
 
@@ -500,6 +488,18 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
         result: { $arrayElemAt: ["$results", 0] },
       },
     },
+    // add the updatedAt field from result if exists, otherwise set it to null
+    {
+      $addFields: {
+        "updatedAt": {
+          $cond: {
+            if: { $gt: [{ $size: "$results" }, 0] },
+            then: { $arrayElemAt: ["$results.updatedAt", 0] },
+            else: null,
+          },
+        },
+      },
+    },
     // Now lookup votes from the Vote collection
     {
       $lookup: {
@@ -526,6 +526,8 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
             input: "$allVotes",
             as: "vote",
             cond: { $ne: ["$$vote.submittedAt", null] },
+            // Treat missing or null submittedAt as "not valid"
+            cond: { $ne: [{ $ifNull: ["$$vote.submittedAt", null] }, null] },
           },
         },
         // Calculate total voting power of unique voters who voted
@@ -542,6 +544,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
                           input: "$allVotes",
                           as: "vote",
                           cond: { $ne: ["$$vote.submittedAt", null] },
+                          cond: { $ne: [{ $ifNull: ["$$vote.submittedAt", null] }, null] },
                         }
                       },
                       as: "vote",
@@ -578,90 +581,6 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
               }
             }
           }
-        },
-        // Calculate threshold reached 
-        // ! REMOVE this is no longer valid for multi-option votes
-        thresholdReached: {
-          $cond: {
-            if: { $ifNull: ["$result", false] },
-            then: {
-              $let: {
-                vars: {
-                  // Find the "yes" votes (value 1)
-                  yesVotes: {
-                    $reduce: {
-                      input: {
-                        $filter: {
-                          input: "$result.results",
-                          as: "voteResult",
-                          cond: { $eq: ["$$voteResult.value", 1] },
-                        },
-                      },
-                      initialValue: 0,
-                      in: { $add: ["$$value", "$$this.votingPower"] },
-                    },
-                  },
-                  // Find the "no" votes (value -1)
-                  noVotes: {
-                    $reduce: {
-                      input: {
-                        $filter: {
-                          input: "$result.results",
-                          as: "voteResult",
-                          cond: { $eq: ["$$voteResult.value", -1] },
-                        },
-                      },
-                      initialValue: 0,
-                      in: { $add: ["$$value", "$$this.votingPower"] },
-                    },
-                  },
-                  // Find the "abstain" votes (value 0)
-                  abstainVotes: {
-                    $reduce: {
-                      input: {
-                        $filter: {
-                          input: "$result.results",
-                          as: "voteResult",
-                          cond: { $eq: ["$$voteResult.value", 0] },
-                        },
-                      },
-                      initialValue: 0,
-                      in: { $add: ["$$value", "$$this.votingPower"] },
-                    },
-                  },
-                  // Calculate total votes (yes + no + abstain)
-                  totalVotingPower: {
-                    $sum: "$result.results.votingPower",
-                  },
-                },
-                in: {
-                  $cond: {
-                    if: { $eq: [{ $add: ["$$yesVotes", "$$noVotes"] }, 0] },
-                    then: false, // No votes cast yet
-                    else: {
-                      $gt: [
-                        // Yes votes divided by total votes (excluding abstains)
-                        {
-                          $divide: [
-                            "$$yesVotes",
-                            {
-                              $add: [
-                                "$$yesVotes",
-                                "$$noVotes",
-                                // Remove abstain votes from denominator
-                              ],
-                            },
-                          ],
-                        },
-                        0.5, // 50% threshold
-                      ],
-                    },
-                  },
-                },
-              },
-            },
-            else: false, // No results available
-          },
         },
       },
     },
@@ -729,17 +648,9 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
         },
         filters: {
           hasVoted: hasVoted,
-          thresholdReached: thresholdReached,
         },
       });
     }
-  }
-
-  // Apply thresholdReached filter if provided (for all users)
-  if (thresholdReached !== undefined) {
-    aggregationPipeline.push({
-      $match: { thresholdReached: thresholdReached === "true" },
-    });
   }
 
   // Project fields based on whether user is logged in
@@ -770,12 +681,9 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
           ]
         },
       },
-      votingPower: 1, // Add this line
+      votingPower: 1,
       result: 1,
-      // Only include thresholdReached if ballot has a non-zero threshold
-      ...(req.ballot.voteThreshold !== 0 && {
-        thresholdReached: 1,
-      }),
+      updatedAt: 1,
       // Only include user-specific fields when a user is logged in
       ...(voterId && {
         voterVote: "$userVote.vote",
@@ -821,7 +729,6 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       },
       filters: {
         hasVoted: hasVoted,
-        thresholdReached: thresholdReached,
         tags: tags ? tags.split(',').map(tag => tag.trim()) : undefined,
         categories: categories ? categories.split(',').map(category => category.trim()) : undefined
       },
