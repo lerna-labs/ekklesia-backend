@@ -55,17 +55,17 @@ router.get("/", async (req, res) => {
 
   // Check Hydra Status
   let hydraStatus = "unknown";
-  try {
-    const response = await fetch(`${process.env.HYDRA_URL}/health`, {
-      headers: {
-        "x-api-key": `${process.env.HYDRA_TOKEN}`,
-      },
-    });
-    const data = await response.json();
-    hydraStatus = data.status || "unknown";
-  } catch (error) {
-    console.error(`Failed to check Hydra status: ${error.message}`);
-  }
+  // try {
+  //   const response = await fetch(`${process.env.HYDRA_URL}/health`, {
+  //     headers: {
+  //       "x-api-key": `${process.env.HYDRA_TOKEN}`,
+  //     },
+  //   });
+  //   const data = await response.json();
+  //   hydraStatus = data.status || "unknown";
+  // } catch (error) {
+  //   console.error(`Failed to check Hydra status: ${error.message}`);
+  // }
 
   return res.json({
     status: "operational",
@@ -97,9 +97,9 @@ router.get("/", async (req, res) => {
         ? "Database connection is healthy"
         : "Database connection is down, attempting to reconnect automatically",
     },
-    hydra: {
-      health: hydraStatus,
-    },
+    // hydra: {
+    //   health: hydraStatus,
+    // },
   });
 });
 

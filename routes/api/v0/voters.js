@@ -81,7 +81,7 @@ router.get("/", cacheControl(300), async (req, res) => {
   try {
     // Build match conditions for filtering
     let matchConditions = {
-      submittedVote: { $exists: true },
+      submittedAt: { $ne: null },
     };
 
     // Escape special regex characters in search string
@@ -387,7 +387,7 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
     {
       $match: {
         voterId: voterIdValidated,
-        submittedVote: { $exists: true },
+        submittedAt: { $ne: null },
       },
     },
     {
