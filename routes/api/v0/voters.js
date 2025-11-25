@@ -382,7 +382,6 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
   voterData.voterId = voterIdValidated;
 
   // get votes for the voter - needs pagination at some point
-  // !! THIS DISPLAYS REALTIME DATA WHY
   const ballots = await Vote.aggregate([
     {
       $match: {
