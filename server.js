@@ -43,17 +43,6 @@ app.use(
 );
 app.use("/api", checkDatabaseConnectionMW); // Check database connection for all API routes
 
-// Add before starting the server
-app.use((err, req, res, next) => {
-  console.error(`Error processing request: ${err.message}`);
-  res.status(err.status || 500).json({
-    error:
-      process.env.NODE_ENV === "production"
-        ? "Internal server error"
-        : err.message,
-  });
-});
-
 // Start server
 async function startServer() {
   try {
@@ -80,11 +69,32 @@ async function startServer() {
       res.status(404).json({ error: "API route not found" });
     });
 
+    // Error handlers (must be last!)
+
+    // Handle URI decoding errors (like %c0, %80, etc.)
+    app.use((err, req, res, next) => {
+      if (err instanceof URIError) {
+        console.warn(`Invalid URI attempted: ${req.url} from ${req.ip}`);
+        return res.status(400).json({ error: "Invalid request" });
+      }
+      next(err);
+    });
+
+    // General error handler
+    app.use((err, req, res, next) => {
+      console.error(`Error processing request: ${err.message}`);
+      res.status(err.status || 500).json({
+        error:
+          process.env.NODE_ENV === "production"
+            ? "Internal server error"
+            : err.message,
+      });
+    });
+
     // Start listening
     app.listen(PORT, () => {
       console.log(
-        `Server running on port ${PORT} in ${
-          process.env.NODE_ENV || "development"
+        `Server running on port ${PORT} in ${process.env.NODE_ENV || "development"
         } mode`
       );
       if (!isDatabaseConnected()) {
