@@ -56,7 +56,7 @@ export async function rollupBallot($results, $weight) {
             const id_parts = getAddressType(vote.voterId);
             const voter_key_id = id_parts.keyHash;
 
-            if (vote.submittedValue === undefined) {
+            if (vote.submittedVote === undefined) {
                 console.error("The vote does not have a submitted value!");
                 throw new Error("Vote does not have a submitted value!");
             }
@@ -66,7 +66,10 @@ export async function rollupBallot($results, $weight) {
                 throw new Error("Duplicate voter!");
             }
 
-            const vote_value = vote.submittedValue.toString();
+            // Convert submittedVote array to a string representation for use as object key
+            const vote_value = Array.isArray(vote.submittedVote)
+                ? JSON.stringify(vote.submittedVote)
+                : vote.submittedVote.toString();
 
             const formatted_vote = [
                 proposal_id,
@@ -123,10 +126,30 @@ export async function rollupBallot($results, $weight) {
         }
 
         for (const [key, val] of Object.entries(result_proposal.weighted_results)) {
-            const key_val = Number(key);
-            result_proposal.stats.total += Math.abs(Number(key)) * Number(val);
-            if (key_val !== 0 && result_proposal.stats.thresholds[key_val] === undefined) {
-                result_proposal.stats.thresholds[key_val] = 0;
+            // Handle array votes: parse JSON string if it's an array, otherwise treat as number
+            let key_val;
+            let numeric_value;
+            try {
+                const parsed = JSON.parse(key);
+                if (Array.isArray(parsed)) {
+                    // For arrays, use the sum of absolute values, or first element if single-item
+                    numeric_value = parsed.length === 1
+                        ? Math.abs(Number(parsed[0]))
+                        : parsed.reduce((sum, v) => sum + Math.abs(Number(v)), 0);
+                    key_val = parsed;
+                } else {
+                    numeric_value = Math.abs(Number(key));
+                    key_val = Number(key);
+                }
+            } catch (e) {
+                // Not a JSON string, treat as number
+                numeric_value = Math.abs(Number(key));
+                key_val = Number(key);
+            }
+
+            result_proposal.stats.total += numeric_value * Number(val);
+            if (key_val !== 0 && result_proposal.stats.thresholds[key] === undefined) {
+                result_proposal.stats.thresholds[key] = 0;
             }
         }
 
