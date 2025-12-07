@@ -1,5 +1,5 @@
-import { getAddressType } from "./validateAddress.js";
-import { MerkleTree } from "merkletreejs";
+import {getAddressType} from "./validateAddress.js";
+import {MerkleTree} from "merkletreejs";
 import crypto from "crypto";
 
 const hashFunction = (data) => {
@@ -66,10 +66,21 @@ export async function rollupBallot($results, $weight) {
                 throw new Error("Duplicate voter!");
             }
 
-            // Convert submittedVote array to a string representation for use as object key
-            const vote_value = Array.isArray(vote.submittedVote)
-                ? JSON.stringify(vote.submittedVote)
-                : vote.submittedVote.toString();
+            let vote_value;
+
+            switch (proposal.voteType) {
+                case 'default':
+                    vote_value = Array.isArray(vote.submittedVote)
+                        ? vote.submittedVote[0].toString()
+                        : vote.submittedVote.toString();
+                    break;
+                default:
+                    // Convert submitted Vote array to a string representation for use as object key
+                    vote_value = Array.isArray(vote.submittedVote)
+                        ? JSON.stringify(vote.submittedVote)
+                        : vote.submittedVote.toString();
+                    break;
+            }
 
             const formatted_vote = [
                 proposal_id,
@@ -87,19 +98,11 @@ export async function rollupBallot($results, $weight) {
 
             if (results.voter_weights[voter_key_id] === undefined) {
                 if ($weight) {
-
                     // If weights are supplied, find the voter's weight
-                    const voter = $weight.find(v => getAddressType(v.voterId).keyHash === voter_key_id);
+                    const voter = $weight.find(v => v.drep_key_id === voter_key_id);
                     if (voter) {
-                        results.voter_weights[voter_key_id] = voter.votingPower.toString();
+                        results.voter_weights[voter_key_id] = voter.amount.toString();
                     }
-
-                    // for (const voter of $weight) {
-                    //     if (voter.drep_key_id === voter_key_id) {
-                    //         results.voter_weights[voter_key_id] = voter.amount.toString();
-                    //         break;
-                    //     }
-                    // }
 
                     if (results.voter_weights[voter_key_id] === undefined) {
                         // If the voter weight is still undefined, they are a
@@ -123,10 +126,11 @@ export async function rollupBallot($results, $weight) {
 
             prepared_votes.push(prepare_vote(formatted_vote));
             proposal_voters.push(voter_key_id);
+
         }
 
         for (const [key, val] of Object.entries(result_proposal.weighted_results)) {
-            // Handle array votes: parse JSON string if it's an array, otherwise treat as number
+            // Handle array votes: parse JSON string if it's an array, otherwise treat as a number
             let key_val;
             let numeric_value;
             try {
@@ -147,7 +151,8 @@ export async function rollupBallot($results, $weight) {
                 key_val = Number(key);
             }
 
-            result_proposal.stats.total += numeric_value * Number(val);
+            // result_proposal.stats.total += numeric_value * Number(val);
+            result_proposal.stats.total += Number(val);
             if (key_val !== 0 && result_proposal.stats.thresholds[key] === undefined) {
                 result_proposal.stats.thresholds[key] = 0;
             }
