@@ -8,7 +8,7 @@ const hashFunction = (data) => {
         .digest();
 };
 
-export async function rollupBallot($results, $weight) {
+export async function rollupBallot($results, $weight, $epoch_no) {
 
     const ballot_id = $results.ballotId;
     const num_proposals = $results.proposals.length;
@@ -47,6 +47,13 @@ export async function rollupBallot($results, $weight) {
             }
         };
 
+        for (const [key, option] of Object.entries(proposal.voteOptions)) {
+            const label = option.value ?? option.id;
+            result_proposal.results[label] = 0;
+            result_proposal.weighted_results[label] = 0;
+            result_proposal.stats.thresholds[label] = 0;
+        }
+
         const num_votes = proposal.votes.length;
         const odd_num_votes = num_votes % 2;
         const prepared_votes = [];
@@ -56,7 +63,7 @@ export async function rollupBallot($results, $weight) {
             const id_parts = getAddressType(vote.voterId);
             const voter_key_id = id_parts.keyHash;
 
-            if (vote.submittedVote === undefined) {
+            if (vote.submittedVote === undefined && vote.submittedValue === undefined) {
                 console.error("The vote does not have a submitted value!");
                 throw new Error("Vote does not have a submitted value!");
             }
@@ -76,9 +83,9 @@ export async function rollupBallot($results, $weight) {
                     break;
                 default:
                     // Convert submitted Vote array to a string representation for use as object key
-                    vote_value = Array.isArray(vote.submittedVote)
-                        ? JSON.stringify(vote.submittedVote)
-                        : vote.submittedVote.toString();
+                    vote_value = Array.isArray(vote.submittedValue)
+                        ? JSON.stringify(vote.submittedValue)
+                        : vote.submittedValue.toString();
                     break;
             }
 
@@ -100,8 +107,20 @@ export async function rollupBallot($results, $weight) {
                 if ($weight) {
                     // If weights are supplied, find the voter's weight
                     const voter = $weight.find(v => v.drep_key_id === voter_key_id);
+
                     if (voter) {
-                        results.voter_weights[voter_key_id] = voter.amount.toString();
+                        let voter_power = 0;
+                        if ($epoch_no) {
+                            if ($epoch_no > voter.active_until) {
+                                console.log(`Voter ${voter_key_id} is inactive at epoch ${$epoch_no}!`);
+                                voter_power = 0;
+                            } else {
+                                voter_power = voter.amount;
+                            }
+                        } else {
+                            voter_power = voter.amount;
+                        }
+                        results.voter_weights[voter_key_id] = voter_power.toString();
                     }
 
                     if (results.voter_weights[voter_key_id] === undefined) {

@@ -1,0 +1,642 @@
+[
+  {
+    "drep_key_id" : null,
+    "view" : "drep_always_abstain",
+    "amount" : 89417841561400,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : null
+  },
+  {
+    "drep_key_id" : null,
+    "view" : "drep_always_no_confidence",
+    "amount" : 258647473741,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : null
+  },
+  {
+    "drep_key_id" : "a8f2666937dbcb58bca60cc886416cff9c056fd8a8d208f33de21383",
+    "view" : "drep14rexv6fhm094309xpnygvstvl7wq2m7c4rfq3ueaugfcxqr6qwu",
+    "amount" : 2954237157,
+    "epoch_no" : 213,
+    "has_script" : true,
+    "active_until" : 221
+  },
+  {
+    "drep_key_id" : "0d0dbdafe5f01086187aa1564b69e8f2f2b175423a4c4738f528fc6d",
+    "view" : "drep1p5xmmtl97qggvxr659tyk60g7tetza2z8fxyww849r7x6v3nj3z",
+    "amount" : 8040032694,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 199
+  },
+  {
+    "drep_key_id" : "11ee7ea43198d7265e6e46ad56caff515b974dd2af4ff1c2562a4f43",
+    "view" : "drep1z8h8afp3nrtjvhnwg6k4djhl29dewnwj4a8lrsjk9f85xxf2ewu",
+    "amount" : 10209101398,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 202
+  },
+  {
+    "drep_key_id" : "1943ec7bf8c992b38f5f210263248b36a1b3aac51b233f3ad0e2e170",
+    "view" : "drep1r9p7c7lcexft8r6lyypxxfytx6sm82k9rv3n7wksutshq6grz8v",
+    "amount" : 4388399486438,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 200
+  },
+  {
+    "drep_key_id" : "0689c06e0b036f795ef3de64752e530b4f0aafc1ab44c2c6ec4aaa43",
+    "view" : "drep1q6yuqmstqdhhjhhnmej82tjnpd8s4t7p4dzv93hvf24yx3w3vgr",
+    "amount" : 1696274942,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "08b4c887d44668d5c0fde508d8363c0c2cdfea6f3ff4faefb05bd935",
+    "view" : "drep1pz6v3p75ge5dts8au5ydsd3upskdl6n08l604mast0vn2aajegt",
+    "amount" : 5121538405,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 188
+  },
+  {
+    "drep_key_id" : "27f2a65f1443db9a8c6ab7a2549d7d34a99d6b00a102cf1dc735fd04",
+    "view" : "drep1yle2vhc5g0de4rr2k739f8taxj5e66cq5ypv78w8xh7sgv0x0lu",
+    "amount" : 8262491775262,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 199
+  },
+  {
+    "drep_key_id" : "30f5739f3bcf2cca65fe0f67f710f653f601ba5ade06cdf2668be4b7",
+    "view" : "drep1xr6h88emeukv5e07panlwy8k20mqrwj6mcrvmunx30jtwqkgtq6",
+    "amount" : 6792866074,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 210
+  },
+  {
+    "drep_key_id" : "33400a4542196f78627b31b0286116100a6a39d27646ca68cfccb9ed",
+    "view" : "drep1xdqq532zr9hhscnmxxczscgkzq9x5wwjwerv56x0eju769malgm",
+    "amount" : 126773903979,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 192
+  },
+  {
+    "drep_key_id" : "37ba7aea3741b5520f24ff50f2be406ac47e59d272e8f28e0ba780ef",
+    "view" : "drep1x7a8463hgx64yreylag090jqdtz8ukwjwt509rst57qw7xjnv86",
+    "amount" : 37316322639,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "6872101e7daf40ba7bffcef0e10490b7fad3a2acd58f05294b7c834d",
+    "view" : "drep1dpepq8na4aqt57llemcwzpysklad8g4v6k8s222t0jp560c45hz",
+    "amount" : 3850228848,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 208
+  },
+  {
+    "drep_key_id" : "5bfef20b43131c5ca870846b561ef4f395add12019e9c7a47f756d44",
+    "view" : "drep1t0l0yz6rzvw9e2rss344v8h57w26m5fqr85u0frlw4k5gashtw9",
+    "amount" : 21156352613561,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 200
+  },
+  {
+    "drep_key_id" : "03ccae794affbe27a5f5f74da6266002db11daa6ae446aea783b972d",
+    "view" : "drep1q0x2u722l7lz0f047ax6vfnqqtd3rk4x4ezx46nc8wtj6f92vtc",
+    "amount" : 37656811008,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 219
+  },
+  {
+    "drep_key_id" : "0488441819b0b795667f58fafd3b3d1badb4df6c157ee310aefbd632",
+    "view" : "drep1qjyygxqekzme2enltra06wearwkmfhmvz4lwxy9wl0tryd2aeh8",
+    "amount" : 3098070,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 215
+  },
+  {
+    "drep_key_id" : "1c32a4bc164ef754aa5f51f8c3da9cb0a10474526b2b10951c06b6df",
+    "view" : "drep1rse2f0qkfmm4f2jl28uv8k5ukzssgazjdv43p9guq6md7nzp2e9",
+    "amount" : 10222634583,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 213
+  },
+  {
+    "drep_key_id" : "3ca5cb94bbdd2b13ce8e562c53309420a17fb2982acd49d163efe8f5",
+    "view" : "drep18jjuh99mm5438n5w2ck9xvy5yzshlv5c9tx5n5tral5023u88nk",
+    "amount" : 9497813687,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 199
+  },
+  {
+    "drep_key_id" : "60ac971554c144b15dc148830ee6ffd1d11770521e624fb2f342da1c",
+    "view" : "drep1vzkfw925c9ztzhwpfzpsaehl68g3wuzjre3ylvhngtdpcear37x",
+    "amount" : 14900059995,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 192
+  },
+  {
+    "drep_key_id" : "4d3fecad0bb4c29beeb1b621a5d1eb9abf8f64e3a23e082262b95c00",
+    "view" : "drep1f5l7etgtknpfhm43kcs6t50tn2lc7e8r5glqsgnzh9wqqg4ynxe",
+    "amount" : 18513018623,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 225
+  },
+  {
+    "drep_key_id" : "63ace9022803a876334d96e711fa9f8d471042c5bb66ba9faedaf57a",
+    "view" : "drep1vwkwjq3gqw58vv6djmn3r75l34r3qsk9hdnt48awmt6h5meye9q",
+    "amount" : 10707079094,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 200
+  },
+  {
+    "drep_key_id" : "47c6d376abd6b65454fd7eb6610982f721388cf46f816f61e66ad63d",
+    "view" : "drep1glrdxa4t66m9g48a06mxzzvz7usn3r85d7qk7c0xdttr64j4kp7",
+    "amount" : 284842093,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 200
+  },
+  {
+    "drep_key_id" : "48577642f6c78d1a9dac1513518b58960cf75d918ac3c4d81eb1437c",
+    "view" : "drep1fpthvshkc7x348dvz5f4rz6cjcx0whv33tpufkq7k9phcjvy2u3",
+    "amount" : 3927880900,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 188
+  },
+  {
+    "drep_key_id" : "56353cb569b3011885ad4859d370a6511db547eb7ecb3d80762750a3",
+    "view" : "drep12c6nedtfkvq33pddfpvaxu9x2ywm23lt0m9nmqrkyag2xps9yv0",
+    "amount" : 2499597848,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 188
+  },
+  {
+    "drep_key_id" : "57a6f5cdbe9cde7af2d877a8567751aa3693789a0a39393448894ee8",
+    "view" : "drep127n0tnd7nn084ukcw759va634gmfx7y6pgunjdzg398wsye76rc",
+    "amount" : 10494290256,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "58b7c688fef6cccadc6eca2ad4d74082c3c3010ed01e49139f962222",
+    "view" : "drep1tzmudz877mxv4hrweg4df46qstpuxqgw6q0yjyuljc3zyqrph6q",
+    "amount" : 11647552120,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 201
+  },
+  {
+    "drep_key_id" : "67e364b1218a07c19cbfbe1004d37e69cd3db61b3c458d2eb395d273",
+    "view" : "drep1vl3kfvfp3grur89lhcgqf5m7d8xnmdsm83zc6t4njhf8xuqxxcj",
+    "amount" : 497807439,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "7188d8667157084ca3702741ac09e02b8762c6f774566174acb64a60",
+    "view" : "drep1wxydsen32uyyegmsyaq6cz0q9wrk93hhw3txza9vke9xqjs4zrv",
+    "amount" : 186380229907,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 200
+  },
+  {
+    "drep_key_id" : "90fb5088824a1c6fd6fa57463a9a3d725cab858f042dff4cef24a954",
+    "view" : "drep1jra4pzyzfgwxl4h62arr4x3awfw2hpv0qskl7n80yj54g8qsesd",
+    "amount" : 150999463106,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 210
+  },
+  {
+    "drep_key_id" : "9283131cf1c152ea7256c564a800cb53761f2c757526ea7c86a8513d",
+    "view" : "drep1j2p3x883c9fw5ujkc4j2sqxt2dmp7tr4w5nw5lyx4pgn60t3lty",
+    "amount" : 25323277940,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 189
+  },
+  {
+    "drep_key_id" : "9a450849256401241a5db3383478dae8f6d60cd441a53819b3da8ef2",
+    "view" : "drep1nfzssjf9vsqjgxjakvurg7x6armdvrx5gxjnsxdnm280yvhjmjw",
+    "amount" : 60753673068,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 227
+  },
+  {
+    "drep_key_id" : "9e1486b0adebff5ba39e14c7d48f9e3c3e53a3d5265305618c24d155",
+    "view" : "drep1nc2gdv9da0l4hgu7znrafru78sl98g74yefs2cvvyng42h6gy36",
+    "amount" : 39663713449,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 219
+  },
+  {
+    "drep_key_id" : "9f09ba65110986977c00dfcdfed10ec7fffc66a3fe33493954bb1058",
+    "view" : "drep1nuym5eg3pxrfwlqqmlxla5gwclllce4rlce5jw25hvg9sqn9tlf",
+    "amount" : 504553732180,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 227
+  },
+  {
+    "drep_key_id" : "6a55c3677692a5e42ddb91eb5a524ca2a369e69ec9cb4d30b023b859",
+    "view" : "drep1df2uxemkj2j7gtwmj84455jv523kne57e8956v9sywu9jaq57f4",
+    "amount" : 2719159409090,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 227
+  },
+  {
+    "drep_key_id" : "743e345e716c2ae570bc9f3923c992dafc5523441b0d24f9d6435f11",
+    "view" : "drep1wslrghn3ds4w2u9unuuj8jvjmt792g6yrvxjf7wkgd03zvxvxfy",
+    "amount" : 9692770299,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 188
+  },
+  {
+    "drep_key_id" : "775f552d0191399266691052ffeaeb6267e25ce1019219bcdf47fd1b",
+    "view" : "drep1wa042tgpjyueyenfzpf0l6htvfn7yh8pqxfpn0xlgl73k7xhflq",
+    "amount" : 314727246959,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 201
+  },
+  {
+    "drep_key_id" : "81378d3ea89b68f0fc09944b1f93f2feb851318f196f98ba4029d8a8",
+    "view" : "drep1symc604gnd50plqfj393lyljl6u9zvv0r9he3wjq98v2sz3vtkp",
+    "amount" : 2180276463860,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "978a59949c02ee2fb0ed6b8a007f14d7ebf99cf981760e2f7d30284e",
+    "view" : "drep1j799n9yuqthzlv8ddw9qqlc56l4ln88es9mqutmaxq5yu44dgd6",
+    "amount" : 2621710640,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 227
+  },
+  {
+    "drep_key_id" : "813f8523430528a24a1a70db2e3eaf79990e6b2cbc32f47df0ea52c6",
+    "view" : "drep1sylc2g6rq552yjs6wrdju0400xvsu6evhse0gl0saffvv0emmrh",
+    "amount" : 178737389,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "819d83762423581ba3314448286944aa58b95acb67eb0bffc21d9644",
+    "view" : "drep1sxwcxa3yydvphge3g3yzs62y4fvtjkktvl4shl7zrktygju3k2s",
+    "amount" : 497807439,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "82c3140dbefa50107b390a215a9e90dd371c30e0ca4c5a4e6a4d99a5",
+    "view" : "drep1stp3grd7lfgpq7eepgs4485sm5m3cv8qefx95nn2fkv6275s80h",
+    "amount" : 297807439,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "8dea281bbdc2f358e032f2ab7045177a3024a85be05465fb0c42d344",
+    "view" : "drep13h4zsxaacte43cpj724hq3gh0gczf2zmup2xt7cvgtf5gh0qzk3",
+    "amount" : 497807439,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "8ee224ce211dd966764e08f81471482cce277582c2621df2aaa3500a",
+    "view" : "drep13m3zfn3prhvkvajwprupgu2g9n8zwavzcf3pmu425dgq5e892jm",
+    "amount" : 8452496675,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 193
+  },
+  {
+    "drep_key_id" : "a547ab8084bfee4868a67d1d9b0ae054ee17511eb28ad44d47c5d9cf",
+    "view" : "drep154r6hqyyhlhys69x05wekzhq2nhpw5g7k29dgn28chvu7nj90k4",
+    "amount" : 10369358866,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 188
+  },
+  {
+    "drep_key_id" : "a9229ecc027cb8ae550b0ce1c86af28ed80d39b0568446c600c74d00",
+    "view" : "drep14y3fanqz0ju2u4gtpnsus6hj3mvq6wds26zyd3sqcaxsq0a09tw",
+    "amount" : 110438850500,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 193
+  },
+  {
+    "drep_key_id" : "b835cc20ca747745bb5186843609084a7bbde6dd93504bc71f9e3898",
+    "view" : "drep1hq6ucgx2w3m5tw63s6zrvzggffammekajdgyh3clncufsdgqyvu",
+    "amount" : 1056135549904,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 227
+  },
+  {
+    "drep_key_id" : "c805d6cd2f70a6791f7ad8653530826b9d9c7e8d086db8ded51ad8a4",
+    "view" : "drep1eqzadnf0wzn8j8m6mpjn2vyzdwwecl5dppkm3hk4rtv2glmvnfx",
+    "amount" : 247807439,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "8b75035882d4165bea8000c4d3f2c123ae33c1d92a751a78135a2402",
+    "view" : "drep13d6sxkyz6st9h65qqrzd8ukpywhr8swe9f6357qntgjqye0gttd",
+    "amount" : 1274137643326,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 190
+  },
+  {
+    "drep_key_id" : "8dc91d567324398d028661751322445f3ce6f6139a5cb4b66a9e9576",
+    "view" : "drep13hy364nnysuc6q5xv963xgjytu7wdasnnfwtfdn2n62hvy9r5sz",
+    "amount" : 217157505580,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 190
+  },
+  {
+    "drep_key_id" : "cc15d8b518b3af5846c6d398bb6ce37ab955e54fa9a15eed29f5f2e7",
+    "view" : "drep1es2a3dgckwh4s3kx6wvtkm8r02u4te204xs4amff7hewwrj355n",
+    "amount" : 1347099169862,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 228
+  },
+  {
+    "drep_key_id" : "aad1d5218e1462776b50f6114192a98fc7033c5e796d2ff2b8b75d8d",
+    "view" : "drep14tga2gvwz338w66s7cg5ry4f3lrsx0z709kjlu4ckawc6cz0uvn",
+    "amount" : 9497482597,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 229
+  },
+  {
+    "drep_key_id" : "ace42db537ac87a60319b1e75f2914d675f54f6aba26dee391327927",
+    "view" : "drep14njzmdfh4jr6vqcek8n472g56e6l2nm2hgndacu3xfujwuyv63c",
+    "amount" : 497807439,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "affd705581d5d2ab6b97d4e3961ad0ca7ed4d8d8dcf2cbbf5fffccc9",
+    "view" : "drep14l7hq4vp6hf2k6uh6n3evxksefldfkxcmnevh06lllxvjrygvqt",
+    "amount" : 9497807263,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "b0111edb19e227b39b08283388c00e253bf4083deab5d39577ef35c2",
+    "view" : "drep1kqg3akceugnm8xcg9qec3sqwy5algzpaa26a89thau6uyspx22u",
+    "amount" : 186838072277,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 195
+  },
+  {
+    "drep_key_id" : "b17951d65a7ec99d008d3bc888b1986088b26c44792631bdbb29c8bd",
+    "view" : "drep1k9u4r4j60mye6qyd80yg3vvcvzytymzy0ynrr0dm98yt6qfk7w6",
+    "amount" : 0,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 195
+  },
+  {
+    "drep_key_id" : "b4997d470c2aa8e3043258cc324284b2dc77a7db38011866360b3749",
+    "view" : "drep1kjvh63cv925wxppjtrxrys5yktw80f7m8qq3se3kpvm5jlvwd4c",
+    "amount" : 153019148537,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 215
+  },
+  {
+    "drep_key_id" : "be94c521336d7cefa75433c7174e785b330b61406b2d6eda0f6318ee",
+    "view" : "drep1h62v2gfnd47wlf65x0r3wnnctveskc2qdvkkaks0vvvwu86lyc3",
+    "amount" : 27405168969,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 224
+  },
+  {
+    "drep_key_id" : "c0dc04f7f527f1ebec07761a4c4b9fb1956fc492cb768373f5354e5d",
+    "view" : "drep1crwqfal4ylc7hmq8wcdycjulkx2kl3yjedmgxul4x4896kta2dv",
+    "amount" : 71008684400,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 223
+  },
+  {
+    "drep_key_id" : "c18d5d6d9f4a655adf25a3495b4d33bb9c0050c0d0c5fe0ad8412ceb",
+    "view" : "drep1cxx46mvlffj44he95dy4knfnhwwqq5xq6rzluzkcgykwkxvzrd7",
+    "amount" : 30502285089,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "c36aeedd5630002fa10e6837aa9821215f9c7b07b3c4d848aa9e7bdd",
+    "view" : "drep1cd4wah2kxqqzlggwdqm64xppy90ec7c8k0zdsj92neaa6kslnc8",
+    "amount" : 9497807263,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "c3a129524f918b061feeacf6bacc39c574398015dbb62088449ac635",
+    "view" : "drep1cwsjj5j0jx9sv8lw4nmt4npec46rnqq4mwmzpzzyntrr2ghdfhf",
+    "amount" : 85182757993,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 215
+  },
+  {
+    "drep_key_id" : "c679a79f3b9f4a884c6c4ed73e445b7f95f45005b175e23c62ac3af6",
+    "view" : "drep1ceu608emna9gsnrvfmtnu3zm072lg5q9k967y0rz4sa0v6nhr5r",
+    "amount" : 497807439,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "d114c798799bd5680f05136457cdbff6d80775bfe3b69eda46256f0b",
+    "view" : "drep16y2v0xren02ksrc9zdj90ndl7mvqwadluwmfakjxy4hsk59lnuw",
+    "amount" : 9926115594,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 192
+  },
+  {
+    "drep_key_id" : "d1bffcf5008a05f9103c36904f5a68d362aead7b4399c5a1ce420e50",
+    "view" : "drep16xlleagq3gzljypux6gy7kng6d32attmgwvutgwwgg89q0adfsw",
+    "amount" : 11490502567,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 201
+  },
+  {
+    "drep_key_id" : "d3502abced6f371d007e2775883e72e2549e0dcaf4cd849409ff3beb",
+    "view" : "drep16dgz408ddum36qr7ya6cs0njuf2furw27nxcf9qflua7kcsmrds",
+    "amount" : 147807439,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "d9d72e40804a2fdb1d119fed56adbf21d32c785bc548ec410552d408",
+    "view" : "drep1m8tjusyqfghak8g3nlk4dtdly8fjc7zmc4ywcsg92t2qswhgthj",
+    "amount" : 27468986389,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 202
+  },
+  {
+    "drep_key_id" : "dd586656f03d5b3b1159dc6d67c3997e63af0d67e10afaf7a9f168d7",
+    "view" : "drep1m4vxv4hs84dnky2em3kk0sue0e367rt8uy904aaf795dwtchdft",
+    "amount" : 2986710059,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 201
+  },
+  {
+    "drep_key_id" : "e04d73abcdffb31364d8ddc260377c35973a6f91a132241a642bebd6",
+    "view" : "drep1upxh827dl7e3xexcmhpxqdmuxktn5mu35yezgxny904av6dt450",
+    "amount" : 9142338514,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 189
+  },
+  {
+    "drep_key_id" : "e1ea3ce0df7019bf8f56f519a2ea553c027f2fca3894a80cb3128192",
+    "view" : "drep1u84recxlwqvmlr6k75v696j48sp87t728z22sr9nz2qeym2hc8c",
+    "amount" : 497807439,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 231
+  },
+  {
+    "drep_key_id" : "e8b1eef1158e8e4c13d020a752e7ee030843a6a89fede73ba28a245b",
+    "view" : "drep1azc7aug4368ycy7syzn49elwqvyy8f4gnlk7wwaz3gj9k6w809l",
+    "amount" : 150525625167,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 216
+  },
+  {
+    "drep_key_id" : "e8c468766d35ad6cb864e14ffd3dba5d5016b27bc799d7cbd4e4bf98",
+    "view" : "drep1arzxsandxkkkewryu98l60d6t4gpdvnmc7va0j75ujlesm57kkf",
+    "amount" : 19065244864,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 227
+  },
+  {
+    "drep_key_id" : "ed11d1ad4d95806b4443576724a4c5b57b93dc15eca5a3f46d235a9e",
+    "view" : "drep1a5gart2djkqxk3zr2anjffx9k4ae8hq4ajj68ardyddfuc8a9x8",
+    "amount" : 1096520169,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 201
+  },
+  {
+    "drep_key_id" : "f0ed00410031f3288d7889aa896cfdad79a7441885d3bae8982ac151",
+    "view" : "drep17rksqsgqx8ej3rtc3x4gjm8a44u6w3qcshfm46yc9tq4zeffuzj",
+    "amount" : 1029606002902,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 199
+  },
+  {
+    "drep_key_id" : "f2b5f94917f7c6ec14a4265a7f74062d08e6db70440a60498397c82c",
+    "view" : "drep1726ljjgh7lrwc99yyed87aqx95ywdkmsgs9xqjvrjlyzcdwjw9a",
+    "amount" : 9497460993,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 197
+  },
+  {
+    "drep_key_id" : "f304bbd35041424143b3f7e498cd5349d424ea7b88aab4ea1b5a5218",
+    "view" : "drep17vzth56sg9pyzsan7ljf3n2nf82zf6nm3z4tf6smtffpsr7tu9d",
+    "amount" : 16906219615,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 227
+  },
+  {
+    "drep_key_id" : "f33e5bab10d98574f6277e296bdc85770a68e9d488709c1c8ff8e7f9",
+    "view" : "drep17vl9h2csmxzhfa380c5khhy9wu9x36w53pcfc8y0lrnljjwqt3n",
+    "amount" : 133992125060,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 207
+  },
+  {
+    "drep_key_id" : "fd034960b06ac6598732e23c4941e5e675940fb41a1ff6e049024ac1",
+    "view" : "drep1l5p5jc9sdtr9npejug7yjs09ue6egra5rg0ldczfqf9vz2mxegc",
+    "amount" : 40161300388,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 215
+  },
+  {
+    "drep_key_id" : "ffae339313024d271a630a5681c7025d446aeb14f3963bb06a8e31f6",
+    "view" : "drep1l7hr8ycnqfxjwxnrpftgr3czt4zx46c57wtrhvr23cclvl8muxr",
+    "amount" : 164373910753,
+    "epoch_no" : 213,
+    "has_script" : false,
+    "active_until" : 207
+  },
+  {
+    "drep_key_id" : "245c4fd87622e20d71fe3f6573a557ccd3f0c014b8f00ba7b12277f0",
+    "view" : "drep1y3wylkrkyt3q6u078ajh8f2henflpsq5hrcqhfa3yfmlqx7z66n",
+    "amount" : 9513941434,
+    "epoch_no" : 213,
+    "has_script" : true,
+    "active_until" : 188
+  },
+  {
+    "drep_key_id" : "763ef75661f0cd8c8fa159a79d79bfe8f9a76878bdaaff700598ee0e",
+    "view" : "drep1wcl0w4np7rxceraptxne67dlaru6w6rchk407uq9nrhquq6gltn",
+    "amount" : 5368860112714,
+    "epoch_no" : 213,
+    "has_script" : true,
+    "active_until" : 189
+  }
+]
