@@ -137,15 +137,17 @@ export function validateAddress(signerAddress, signType) {
 
         case "calidus":
             try {
-                let credential;
+                let credential, isScript;
                 const [header, body] = extractParts(words_hex);
                 switch (header) {
                     case "a1":
                         const key_hash = Ed25519KeyHash.from_hex(body);
+                        isScript = false;
                         credential = Credential.from_keyhash(key_hash);
                         break;
                     case "a2":
                         const script_hash = ScriptHash.from_hex(body);
+                        isScript = true;
                         credential = Credential.from_scripthash(script_hash);
                         break;
                     default:
@@ -153,13 +155,18 @@ export function validateAddress(signerAddress, signType) {
                             error: "Unknown Calidus prefix!",
                         };
                 }
+
+                return {
+                    signerAddress,
+                    credential: credential.to_hex(),
+                    isScript,
+                    type: 'calidus'
+                }
             } catch (error) {
                 return {
                     error: "Invalid Calidus ID",
                 };
             }
-
-            break;
         default:
             return {
                 error: "Invalid signer type",
@@ -246,12 +253,12 @@ export function getAddressType(bech32Address) {
     }
 }
 
-export function pubKeyToBech32(key, prefix = "drep") {
+export function pubKeyToBech32(key, prefix = "drep", script = false) {
     let bech32id = false;
 
     try {
         let pubkey, keyhash, prefix_byte, key_hex, credential, paymentKeyHash,
-            stakeKeyHash;
+            stakeKeyHash, isScript;
         switch (prefix) {
             case "addr":
                 const [addr_header, addr_body] = extractParts(key);
@@ -272,7 +279,7 @@ export function pubKeyToBech32(key, prefix = "drep") {
                 key_hex = key;
                 break;
             case "drep":
-                let cip105, cip129, isScript;
+                let cip105, cip129;
                 if (key.length === 64) {
                     isScript = false;
                     prefix_byte = 22;
@@ -293,6 +300,22 @@ export function pubKeyToBech32(key, prefix = "drep") {
                     cip129,
                     isScript
                 };
+            case "calidus":
+                let calidus_prefix;
+                switch (script) {
+                    case true:
+                        calidus_prefix = "a2";
+                        keyhash = ScriptHash.from_hex(key);
+                        break;
+                    case false:
+                        calidus_prefix = "a1";
+                        pubkey = PublicKey.from_hex(key);
+                        keyhash = pubkey.hash();
+                        break;
+                }
+                credential = Credential.from_keyhash(keyhash);
+                key_hex = calidus_prefix + keyhash.to_hex();
+                break;
             case "stake":
                 const [header, body] = extractParts(key);
 

@@ -102,9 +102,18 @@ describe("validate calidus keys", () => {
     // calidus15yt3nqapz799tvp2lt8adttt29k6xa2xnltahn655tu4sgcph42p7
     test("valid calidus key", () => {
         const calidus_id = "calidus15yt3nqapz799tvp2lt8adttt29k6xa2xnltahn655tu4sgcph42p7";
-        expect(validateAddress(calidus_id, "calidus"))
+        const result = validateAddress(calidus_id, "calidus");
+        expect(result.signerAddress)
             .toBe(calidus_id);
     });
+
+    test('calidus matches public key', () => {
+        const calidus_id = "calidus158zw04z6dqguue6ztvszsyvsakqs0kjapp3y2eqtfygt5kgh3tlp8";
+        const public_key = "631787cab4c0fe264488668485141d5e73fc24f32200097a8aadd1fb0c4ac756";
+        const result = validateAddress(calidus_id, "calidus");
+        const reverse = pubKeyToBech32(public_key, "calidus");
+        expect(result.signerAddress).toBe(reverse);
+    })
 });
 
 describe("validate DRep IDs", () => {

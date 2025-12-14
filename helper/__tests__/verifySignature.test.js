@@ -61,6 +61,27 @@ const cip30_signing_pool_key = {
     "COSE_Key_hex": "a40101032720062158209189bac720795cd578ebe3062936c22d694fe0b40497556e0b74bf2f3907158a"
 }
 
+const valid_calidus_payload = {
+    "COSE_Sign1_hex": "84582aa201276761646472657373581da1c4342b0b1bfa15c5ba43a3fba9ed6accf22ca00638f98661df4335c9a166686173686564f458496c6f67696e5f706f6f6c31726b667339676c6d667661336a64307139766e6c717675686e72666c707a6a346c303775367361796678356b376437383875735f313233343536373839305840028a77482a8aa04e7ca903ed8f164160ee73bd5eafe9e41192a17d64865ba537cc7acf8b0c9bbc6e7b0a61c11098e4a65522a6a5f8c1a05f9099d9670f3e310f",
+    "COSE_Key_hex": "a40101032720062158208afb6bfa5d87d5a798a4d794a2f7921c8857e6c386704ef6bea6ad84ef153aa6",
+    "payload": "6c6f67696e5f706f6f6c31726b667339676c6d667661336a64307139766e6c717675686e72666c707a6a346c303775367361796678356b376437383875735f31323334353637383930",
+    "pool_id": "pool1rkfs9glmfva3jd0q9vnlqvuhnrflpzj4l07u6sayfx5k7d788us",
+}
+
+const invalid_calidus_payload = {
+    "COSE_Sign1_hex": "84582aa201276761646472657373581da1c4342b0b1bfa15c5ba43a3fba9ed6accf22ca00638f98661df4335c9a166686173686564f458496c6f67696e5f706f6f6c31726b667339676c6d667661336a64307139766e6c717675686e72666c707a6a346c303775367361796678356b376437383875735f313233343536373839305840028a77482a8aa04e7ca903ed8f164160ee73bd5eafe9e41192a17d64865ba537cc7acf8b0c9bbc6e7b0a61c11098e4a65522a6a5f8c1a05f9099d9670f3e310f",
+    "COSE_Key_hex": "a40101032720062158208afb6bfa5d87d5a798a4d794a2f7921c8857e6c386704ef6bea6ad84ef153aa6",
+    "payload": "6164616d20697320617765736f6d65",
+    "pool_id": "pool1rkfs9glmfva3jd0q9vnlqvuhnrflpzj4l07u6sayfx5k7d788us",
+}
+
+const unregistered_calidus_payload = {
+    "COSE_Sign1_hex": "84582aa201276761646472657373581da1b188ec376bb87eec662ef4c2b2b4a283c40d48c4255d9fa396cd113ba166686173686564f458496c6f67696e5f706f6f6c316d38676c61643430347a68777361366b326c616c6d367175393570746666666a39756b35647270686d753072736a336d6e617a5f313233343536373839305840362029479183ba70f4f44004157db685f58061b487db92c4afb33cf6cc63c82a9c68ac2a857c2bce238f9c653476741f68d19401799b2563785684170b72e107",
+    "COSE_Key_hex": "a40101032720062158202819290ac05b4a49331d1781ce1dfc04cddfa8875abee8303ea5311878f12daf",
+    "payload": "login_pool1m8glad404zhwsa6k2lalm6qu95ptfffj9uk5drphmu0rsj3mnaz_1234567890",
+    "pool_id": "pool1m8glad404zhwsa6k2lalm6qu95ptfffj9uk5drphmu0rsj3mnaz",
+}
+
 describe('General Tests', () => {
     test('Empty Signature', async () => {
         expect(await verifySignature(generic_payload, mainnet_stake_address)).toEqual({
@@ -134,4 +155,33 @@ describe("Verifying Pool Signatures", () => {
     test("CIP-30 Pool Signature", async () => {
         expect(await verifySignature(generic_payload, mainnet_pool_id, cip30_signing_pool_key))
     })
+
+    const ORIGINAL_ENV = process.env;
+
+    beforeEach(() => {
+        process.env = { ...ORIGINAL_ENV };
+    });
+
+    afterEach(() => {
+        process.env = ORIGINAL_ENV;
+    })
+
+
+    test("Valid Calidus Key Signature", async () => {
+        process.env.NETWORK_NAME = 'preprod';
+        const response = await verifySignature(valid_calidus_payload.payload, valid_calidus_payload.pool_id, valid_calidus_payload)
+        expect(response).toBe(true);
+    });
+
+    test("Invalid Calidus Key Payload", async () => {
+        process.env.NETWORK_NAME = 'preprod';
+        const response = await verifySignature(invalid_calidus_payload.payload, invalid_calidus_payload.pool_id, invalid_calidus_payload)
+        expect(response).toBe(false);
+    })
+
+    test("Unregistered Calidus Key", async () => {
+        process.env.NETWORK_NAME = 'preprod';
+        const response = await verifySignature(unregistered_calidus_payload.payload, unregistered_calidus_payload.pool_id, unregistered_calidus_payload);
+        expect(response.error).toBe("The key used for signing does not match the address provided!");
+    });
 })
