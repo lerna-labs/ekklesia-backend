@@ -1,0 +1,1735 @@
+openapi: 3.0.3
+info:
+  title: Ekklesia Voting Backend API
+  description: |
+    API for the Ekklesia voting system backend. This API provides endpoints for managing ballots, proposals, votes, comments, and voter authentication.
+    
+    ## Authentication
+    Most endpoints require authentication via JWT token. The token is obtained through the session endpoints and is sent via HTTP-only cookie or Authorization header.
+    
+    ## MultiSig Support
+    The API supports both standard wallet authentication and multisig wallet authentication. Use the `/multisig` endpoints for multisig wallets.
+  version: 0.5.31
+  contact:
+    name: Adam Dean, Mad Orkestra
+    license: ISC
+
+servers:
+  - url: http://localhost:3000/api/v0
+    description: Local development server
+  - url: https://api.example.com/api/v0
+    description: Production server (replace with actual URL)
+
+tags:
+  - name: Status
+    description: System status and health check endpoints
+  - name: Ballots
+    description: Ballot management and retrieval
+  - name: Proposals
+    description: Proposal management and retrieval
+  - name: Votes
+    description: Vote submission and management
+  - name: Comments
+    description: Comment management
+  - name: Session
+    description: Authentication and session management
+  - name: Dashboard
+    description: User dashboard and voting checkout
+  - name: Transactions
+    description: Transaction management
+  - name: Voters
+    description: Voter information and statistics
+
+paths:
+  /status:
+    get:
+      tags:
+        - Status
+      summary: Get system status
+      description: Returns comprehensive system status information including server uptime, versions, database connection status, and network information
+      operationId: getStatus
+      responses:
+        '200':
+          description: System status information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /status/health:
+    get:
+      tags:
+        - Status
+      summary: Health check
+      description: Simple health check endpoint for load balancers and monitoring tools
+      operationId: getHealth
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+  /status/db:
+    get:
+      tags:
+        - Status
+      summary: Database connection status
+      description: Returns the current database connection status
+      operationId: getDatabaseStatus
+      responses:
+        '200':
+          description: Database connection status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [connected, disconnected]
+                  message:
+                    type: string
+
+  /ballots:
+    get:
+      tags:
+        - Ballots
+      summary: Get all ballots
+      description: Get all ballots with pagination, filtering, and search capabilities
+      operationId: getBallots
+      parameters:
+        - name: voterType
+          in: query
+          description: Filter by voter type
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by status
+          required: false
+          schema:
+            type: string
+            enum: [live, closed, upcoming]
+        - name: search
+          in: query
+          description: Search term for ballot title or ID
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page (max 100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: List of ballots with pagination metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Ballot'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    /voterTypes:
+      get:
+        tags:
+          - Ballots
+        summary: Get all unique voter types
+        description: Returns an array of all unique voter types from all ballots
+        operationId: getVoterTypes
+        responses:
+          '200':
+            description: Array of unique voter types
+            content:
+              application/json:
+                schema:
+                  type: array
+                  items:
+                    type: string
+          '500':
+            $ref: '#/components/responses/ServerError'
+    /{ballotId}:
+      get:
+        tags:
+          - Ballots
+        summary: Get a specific ballot
+        description: Get a specific ballot by ID with voter validation if token is present
+        operationId: getBallot
+        parameters:
+          - name: ballotId
+            in: path
+            required: true
+            description: The ID of the ballot to retrieve
+            schema:
+              type: string
+        responses:
+          '200':
+            description: The ballot object with additional voter-specific data if authenticated
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/Ballot'
+                    - type: object
+                      properties:
+                        voterValidated:
+                          type: boolean
+                        votingPower:
+                          type: number
+                        totalAllowedVoterCount:
+                          type: number
+                        totalVotingPower:
+                          type: number
+          '404':
+            $ref: '#/components/responses/NotFound'
+          '500':
+            $ref: '#/components/responses/ServerError'
+      /proposals:
+        get:
+          tags:
+            - Ballots
+          summary: Get proposals for a ballot
+          description: Get all proposals for a specific ballot with filtering, sorting, and pagination
+          operationId: getBallotProposals
+          parameters:
+            - name: ballotId
+              in: path
+              required: true
+              description: The ID of the ballot
+              schema:
+                type: string
+            - name: page
+              in: query
+              description: Page number for pagination
+              required: false
+              schema:
+                type: integer
+                minimum: 1
+                default: 1
+            - name: limit
+              in: query
+              description: Number of items per page (max 100)
+              required: false
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 100
+                default: 10
+            - name: search
+              in: query
+              description: Search term for proposal title or ID
+              required: false
+              schema:
+                type: string
+            - name: sort
+              in: query
+              description: Sort field
+              required: false
+              schema:
+                type: string
+                enum: [title, commentCount, voteCount]
+            - name: direction
+              in: query
+              description: Sort direction
+              required: false
+              schema:
+                type: string
+                enum: [asc, desc]
+                default: desc
+            - name: hasVoted
+              in: query
+              description: Filter by whether authenticated user has voted
+              required: false
+              schema:
+                type: string
+                enum: [true, false]
+            - name: tags
+              in: query
+              description: Filter by tags (comma-separated)
+              required: false
+              schema:
+                type: string
+            - name: categories
+              in: query
+              description: Filter by categories (comma-separated)
+              required: false
+              schema:
+                type: string
+          responses:
+            '200':
+              description: List of proposals with pagination and filter metadata
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Proposal'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+                      sort:
+                        type: object
+                        properties:
+                          field:
+                            type: string
+                          direction:
+                            type: string
+                      filters:
+                        type: object
+            '400':
+              $ref: '#/components/responses/BadRequest'
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
+      /categories:
+        get:
+          tags:
+            - Ballots
+          summary: Get unique categories for a ballot
+          description: Get all unique categories from proposals in a specific ballot
+          operationId: getBallotCategories
+          parameters:
+            - name: ballotId
+              in: path
+              required: true
+              description: The ID of the ballot
+              schema:
+                type: string
+          responses:
+            '200':
+              description: List of unique categories
+              content:
+                application/json:
+                  schema:
+                    type: array
+                    items:
+                      type: string
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
+      /tags:
+        get:
+          tags:
+            - Ballots
+          summary: Get unique tags for a ballot
+          description: Get all unique tags from proposals in a specific ballot
+          operationId: getBallotTags
+          parameters:
+            - name: ballotId
+              in: path
+              required: true
+              description: The ID of the ballot
+              schema:
+                type: string
+          responses:
+            '200':
+              description: List of unique tags
+              content:
+                application/json:
+                  schema:
+                    type: array
+                    items:
+                      type: string
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
+
+  /proposals:
+    /{proposalId}:
+      get:
+        tags:
+          - Proposals
+        summary: Get a proposal by ID
+        description: Get a proposal by ID with voting statistics and user vote if authenticated
+        operationId: getProposal
+        parameters:
+          - name: proposalId
+            in: path
+            required: true
+            description: The ID of the proposal to retrieve
+            schema:
+              type: string
+        responses:
+          '200':
+            description: The proposal object with additional voting statistics
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/Proposal'
+                    - type: object
+                      properties:
+                        voterVote:
+                          type: array
+                          items:
+                            type: number
+                          nullable: true
+                        ballotStatus:
+                          type: string
+                        results:
+                          type: object
+                          nullable: true
+                        totalVotes:
+                          type: number
+                        totalVoterCount:
+                          type: number
+                        totalVotingPower:
+                          type: number
+          '400':
+            $ref: '#/components/responses/BadRequest'
+          '404':
+            $ref: '#/components/responses/NotFound'
+          '500':
+            $ref: '#/components/responses/ServerError'
+      /comments:
+        get:
+          tags:
+            - Proposals
+          summary: Get comments for a proposal
+          description: Get all comments for a specific proposal sorted by creation date
+          operationId: getProposalComments
+          parameters:
+            - name: proposalId
+              in: path
+              required: true
+              description: The ID of the proposal
+              schema:
+                type: string
+          responses:
+            '200':
+              description: List of comments for the proposal
+              content:
+                application/json:
+                  schema:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
+      /results:
+        get:
+          tags:
+            - Proposals
+          summary: Get voting results for a proposal
+          description: Get voting results for a specific proposal with vote counts and voting power
+          operationId: getProposalResults
+          parameters:
+            - name: proposalId
+              in: path
+              required: true
+              description: The ID of the proposal
+              schema:
+                type: string
+          responses:
+            '200':
+              description: The proposal object with voting results
+              content:
+                application/json:
+                  schema:
+                    allOf:
+                      - $ref: '#/components/schemas/Proposal'
+                      - type: object
+                        properties:
+                          results:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                value:
+                                  type: number
+                                label:
+                                  type: string
+                                count:
+                                  type: number
+                                votingPower:
+                                  type: number
+                          totalVotes:
+                            type: number
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
+      /short:
+        get:
+          tags:
+            - Proposals
+          summary: Get a shortened version of a proposal
+          description: Get a shortened version of a proposal without detailed data
+          operationId: getProposalShort
+          parameters:
+            - name: proposalId
+              in: path
+              required: true
+              description: The ID of the proposal to retrieve
+              schema:
+                type: string
+          responses:
+            '200':
+              description: The proposal object without detailed data
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/Proposal'
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
+
+  /vote:
+    /{proposalId}:
+      post:
+        tags:
+          - Votes
+        summary: Submit or update a vote
+        description: Submit or update a vote on a specific proposal
+        operationId: submitVote
+        security:
+          - cookieAuth: []
+          - bearerAuth: []
+        parameters:
+          - name: proposalId
+            in: path
+            required: true
+            description: ID of the proposal to vote on
+            schema:
+              type: string
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - vote
+                properties:
+                  vote:
+                    type: array
+                    items:
+                      type: number
+                    description: Array of vote option IDs
+        responses:
+          '200':
+            description: The saved vote object with indication if vote was changed
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/Vote'
+                    - type: object
+                      properties:
+                        changes:
+                          type: boolean
+          '400':
+            $ref: '#/components/responses/BadRequest'
+          '401':
+            $ref: '#/components/responses/Unauthorized'
+          '403':
+            $ref: '#/components/responses/Forbidden'
+          '404':
+            $ref: '#/components/responses/NotFound'
+          '500':
+            $ref: '#/components/responses/ServerError'
+
+  /comment:
+    post:
+      tags:
+        - Comments
+      summary: Create a comment
+      description: Creates a new comment on a specific proposal
+      operationId: createComment
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - proposalId
+                - comment
+              properties:
+                proposalId:
+                  type: string
+                  description: ID of the proposal to comment on
+                comment:
+                  type: string
+                  description: Comment content (max 1000 characters)
+                  maxLength: 1000
+      responses:
+        '200':
+          description: The saved comment object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /session:
+    get:
+      tags:
+        - Session
+      summary: Validate session
+      description: Validate JWT token and return voter ID
+      operationId: getSession
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The voter ID if token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  voterId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+        - Session
+      summary: Request authentication nonce
+      description: Request authentication nonce for standard (non-script) wallet
+      operationId: requestNonce
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - signerAddress
+                - signType
+              properties:
+                signerAddress:
+                  type: string
+                  description: The address of the signer
+                signType:
+                  type: string
+                  description: Type of signature (e.g., 'drep')
+      responses:
+        '200':
+          description: Nonce to sign and voter identification data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dataHex:
+                    type: string
+                    description: Nonce to sign (hex encoded)
+                  voterId:
+                    type: string
+                  voterIdHex:
+                    type: string
+                  signerAddressHex:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      tags:
+        - Session
+      summary: Verify signature and login
+      description: Verify signature of nonce and issue JWT token for authentication
+      operationId: verifySignature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - signerAddress
+                - signType
+                - signature
+              properties:
+                signerAddress:
+                  type: string
+                signType:
+                  type: string
+                signature:
+                  $ref: '#/components/schemas/Signature'
+      responses:
+        '200':
+          description: JWT token and expiration information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  expiresIn:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    delete:
+      tags:
+        - Session
+      summary: Logout
+      description: Logout by clearing authentication cookie
+      operationId: logout
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success message confirming logout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Logged out successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    /multisig:
+      post:
+        tags:
+          - Session
+        summary: Request authentication nonce for multisig
+        description: Request authentication nonce for multisig wallet
+        operationId: requestMultisigNonce
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - signerAddress
+                  - signType
+                  - scriptAddress
+                properties:
+                  signerAddress:
+                    type: string
+                  signType:
+                    type: string
+                  scriptAddress:
+                    type: string
+                    description: The address of the multisig script
+        responses:
+          '200':
+            description: Nonce to sign and identification data including script address
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    dataHex:
+                      type: string
+                    voterId:
+                      type: string
+                    voterIdHex:
+                      type: string
+                    signerAddressHex:
+                      type: string
+                    scriptAddress:
+                      type: string
+          '400':
+            $ref: '#/components/responses/BadRequest'
+          '403':
+            $ref: '#/components/responses/Forbidden'
+      put:
+        tags:
+          - Session
+        summary: Verify multisig signature and login
+        description: Verify signature and script membership for multisig wallet, issue JWT token
+        operationId: verifyMultisigSignature
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - signerAddress
+                  - signType
+                  - scriptAddress
+                  - signature
+                properties:
+                  signerAddress:
+                    type: string
+                  signType:
+                    type: string
+                  scriptAddress:
+                    type: string
+                  signature:
+                    $ref: '#/components/schemas/Signature'
+        responses:
+          '200':
+            description: JWT token and expiration information
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    token:
+                      type: string
+                    expiresIn:
+                      type: string
+                      format: date-time
+          '400':
+            $ref: '#/components/responses/BadRequest'
+
+  /dashboard:
+    get:
+      tags:
+        - Dashboard
+      summary: Get dashboard information
+      description: Get authenticated voter stats including last login time and pending votes count
+      operationId: getDashboard
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Voter information including voter ID, last login timestamp, and pending votes count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  voterId:
+                    type: string
+                  lastLogin:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  multiSig:
+                    type: boolean
+                  pendingVotesCount:
+                    type: number
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    /ballots:
+      get:
+        tags:
+          - Dashboard
+        summary: Get ballots for voter
+        description: Get all ballots the authenticated voter can vote on or has already voted on
+        operationId: getDashboardBallots
+        security:
+          - cookieAuth: []
+          - bearerAuth: []
+        responses:
+          '200':
+            description: List of ballots with voter-specific information (voting power)
+            content:
+              application/json:
+                schema:
+                  type: array
+                  items:
+                    allOf:
+                      - $ref: '#/components/schemas/Ballot'
+                      - type: object
+                        properties:
+                          votingPower:
+                            type: number
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    /pending:
+      get:
+        tags:
+          - Dashboard
+        summary: Get pending votes
+        description: Get all pending votes for the authenticated voter
+        operationId: getPendingVotes
+        security:
+          - cookieAuth: []
+          - bearerAuth: []
+        responses:
+          '200':
+            description: List of pending votes or message if no pending votes exist
+            content:
+              application/json:
+                schema:
+                  oneOf:
+                    - type: object
+                      properties:
+                        message:
+                          type: string
+                          example: no pending votes
+                    - type: array
+                      items:
+                        $ref: '#/components/schemas/Vote'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    /{ballotId}/checkout:
+      post:
+        tags:
+          - Dashboard
+        summary: Request checkout for a ballot
+        description: Request checkout for a ballot, creating transaction data for signing
+        operationId: requestCheckout
+        security:
+          - cookieAuth: []
+          - bearerAuth: []
+        parameters:
+          - name: ballotId
+            in: path
+            required: true
+            description: ID of the ballot to checkout
+            schema:
+              type: string
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - signerAddress
+                  - signType
+                properties:
+                  signerAddress:
+                    type: string
+                    description: Address of the signer
+                  signType:
+                    type: string
+                    description: Type of signature (e.g., 'drep')
+        responses:
+          '200':
+            description: Transaction data for signing
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/TransactionResponse'
+          '400':
+            $ref: '#/components/responses/BadRequest'
+          '401':
+            $ref: '#/components/responses/Unauthorized'
+          '404':
+            $ref: '#/components/responses/NotFound'
+      put:
+        tags:
+          - Dashboard
+        summary: Submit signed transaction
+        description: Submit a signed transaction to finalize votes for a ballot
+        operationId: submitTransaction
+        security:
+          - cookieAuth: []
+          - bearerAuth: []
+        parameters:
+          - name: ballotId
+            in: path
+            required: true
+            description: ID of the ballot
+            schema:
+              type: string
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - signerAddress
+                  - signType
+                  - data
+                  - signature
+                properties:
+                  signerAddress:
+                    type: string
+                  signType:
+                    type: string
+                  data:
+                    type: string
+                    description: Merkle root of the transaction data
+                  signature:
+                    $ref: '#/components/schemas/Signature'
+        responses:
+          '200':
+            description: Confirmation of submitted votes with transaction ID
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      example: ok
+                    message:
+                      type: string
+                      example: Votes submitted
+                    transaction:
+                      type: string
+          '400':
+            $ref: '#/components/responses/BadRequest'
+          '401':
+            $ref: '#/components/responses/Unauthorized'
+          '404':
+            $ref: '#/components/responses/NotFound'
+      /multisig:
+        post:
+          tags:
+            - Dashboard
+          summary: Request checkout for multisig
+          description: Request checkout for a ballot using multisig, creating or retrieving transaction data
+          operationId: requestMultisigCheckout
+          security:
+            - cookieAuth: []
+            - bearerAuth: []
+          parameters:
+            - name: ballotId
+              in: path
+              required: true
+              description: ID of the ballot to checkout
+              schema:
+                type: string
+            - name: transactionId
+              in: query
+              required: false
+              description: Optional ID of an existing transaction
+              schema:
+                type: string
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required:
+                    - scriptAddress
+                    - signerAddress
+                    - signType
+                  properties:
+                    scriptAddress:
+                      type: string
+                      description: Address of the multisig script
+                    signerAddress:
+                      type: string
+                    signType:
+                      type: string
+          responses:
+            '200':
+              description: Transaction data for signing
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/TransactionResponse'
+            '400':
+              $ref: '#/components/responses/BadRequest'
+            '401':
+              $ref: '#/components/responses/Unauthorized'
+            '404':
+              $ref: '#/components/responses/NotFound'
+        put:
+          tags:
+            - Dashboard
+          summary: Submit multisig signature
+          description: Submit a signature for a multisig transaction, finalizing votes if all required signatures are present
+          operationId: submitMultisigSignature
+          security:
+            - cookieAuth: []
+            - bearerAuth: []
+          parameters:
+            - name: ballotId
+              in: path
+              required: true
+              description: ID of the ballot
+              schema:
+                type: string
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required:
+                    - signerAddress
+                    - signType
+                    - scriptAddress
+                    - data
+                    - signature
+                  properties:
+                    signerAddress:
+                      type: string
+                    signType:
+                      type: string
+                    scriptAddress:
+                      type: string
+                    data:
+                      type: string
+                      description: Merkle root of the transaction data
+                    signature:
+                      $ref: '#/components/schemas/Signature'
+          responses:
+            '200':
+              description: Confirmation of submitted signature or finalized votes
+              content:
+                application/json:
+                  schema:
+                    oneOf:
+                      - type: object
+                        properties:
+                          status:
+                            type: string
+                            example: info
+                          message:
+                            type: string
+                            example: MultiSig not complete yet
+                      - type: object
+                        properties:
+                          status:
+                            type: string
+                            example: ok
+                          message:
+                            type: string
+                            example: Votes submitted
+                          transaction:
+                            type: string
+            '400':
+              $ref: '#/components/responses/BadRequest'
+            '401':
+              $ref: '#/components/responses/Unauthorized'
+            '403':
+              $ref: '#/components/responses/Forbidden'
+            '404':
+              $ref: '#/components/responses/NotFound'
+
+  /transactions:
+    get:
+      tags:
+        - Transactions
+      summary: Get all transactions
+      description: Get all transactions for the authenticated user
+      operationId: getTransactions
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of transactions for the user sorted by update time (descending)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Transaction'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    /{transactionId}:
+      get:
+        tags:
+          - Transactions
+        summary: Get a specific transaction
+        description: Get a specific transaction by ID for the authenticated user
+        operationId: getTransaction
+        security:
+          - cookieAuth: []
+          - bearerAuth: []
+        parameters:
+          - name: transactionId
+            in: path
+            required: true
+            description: ID of the transaction to retrieve
+            schema:
+              type: string
+        responses:
+          '200':
+            description: The requested transaction object
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Transaction'
+          '401':
+            $ref: '#/components/responses/Unauthorized'
+          '404':
+            $ref: '#/components/responses/NotFound'
+
+  /voters:
+    get:
+      tags:
+        - Voters
+      summary: Get paginated list of voters
+      description: Get a paginated list of voters with filtering, sorting, and search capabilities
+      operationId: getVoters
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page (max 100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+        - name: search
+          in: query
+          description: Search term for voter ID
+          required: false
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Sort field
+          required: false
+          schema:
+            type: string
+            enum: [voterId, votes, lastLogin]
+            default: votes
+        - name: direction
+          in: query
+          description: Sort direction
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of voters with pagination metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        voterId:
+                          type: string
+                        votes:
+                          type: number
+                        lastLogin:
+                          type: string
+                          format: date-time
+                          nullable: true
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    /types:
+      get:
+        tags:
+          - Voters
+        summary: Get voter type counts
+        description: Get counts of different voter types (stake, drep, pool)
+        operationId: getVoterTypes
+        responses:
+          '200':
+            description: Array of objects with voter type and count
+            content:
+              application/json:
+                schema:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum: [stake, drep, pool]
+                      count:
+                        type: number
+          '500':
+            $ref: '#/components/responses/ServerError'
+    /{voterId}:
+      get:
+        tags:
+          - Voters
+        summary: Get voter details
+        description: Get detailed information about a specific voter including voting history
+        operationId: getVoter
+        parameters:
+          - name: voterId
+            in: path
+            required: true
+            description: The ID of the voter to retrieve
+            schema:
+              type: string
+        responses:
+          '200':
+            description: The voter object with voting history and statistics
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    voterType:
+                      type: string
+                      enum: [stake, drep, pool]
+                    voterId:
+                      type: string
+                    votes:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          _id:
+                            type: string
+                          title:
+                            type: string
+                          votePeriodStart:
+                            type: string
+                            format: date-time
+                          votePeriodEnd:
+                            type: string
+                            format: date-time
+                          voteWeighted:
+                            type: boolean
+                          votingPower:
+                            type: number
+                          status:
+                            type: string
+                          proposals:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                proposalId:
+                                  type: string
+                                title:
+                                  type: string
+                                vote:
+                                  type: array
+                                  items:
+                                    type: string
+                    ballotsVoted:
+                      type: number
+                    proposalsVoted:
+                      type: number
+                    lastVoteDate:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    lastLogin:
+                      type: string
+                      format: date-time
+                      nullable: true
+          '400':
+            $ref: '#/components/responses/BadRequest'
+          '404':
+            $ref: '#/components/responses/NotFound'
+          '500':
+            $ref: '#/components/responses/ServerError'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: token
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    StatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: operational
+        message:
+          type: string
+          example: System is operational
+        timestamp:
+          type: string
+          format: date-time
+        environment:
+          type: string
+        network:
+          type: string
+        networkId:
+          type: integer
+        server:
+          type: object
+          properties:
+            uptime:
+              type: string
+            uptimeSeconds:
+              type: number
+            version:
+              type: string
+            nodeVersion:
+              type: string
+            memoryUsage:
+              type: object
+              properties:
+                rss:
+                  type: string
+                heapTotal:
+                  type: string
+                heapUsed:
+                  type: string
+        frontend:
+          type: string
+        database:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [connected, disconnected]
+            message:
+              type: string
+
+    Ballot:
+      type: object
+      properties:
+        _id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        ipfsHash:
+          type: string
+          nullable: true
+        voterType:
+          type: string
+        voterDescription:
+          type: string
+        voteWeighted:
+          type: boolean
+        voteThreshold:
+          type: number
+          nullable: true
+        votePeriodStart:
+          type: string
+          format: date-time
+        votePeriodEnd:
+          type: string
+          format: date-time
+        voteFilters:
+          type: boolean
+        proposalPeriodStart:
+          type: string
+          format: date-time
+        proposalPeriodEnd:
+          type: string
+          format: date-time
+        resultTxHash:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [live, closed, upcoming]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Proposal:
+      type: object
+      properties:
+        _id:
+          type: string
+        ballotId:
+          type: string
+        ipfsHash:
+          type: string
+          nullable: true
+        title:
+          type: string
+        description:
+          type: string
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        data:
+          type: object
+          nullable: true
+        voteType:
+          type: string
+          enum: [default, budget, ranked]
+        voterBudget:
+          type: number
+        voteOptions:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: number
+              cost:
+                type: number
+              label:
+                type: string
+        commentCount:
+          type: number
+        voteCount:
+          type: number
+        votingPower:
+          type: number
+        result:
+          type: object
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    Vote:
+      type: object
+      properties:
+        _id:
+          type: string
+        voterId:
+          type: string
+        ballotId:
+          type: string
+        proposalId:
+          type: string
+        vote:
+          type: array
+          items:
+            type: number
+        submittedVote:
+          type: array
+          items:
+            type: number
+          nullable: true
+        submittedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Comment:
+      type: object
+      properties:
+        _id:
+          type: string
+        proposalId:
+          type: string
+        voterId:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Transaction:
+      type: object
+      properties:
+        _id:
+          type: string
+        voterId:
+          type: string
+        ballotId:
+          type: string
+        merkleRoot:
+          type: string
+        votes:
+          type: array
+          items:
+            type: object
+            properties:
+              proposalId:
+                type: string
+              vote:
+                  type: array
+                  items:
+                    type: number
+        status:
+          type: string
+          enum: [created, pending, submitted]
+        signature:
+          $ref: '#/components/schemas/Signature'
+          nullable: true
+        multiSig:
+          type: array
+          items:
+            $ref: '#/components/schemas/Signature'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TransactionResponse:
+      type: object
+      properties:
+        _id:
+          type: string
+        voterId:
+          type: string
+        ballotId:
+          type: string
+        merkleRoot:
+          type: string
+        votes:
+          type: array
+          items:
+            type: object
+        dataHex:
+          type: string
+          description: Hex-encoded merkle root for signing
+        voterIdHex:
+          type: string
+          description: Hex-encoded voter ID
+
+    Signature:
+      type: object
+      description: Signature object structure (varies by signature type)
+      additionalProperties: true
+
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid parameters or data
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: error
+              message:
+                type: string
+
+    Unauthorized:
+      description: Unauthorized - authentication required or invalid token
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: error
+              message:
+                type: string
+                example: Unauthorized
+
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: error
+              message:
+                type: string
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: error
+              message:
+                type: string
+
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: error
+              message:
+                type: string
