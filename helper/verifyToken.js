@@ -1,8 +1,18 @@
-import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 const environment = process.env.NODE_ENV || "development";
 const envPath = `.env.${environment}`;
 dotenv.config({ path: envPath });
+
+// Dynamic import for jsonwebtoken to handle ESM/CommonJS compatibility
+let jwt = null;
+
+async function getJwt() {
+  if (!jwt) {
+    const jwtModule = await import("jsonwebtoken");
+    jwt = jwtModule.default;
+  }
+  return jwt;
+}
 
 /**
  * Verifies JWT token from request cookies
@@ -42,7 +52,10 @@ dotenv.config({ path: envPath });
  * - Invalid signature (401)
  * - Other verification errors (401)
  */
-export function verifyToken(req) {
+export async function verifyToken(req) {
+  // Get JWT module (dynamic import for ESM/CommonJS compatibility)
+  const jwt = await getJwt();
+
   // Get JWT secret from environment
   const JWT_SECRET = process.env.JWT_SECRET;
 

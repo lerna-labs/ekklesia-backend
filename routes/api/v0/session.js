@@ -6,8 +6,17 @@ const router = Router();
 import { Session } from "../../../schema/Session.js";
 
 // helper
-import jwt from "jsonwebtoken";
 import dayjs from "dayjs";
+// Dynamic import for jsonwebtoken to handle ESM/CommonJS compatibility
+let jwt = null;
+
+async function getJwt() {
+  if (!jwt) {
+    const jwtModule = await import("jsonwebtoken");
+    jwt = jwtModule.default;
+  }
+  return jwt;
+}
 import duration from "dayjs/plugin/duration.js";
 import fs from "fs";
 import path from "path";
@@ -182,6 +191,9 @@ router.put("/", validateSessionRequest, async (req, res) => {
       message: signatureVerification.message,
     });
   }
+
+  // Get JWT module (dynamic import for ESM/CommonJS compatibility)
+  const jwt = await getJwt();
 
   // create jwt token
   const token = jwt.sign(
@@ -505,6 +517,9 @@ router.put("/multisig", validateSessionRequest, async (req, res) => {
       message: "Address does not belong to the MultiSig",
     });
   }
+
+  // Get JWT module (dynamic import for ESM/CommonJS compatibility)
+  const jwt = await getJwt();
 
   // create jwt token
   const token = jwt.sign(
