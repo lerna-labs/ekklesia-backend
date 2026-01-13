@@ -30,9 +30,9 @@ import { PublicKey } from "@emurgo/cardano-serialization-lib-nodejs";
  * - req.signType: The type of signature used ('drep', etc.)
  * - req.multiSig: Boolean indicating if this is a multisig authentication
  */
-export async function isAuthenticated(req, res, next) {
+export function isAuthenticated(req, res, next) {
   try {
-    const voterToken = await verifyToken(req);
+    const voterToken = verifyToken(req);
     if (voterToken.status === "error") {
       return res.status(voterToken.code).json({
         status: "error",
