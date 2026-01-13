@@ -18,6 +18,10 @@ import {
 } from "../../../helper/verifySignature.js";
 import { validateAddress } from "../../../helper/validateAddress.js";
 
+// API endpoints
+const API_URL = process.env.API_URL;
+const API_TOKEN = process.env.API_TOKEN;
+
 // enable dayjs duration plugin
 dayjs.extend(duration);
 
@@ -25,20 +29,21 @@ dayjs.extend(duration);
 import { isAuthenticated } from "../../../helper/middleWare.js";
 import { validateSessionRequest } from "../../../helper/middleWare.js";
 
+// !! REMOVE ALLOWLIST - should be in voterValidationScript
 // allowList
-const SYSTEM_ALLOWLIST = process.env.SYSTEM_ALLOWLIST;
-let allowList = [];
-if (SYSTEM_ALLOWLIST == 1) {
-  // load allowList json from config directory
-  const allowListPath = path.join(process.cwd(), "config", "allowList.json");
-  allowList = JSON.parse(fs.readFileSync(allowListPath, "utf8"));
-  // check if the allowList is empty
-  if (Object.keys(allowList).length === 0) {
-    console.error("Allowlist is empty");
-  } else {
-    console.log("Allowlist enabled:", allowList.length, "entries");
-  }
-}
+// const SYSTEM_ALLOWLIST = process.env.SYSTEM_ALLOWLIST;
+// let allowList = [];
+// if (SYSTEM_ALLOWLIST == 1) {
+//   // load allowList json from config directory
+//   const allowListPath = path.join(process.cwd(), "config", "allowList.json");
+//   allowList = JSON.parse(fs.readFileSync(allowListPath, "utf8"));
+//   // check if the allowList is empty
+//   if (Object.keys(allowList).length === 0) {
+//     console.error("Allowlist is empty");
+//   } else {
+//     console.log("Allowlist enabled:", allowList.length, "entries");
+//   }
+// }
 
 /**
  * @route GET /api/v0/session
@@ -82,18 +87,39 @@ router.post("/", validateSessionRequest, async (req, res) => {
     });
   }
 
-  console.log("Login request", addressBech32);
-
-  // Check if the address is in the allowlist
-  if (SYSTEM_ALLOWLIST !== "0") {
-    if (!allowList.includes(addressBech32)) {
-      console.error("VoterId not in snapshot", addressBech32);
-      return res.status(403).json({
+  // check for calidus key if signType = pool
+  let calidusID;
+  if (req.signType === "pool") {
+    const requestCalidusKey = await fetch(`${API_URL}/pool_calidus_keys?pool_id_bech32=eq.${addressBech32}`, {
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${API_TOKEN}`,
+      },
+    })
+    const calidusKeyBody = await requestCalidusKey.json();
+    if (calidusKeyBody.length === 0) {
+      return res.status(400).json({
         status: "error",
-        message: "DRep-ID/Address not in snapshot",
+        message: "Pool not found or no calidus key registered",
       });
     }
+    calidusID = calidusKeyBody[0].calidus_id_bech32;
   }
+
+
+  console.log("Login request", addressBech32);
+
+  // !!! can be removed, not used anymore
+  // // Check if the address is in the allowlist
+  // if (SYSTEM_ALLOWLIST !== "0") {
+  //   if (!allowList.includes(addressBech32)) {
+  //     console.error("VoterId not in snapshot", addressBech32);
+  //     return res.status(403).json({
+  //       status: "error",
+  //       message: "DRep-ID/Address not in snapshot",
+  //     });
+  //   }
+  // }
 
   // create nonce
   const nonce = generateNonce("Sign in! ");
@@ -106,12 +132,19 @@ router.post("/", validateSessionRequest, async (req, res) => {
   await login.save();
 
   // return nonce and voterId
-  return res.status(200).json({
+  const response = {
     dataHex: nonce,
     voterId: addressBech32,
     voterIdHex: req.signerAddress,
     signerAddressHex: req.signerAddress,
-  });
+  };
+
+  // Only include calidusID if present
+  if (calidusID) {
+    response.calidusID = calidusID;
+  }
+
+  return res.status(200).json(response);
 });
 
 /**
