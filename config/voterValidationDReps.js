@@ -107,7 +107,7 @@ export async function allowedVoterCount() {
     allowedVoterCountCache &&
     allowedVoterCountTimestamp &&
     Date.now() - allowedVoterCountTimestamp <
-      1000 * 60 * 60 * validationCacheTime
+    1000 * 60 * 60 * validationCacheTime
   ) {
     // console.log("Using cached allowed voter count");
     return allowedVoterCountCache;
@@ -179,16 +179,17 @@ export async function getTotalWeight() {
   return totalWeightCache;
 }
 
-/**
- * Get the total weight of all registered DReps.
- * @returns {Promise<Number>} - The total weight of a specific DRep
- */
-export async function getWeight(voterId, ballotId) {
-  const cachedVotingPower = await checkVotingPower(voterId, ballotId);
-  if (cachedVotingPower) {
-    return cachedVotingPower;
-  }
+// !! doesn't need to be in here, replace with checkVotingPower directly
+// /**
+//  * Get the total weight of all registered DReps.
+//  * @returns {Promise<Number>} - The total weight of a specific DRep
+//  */
+// export async function getWeight(voterId, ballotId) {
+//   const cachedVotingPower = await checkVotingPower(voterId, ballotId);
+//   if (cachedVotingPower) {
+//     return cachedVotingPower;
+//   }
 
-  // return 0;
-  return false;
-}
+//   // return 0;
+//   return false;
+// }

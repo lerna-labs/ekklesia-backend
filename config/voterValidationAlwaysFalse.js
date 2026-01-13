@@ -24,10 +24,11 @@ export async function getTotalWeight() {
   return 420;
 }
 
-/**
- * Get the total weight of all registered DReps.
- * @returns {Promise<Number>} - The total weight of a specific DRep
- */
-export async function getWeight(voterId, ballotId) {
-  return 1;
-}
+// !! doesn't need to be in here, replace with checkVotingPower directly
+// /**
+//  * Get the total weight of all registered DReps.
+//  * @returns {Promise<Number>} - The total weight of a specific DRep
+//  */
+// export async function getWeight(voterId, ballotId) {
+//   return 1;
+// }

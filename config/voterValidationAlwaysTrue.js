@@ -47,20 +47,21 @@ export async function getTotalWeight() {
   return 420;
 }
 
-/**
- * Get the total weight of all registered DReps.
- * @returns {Promise<Number>} - The total weight of a specific DRep
- */
-export async function getWeight(voterId, ballotId) {
-  const cachedVotingPower = await checkVotingPower(voterId, ballotId);
-  if (cachedVotingPower) {
-    return cachedVotingPower;
-  }
+// !! doesn't need to be in here, replace with checkVotingPower directly
+// /**
+//  * Get the total weight of all registered DReps.
+//  * @returns {Promise<Number>} - The total weight of a specific DRep
+//  */
+// export async function getWeight(voterId, ballotId) {
+//   const cachedVotingPower = await checkVotingPower(voterId, ballotId);
+//   if (cachedVotingPower) {
+//     return cachedVotingPower;
+//   }
 
-  let votingPower = 1;
+//   let votingPower = 1;
 
-  // Save the voting power to the database
-  await saveVotingPower(voterId, ballotId, votingPower);
+//   // Save the voting power to the database
+//   await saveVotingPower(voterId, ballotId, votingPower);
 
-  return votingPower;
-}
+//   return votingPower;
+// }
