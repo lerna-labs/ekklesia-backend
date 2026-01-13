@@ -179,7 +179,7 @@ router.put("/", validateSessionRequest, async (req, res) => {
     );
     return res.status(400).json({
       status: "error",
-      message: signatureVerification.message,
+      message: signatureVerification.error,
     });
   }
 
