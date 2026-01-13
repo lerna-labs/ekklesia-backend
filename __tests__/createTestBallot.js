@@ -59,55 +59,163 @@ for (let i = 0; i < cliArgs.length; i++) {
         cliParams._positional.push(arg);
     }
 }
-console.log('CLI Parameters:', JSON.stringify(cliParams, null, 2));
 
 // exit if validation params isn't set
-
+if (!cliParams.validationScript) {
+    console.error("Validation script is required");
+    process.exit(1);
+}
 
 let validationScript = "voterValidationAlwaysTrue.js";
+let voterType = "Stake";
 switch (cliParams.validationScript) {
     case "poolPledge":
         validationScript = "voterValidationPoolsPledge.js";
+        voterType = "Pools";
         break;
     case "poolStake":
         validationScript = "voterValidationPoolsStake.js";
+        voterType = "Pools";
         break;
-    case "drep":
+    case "dreps":
         validationScript = "voterValidationDReps.js";
+        voterType = "DReps";
         break;
     case "stake":
         validationScript = "voterValidationStake.js";
+        voterType = "Stake";
         break;
     default:
         console.error("Invalid validation script");
         process.exit(1);
 }
 
-
 // set vote period start and end to 1 day from now
 let votePeriodStart = new Date();
 let votePeriodEnd = new Date();
 votePeriodEnd.setDate(votePeriodEnd.getDate() + 1);
 
-// // create a new ballot
-// const ballot = new Ballot({
-//     title: "Intersect Executive Director - Poll",
-//     description:
-//         "As part of the executive director (ED) recruitment process, DReps are invited to take part in a poll to provide insights to determine which candidates advance to panel interviews. This ensures that the appointment reflects also DRep sentiment.",
-//     voterType: "DReps",
-//     voterDescription: "Cardano DReps",
-//     votePeriodStart,
-//     votePeriodEnd,
-//     voteAuthorityId: `authority-${Math.floor(Math.random() * 1000)}`,
-//     voteAuthorityAddress: `address-${Math.floor(Math.random() * 1000)}`,
-//     proposalPeriodStart: new Date(),
-//     proposalPeriodEnd: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days from now
-//     voterValidationScript: "voterValidationIntersectVoteLive.js",
-//     rollupScript: "rollupBallot.js",
-//     voteWeighted: true,
-//     voteFilters: true,
-//     voteThreshold: 0,
-//     resultBeaconToken: null,
-// });
+// console logs
+console.log("Vote period start:", votePeriodStart);
+console.log("Vote period end:", votePeriodEnd);
+console.log("Validation script:", validationScript);
+console.log("Voter type:", voterType);
 
-// await ballot.save();
+// create a new ballot
+const ballot = new Ballot({
+    title: "Test Ballot: " + cliParams.validationScript,
+    description: "This is a test ballot for the " + validationScript + " validation script.",
+    voterType: voterType,
+    voterDescription: "Cardano DReps",
+    votePeriodStart,
+    votePeriodEnd,
+    voteAuthorityId: `authority-${Math.floor(Math.random() * 1000)}`,
+    voteAuthorityAddress: `address-${Math.floor(Math.random() * 1000)}`,
+    proposalPeriodStart: new Date(),
+    proposalPeriodEnd: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days from now
+    voterValidationScript: validationScript,
+    rollupScript: "rollupBallot.js",
+    voteWeighted: true,
+    voteFilters: true,
+    voteThreshold: 0,
+    resultBeaconToken: null,
+});
+
+// save ballot to db
+await ballot.save();
+console.log("Ballot created successfully", ballot._id);
+
+const newProposal = new Proposal({
+    title: "Budget Proposal",
+    ballotId: ballot._id,
+    description: "A budget proposal, total cost is 3, all items are equally costed at 1.",
+    data: {
+        collapsible: {
+            title: "Information",
+            content: "Below are the items for the budget proposal. Each item includes a brief description and a link to more detailed information. Please review these items to inform your voting decisions.",
+            items:
+                [
+                    {
+                        "id": 1,
+                        "title": "Avocado",
+                        "content": "Avocado is a fruit.",
+                        "link": "https://avocado.com",
+                        "cost": 1
+                    },
+                    {
+                        "id": 2,
+                        "title": "Banana",
+                        "content": "A Banana is a fruit.",
+                        "link": "https://intersect.gitbook.io/executive-director-hiring/candidates/Andrea",
+                        "cost": 1
+                    },
+                    {
+                        "id": 3,
+                        "title": "Cabbage",
+                        "content": "Cabbage is a vegetable.",
+                        "link": "https://cabbage.com",
+                        "cost": 1
+                    },
+                    {
+                        "id": 4,
+                        "title": "Daikon",
+                        "content": "Daikon is a root vegetable.",
+                        "link": "https://daikon.com",
+                        "cost": 1
+                    },
+                    {
+                        "id": 5,
+                        "title": "Eggplant",
+                        "content": "Eggplant is a vegetable.",
+                        "link": "https://eggplant.com",
+                        "cost": 1
+                    },
+                ],
+        },
+        links: [
+            { name: "Process Overview and Information", url: "https://intersect.gitbook.io/executive-director-hiring" }
+        ]
+    },
+    voteType: "budget",
+    voterBudget: 3,
+    voteOptions: [
+        {
+            "id": 1,
+            "label": "Avocado",
+            "cost": 1
+        },
+        {
+            "id": 2,
+            "label": "Banana",
+            "cost": 1
+        },
+        {
+            "id": 3,
+            "label": "Cabbage",
+            "cost": 1
+        },
+        {
+            "id": 4,
+            "label": "Daikon",
+            "cost": 1
+        },
+        {
+            "id": 5,
+            "label": "Eggplant",
+            "cost": 1
+        },
+    ],
+});
+await newProposal.save();
+console.log("Proposal created successfully:", newProposal._id);
+
+
+
+
+
+
+
+
+// disconnect from db
+await disconnectFromDatabase();
+process.exit(0);
