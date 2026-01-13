@@ -22,6 +22,7 @@ import { getVotes, getPendingVoteCount } from "../../../helper/getVotes.js";
 import { createTransaction } from "../../../helper/createTransaction.js";
 import { PublicKey } from "@emurgo/cardano-serialization-lib-nodejs";
 import { isAuthenticated, getBallot } from "../../../helper/middleWare.js";
+import { getCalidusKey } from "../../../helper/koios.js";
 
 /**
  * @route GET /api/v0/dashboard
@@ -234,6 +235,19 @@ router.post(
       signerAddress = keyHashHex;
     }
 
+    // check calidus key if signType = pool
+    let calidusID;
+    if (signType === "pool") {
+      const calidusKey = await getCalidusKey(addressBech32);
+      if (!calidusKey) {
+        return res.status(400).json({
+          status: "error",
+          message: "Pool not found or no calidus key registered",
+        });
+      }
+      calidusID = calidusKey.calidus_id_bech32;
+    }
+
     // check if voter is in voter cache and validated against ballot
     const checkVoterCache = await VoterCache.findOne({
       voterId,
@@ -256,6 +270,9 @@ router.post(
     // create data to sign
     transactionResponse.dataHex = stringToHex(transactionResponse.merkleRoot);
     transactionResponse.voterIdHex = signerAddress;
+    if (calidusID) {
+      transactionResponse.calidusID = calidusID;
+    }
 
     return res.status(200).json(transactionResponse);
   }

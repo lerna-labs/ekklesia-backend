@@ -1,4 +1,6 @@
 import { ScriptHash } from "@emurgo/cardano-serialization-lib-nodejs";
+const API_URL = process.env.API_URL;
+const API_TOKEN = process.env.API_TOKEN;
 
 export async function getScript(scriptHash) {
   const API_URL = process.env.API_URL;
@@ -44,4 +46,26 @@ export async function getScript(scriptHash) {
   }
 
   return false;
+}
+
+export async function getCalidusKey(poolIdBech32) {
+
+  try {
+    const requestPoolCalidusKeys = await fetch(`${API_URL}/pool_calidus_keys?pool_id_bech32=eq.${poolIdBech32}`, {
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${API_TOKEN}`,
+      },
+    })
+    const poolCalidusKeysBody = await requestPoolCalidusKeys.json();
+
+    if (poolCalidusKeysBody.length > 0) {
+      return poolCalidusKeysBody[0];
+    } else {
+      return false;
+    }
+  } catch (error) {
+    console.error("Error fetching pool calidus keys:", error);
+    return false;
+  }
 }

@@ -17,10 +17,7 @@ import {
   isPartyToScript,
 } from "../../../helper/verifySignature.js";
 import { validateAddress } from "../../../helper/validateAddress.js";
-
-// API endpoints
-const API_URL = process.env.API_URL;
-const API_TOKEN = process.env.API_TOKEN;
+import { getCalidusKey } from "../../../helper/koios.js";
 
 // enable dayjs duration plugin
 dayjs.extend(duration);
@@ -90,22 +87,15 @@ router.post("/", validateSessionRequest, async (req, res) => {
   // check for calidus key if signType = pool
   let calidusID;
   if (req.signType === "pool") {
-    const requestCalidusKey = await fetch(`${API_URL}/pool_calidus_keys?pool_id_bech32=eq.${addressBech32}`, {
-      headers: {
-        "Content-Type": "application/json",
-        authorization: `Bearer ${API_TOKEN}`,
-      },
-    })
-    const calidusKeyBody = await requestCalidusKey.json();
-    if (calidusKeyBody.length === 0) {
+    const calidusKey = await getCalidusKey(addressBech32);
+    if (!calidusKey) {
       return res.status(400).json({
         status: "error",
         message: "Pool not found or no calidus key registered",
       });
     }
-    calidusID = calidusKeyBody[0].calidus_id_bech32;
+    calidusID = calidusKey.calidus_id_bech32;
   }
-
 
   console.log("Login request", addressBech32);
 
