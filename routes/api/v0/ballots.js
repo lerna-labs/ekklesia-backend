@@ -13,6 +13,7 @@ import { cacheControl } from "../../../helper/cacheControl.js";
 import validator from "validator";
 import mongoose from "mongoose";
 import { getBallot } from "../../../helper/middleWare.js";
+import { checkVotingPower } from "../../../helper/voterValidation.js";
 
 /**
  * @route GET /api/v0/ballots
@@ -265,7 +266,7 @@ router.get("/:ballotId", getBallot, async (req, res) => {
   // check if voter token is present
   const voterToken = verifyToken(req);
   // import voter validation from ballot
-  const { validateVoter, allowedVoterCount, getWeight } = await import(
+  const { validateVoter, allowedVoterCount, getTotalWeight } = await import(
     "../../../config/" + ballot.voterValidationScript
   );
   if (voterToken.voterId) {
@@ -274,7 +275,7 @@ router.get("/:ballotId", getBallot, async (req, res) => {
     // get voting power
     if (ballot.voterValidated) {
       if (ballot.voteWeighted) {
-        ballot.votingPower = await getWeight(voterToken.voterId, ballot._id);
+        ballot.votingPower = await checkVotingPower(voterToken.voterId, ballot._id);
       } else {
         ballot.votingPower = 1; // Default voting power for non-weighted ballots
       }
@@ -286,9 +287,6 @@ router.get("/:ballotId", getBallot, async (req, res) => {
 
   // get total weight count for ballot
   if (ballot.voteWeighted) {
-    const { getTotalWeight } = await import(
-      "../../../config/" + ballot.voterValidationScript
-    );
     ballot.totalVotingPower = await getTotalWeight();
   }
 

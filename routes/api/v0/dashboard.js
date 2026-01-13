@@ -8,6 +8,7 @@ import { Ballot } from "../../../schema/Ballot.js";
 import { Vote } from "../../../schema/Vote.js";
 import { VoterCache } from "../../../schema/VoterCache.js";
 import { Transaction } from "../../../schema/Transaction.js";
+import { checkVotingPower } from "../../../helper/voterValidation.js";
 
 // helper
 import { stringToHex } from "@meshsdk/common";
@@ -78,14 +79,14 @@ router.get("/ballots", isAuthenticated, async (req, res) => {
     // get the ballot
     const ballot = await Ballot.findById(ballotId);
 
-    const { validateVoter, getWeight } = await import(
+    const { validateVoter } = await import(
       "../../../config/" + ballot.voterValidationScript
     );
     // validate voter against ballot
     const isValidVoter = await validateVoter(voterId, ballotId);
     if (isValidVoter) {
       // get voting power for the voter
-      const weight = await getWeight(voterId, ballotId);
+      const weight = await checkVotingPower(voterId, ballotId);
       if (weight) {
         // add voting power to the list
         voterVotingPower.push({

@@ -170,13 +170,11 @@ export async function getTotalWeight() {
     totalWeightCache = totals[0]?.amount || 0;
     totalWeightTimestamp = Date.now();
     console.log("Total weight: ", totalWeightCache);
-    return;
+    return totalWeightCache;
   } catch (error) {
     console.error("Error fetching total weight: ", error);
     throw new Error("Failed to fetch total weight");
   }
-
-  return totalWeightCache;
 }
 
 // !! doesn't need to be in here, replace with checkVotingPower directly
