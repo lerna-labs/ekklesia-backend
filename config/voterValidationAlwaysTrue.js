@@ -1,8 +1,6 @@
 import {
   checkVoterValidation,
   saveVoterValidation,
-  checkVotingPower,
-  saveVotingPower,
 } from "../helper/voterValidation.js";
 
 /**
@@ -31,37 +29,22 @@ export async function validateVoter(voterId, ballotId) {
   return validated;
 }
 
+// returns random number as the total count can't be determined on this validator
 /**
  * Get the allowed voter count and cache the result.
- * @returns {Promise<Number>} - The total count of registered DReps
+ * @returns {Promise<Number>} - The total count of registered Voters
  */
 export async function allowedVoterCount() {
   return 420;
 }
 
+// returns random number as the total weight can't be determined on this validator
 /**
- * Get the total weight of all registered DReps.
+ * Get the total weight of all registered Voters.
  * @returns {Promise<Number>} - The total weight of registered DReps
  */
 export async function getTotalWeight() {
-  return 420;
+  return 690690690;
 }
 
-// !! doesn't need to be in here, replace with checkVotingPower directly
-// /**
-//  * Get the total weight of all registered DReps.
-//  * @returns {Promise<Number>} - The total weight of a specific DRep
-//  */
-// export async function getWeight(voterId, ballotId) {
-//   const cachedVotingPower = await checkVotingPower(voterId, ballotId);
-//   if (cachedVotingPower) {
-//     return cachedVotingPower;
-//   }
 
-//   let votingPower = 1;
-
-//   // Save the voting power to the database
-//   await saveVotingPower(voterId, ballotId, votingPower);
-
-//   return votingPower;
-// }

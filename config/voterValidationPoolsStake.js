@@ -1,7 +1,6 @@
 import {
     checkVoterValidation,
     saveVoterValidation,
-    checkVotingPower,
     saveVotingPower,
 } from "../helper/voterValidation.js";
 import { Ballot } from "../schema/Ballot.js";
@@ -16,12 +15,9 @@ const validationCacheTime = 8; // hours
  * @throws {Error} If the API request fails.
  * @returns {boolean} True if the address is registered, false otherwise.
  */
-// !! probably move completely to cron and only run once if no entry is there
 export async function validateVoter(voterId, ballotId) {
     let validated = false;
-
     let ballot = await Ballot.findOne({ _id: ballotId });
-    // console.log("Ballot found, ballot is live?", ballot.status);
 
     // Check if the address is already validated
     const existingValidation = await checkVoterValidation(voterId, ballotId);
@@ -67,7 +63,7 @@ export async function validateVoter(voterId, ballotId) {
 
         // check if result is empty
         if (voterInfo.length === 0) {
-            console.error("Voter not found in API: ", voterId);
+            console.log("Voter not found in API: ", voterId);
             validated = false;
             await saveVoterValidation(voterId, ballotId, validated);
             await saveVotingPower(voterId, ballotId, 0);
@@ -82,7 +78,7 @@ export async function validateVoter(voterId, ballotId) {
             await saveVotingPower(voterId, ballotId, voterInfo[0].live_stake);
             return validated;
         } else {
-            console.error("Voter is not registered Pool: ", voterInfo[0].pool_status);
+            console.log("Voter is not registered Pool: ", voterInfo[0].pool_status);
             validated = false;
             await saveVoterValidation(voterId, ballotId, validated);
             await saveVotingPower(voterId, ballotId, 0);
@@ -96,7 +92,7 @@ export async function validateVoter(voterId, ballotId) {
 
 /**
  * Get the allowed voter count and cache the result.
- * @returns {Promise<Number>} - The total count of registered DReps
+ * @returns {Promise<Number>} - The total count of registered Pools
  */
 let allowedVoterCountCache = null;
 let allowedVoterCountTimestamp = null;
@@ -114,7 +110,7 @@ export async function allowedVoterCount() {
 
     try {
         console.log("Fetching allowed voter count from API...");
-        const response = await fetch(API_URL + "/pool_list?pool_status=eq.registered", {
+        const response = await fetch(API_URL + "/pool_list?pool_status=eq.registered&limit=1", {
             method: "GET",
             headers: {
                 "Content-Type": "application/json",
@@ -138,8 +134,8 @@ export async function allowedVoterCount() {
 }
 
 /**
- * Get the total pledge of all registered DReps.
- * @returns {Promise<Number>} - The total weight of registered DReps
+ * Get the total votingpower of all registered Pools.
+ * @returns {Promise<Number>} - The total votingpower of all registered Pools
  */
 let totalWeightCache = null;
 let totalWeightTimestamp = null;
@@ -150,7 +146,6 @@ export async function getTotalWeight() {
         totalWeightTimestamp &&
         Date.now() - totalWeightTimestamp < 1000 * 60 * 60 * validationCacheTime
     ) {
-        // console.log("Using cached total weight");
         return totalWeightCache;
     }
     try {
@@ -168,26 +163,9 @@ export async function getTotalWeight() {
         totalWeightCache = totals[0]?.deposits_stake || 0;
         totalWeightTimestamp = Date.now();
         console.log("Total weight: ", totalWeightCache);
-        return;
+        return totalWeightCache;
     } catch (error) {
         console.error("Error fetching total weight: ", error);
         throw new Error("Failed to fetch total weight");
     }
-
-    return totalWeightCache;
 }
-
-// !! doesn't need to be in here, replace with checkVotingPower directly
-// /**
-//  * Get the total weight of all registered Pools.
-//  * @returns {Promise<Number>} - The total weight of a specific DRep
-//  */
-// export async function getWeight(voterId, ballotId) {
-//     const cachedVotingPower = await checkVotingPower(voterId, ballotId);
-//     if (cachedVotingPower) {
-//         return cachedVotingPower;
-//     }
-
-//     // return 0;
-//     return false;
-// }

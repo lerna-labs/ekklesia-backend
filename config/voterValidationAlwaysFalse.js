@@ -13,7 +13,7 @@ export async function validateVoter(signerAddress) {
  * @returns {Promise<Number>} - The total count of registered DReps
  */
 export async function allowedVoterCount() {
-  return 420;
+  return 0;
 }
 
 /**
@@ -21,14 +21,7 @@ export async function allowedVoterCount() {
  * @returns {Promise<Number>} - The total weight of registered DReps
  */
 export async function getTotalWeight() {
-  return 420;
+  return 0;
 }
 
-// !! doesn't need to be in here, replace with checkVotingPower directly
-// /**
-//  * Get the total weight of all registered DReps.
-//  * @returns {Promise<Number>} - The total weight of a specific DRep
-//  */
-// export async function getWeight(voterId, ballotId) {
-//   return 1;
-// }
+
