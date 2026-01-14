@@ -71,11 +71,11 @@ let voterType = "Stake";
 switch (cliParams.validationScript) {
     case "poolPledge":
         validationScript = "voterValidationPoolsPledge.js";
-        voterType = "Pools";
+        voterType = "SPOs (Pledge based)";
         break;
     case "poolStake":
         validationScript = "voterValidationPoolsStake.js";
-        voterType = "Pools";
+        voterType = "SPOs (Stake based)";
         break;
     case "dreps":
         validationScript = "voterValidationDReps.js";
