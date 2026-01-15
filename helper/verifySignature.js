@@ -1,15 +1,18 @@
-import {bech32} from "bech32";
-import {default as cbor} from "cbor";
+import { bech32 } from "bech32";
+import { default as cbor } from "cbor";
 import pkg from "blakejs";
-
-const {blake2bHex} = pkg;
+const { blake2bHex } = pkg;
 
 import {
     PublicKey,
     Ed25519Signature,
 } from "@emurgo/cardano-serialization-lib-nodejs";
-import {extractParts, getAddressType} from "./validateAddress.js";
-import {getScript} from "./koios.js";
+import { extractParts, getAddressType } from "./validateAddress.js";
+import { getScript } from "./koios.js";
+
+// Koios API configuration from environment variables
+const API_URL = process.env.API_URL;
+const API_TOKEN = process.env.API_TOKEN;
 
 export async function verifySignature(
     payload,
@@ -164,7 +167,7 @@ export async function verifySignature(
     const type_details = getAddressType(address);
 
     // Checking that the provided address matches the signing key used
-    const {words} = bech32.decode(address, 1000); // <-- edit by Martin
+    const { words } = bech32.decode(address, 1000); // <-- edit by Martin
     const body_hex = Buffer.from(bech32.fromWords(words)).toString("hex");
     let keyHash;
     if (body_hex.length > 56) {
@@ -180,20 +183,19 @@ export async function verifySignature(
         case "pool":
             // In the case of a stake pool, we need to look up their Calidus key!
             // const latest_calidus = await fetch(`https://sentinel.veriglyph.io/certificates/latest?scope=pool&id=${keyHash}`);
-            let koios_endpoint = 'https://api.koios.rest';
-            switch (process.env.NETWORK_NAME) {
-                case 'preprod':
-                    koios_endpoint = 'https://preprod.koios.rest';
-                    break;
-                case 'preview':
-                    koios_endpoint = 'https://preview.koios.rest';
-                    break;
-            }
 
-            const latest_calidus = await fetch(`${koios_endpoint}/api/v1/pool_calidus_keys?pool_id_bech32=eq.${address}`);
+            const latest_calidus = await fetch(`${API_URL}/pool_calidus_keys?pool_id_bech32=eq.${address}`,
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                        authorization: `Bearer ${API_TOKEN}`,
+                    },
+                }
+            );
             const latest_calidus_body = await latest_calidus.json();
             const calidus_key = latest_calidus_body[0];
 
+            // ? This should probably validate even if the pool is retired, so retired SPOs can still login and check former votes?
             if (calidus_key !== undefined && calidus_key.pool_status === 'registered') {
                 keyHash = PublicKey.from_hex(calidus_key.calidus_pub_key).hash().to_hex();
             }
@@ -259,7 +261,7 @@ export async function isPartyToScript(
 
     signature = standardize_signature(signature);
 
-    const {verification_key, ed_sig, signed_payload_hex} =
+    const { verification_key, ed_sig, signed_payload_hex } =
         get_key_signature_and_payload(signature, payload);
 
     const SignatureKeyHash = verification_key.hash();
@@ -322,7 +324,7 @@ export async function validateScriptSignatures(
             script_body
         );
         if (is_signature_in_script === true) {
-            const {verification_key} = get_key_signature_and_payload(
+            const { verification_key } = get_key_signature_and_payload(
                 signature,
                 payload
             );
@@ -342,7 +344,7 @@ export async function validateScriptSignatures(
 
 export function getScriptCriteria(
     script_contents,
-    carry = {keys: [], signers: [], signed: 0, required: 1, count: 0}
+    carry = { keys: [], signers: [], signed: 0, required: 1, count: 0 }
 ) {
     script_contents.scripts.forEach((script) => {
         switch (script.type) {
@@ -576,7 +578,7 @@ function parse_cose_signature(signature, payload) {
 
     const signature_hex = cose_sign1_structure[3].toString("hex");
 
-    return {payload_hex, signature_hex};
+    return { payload_hex, signature_hex };
 }
 
 function get_key_signature_and_payload(signature, payload) {
@@ -586,7 +588,7 @@ function get_key_signature_and_payload(signature, payload) {
     try {
         if (signature.COSE_Sign1_hex) {
             public_key_hex = get_cose_public_key(signature);
-            const {payload_hex, signature_hex} = parse_cose_signature(
+            const { payload_hex, signature_hex } = parse_cose_signature(
                 signature,
                 payload
             );
