@@ -11,8 +11,9 @@
   },
   "type": "module",
   "keywords": [],
-  "author": "Adam Dean, Mad Orkestra",
-  "license": "ISC",
+  "author": "Mad Orkestra & Adam Dean for Lerna Labs",
+  "homepage": "https://github.com/lernalabs/ekklesia-backend",
+  "license": "Apache-2.0",
   "description": "Ekklesia Voting Backend",
   "dependencies": {
     "@emurgo/cardano-serialization-lib-nodejs": "^14.1.1",
