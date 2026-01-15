@@ -1,3 +1,6 @@
+// !! add a lock to prevent multiple instances of this script from running at the same time
+// only needed on large scale votes
+
 // Conosole log
 console.log("Starting 10min cron job...");
 
@@ -35,8 +38,8 @@ if (!isDatabaseConnected()) {
 // aggregate votes
 await aggregateVotes();
 
-// !! add a lock to prevent multiple instances of this script from running at the same time
-
+// ballot rollup 
+// !! this is not live yet and needs proper testing and rewriting - if automated rollups are even a thing
 // get all ballots that ended in the last 10 minutes
 const now = new Date();
 const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
