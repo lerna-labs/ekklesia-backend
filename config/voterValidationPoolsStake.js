@@ -75,7 +75,7 @@ export async function validateVoter(voterId, ballotId) {
             console.log("Voter is registered Pool: ", voterInfo[0].pool_status);
             validated = true;
             await saveVoterValidation(voterId, ballotId, validated);
-            await saveVotingPower(voterId, ballotId, voterInfo[0].live_stake);
+            await saveVotingPower(voterId, ballotId, voterInfo[0].active_stake);
             return validated;
         } else {
             console.log("Voter is not registered Pool: ", voterInfo[0].pool_status);

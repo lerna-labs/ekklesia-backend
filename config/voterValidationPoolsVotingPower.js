@@ -4,7 +4,6 @@ import {
     saveVotingPower,
 } from "../helper/voterValidation.js";
 import { Ballot } from "../schema/Ballot.js";
-import { VoterCache } from "../schema/VoterCache.js";
 const API_URL = process.env.API_URL;
 const API_TOKEN = process.env.API_TOKEN;
 const validationCacheTime = 8; // hours
@@ -18,9 +17,7 @@ const validationCacheTime = 8; // hours
  */
 export async function validateVoter(voterId, ballotId) {
     let validated = false;
-
     let ballot = await Ballot.findOne({ _id: ballotId });
-    // console.log("Ballot found, ballot is live?", ballot.status);
 
     // Check if the address is already validated
     const existingValidation = await checkVoterValidation(voterId, ballotId);
@@ -66,31 +63,20 @@ export async function validateVoter(voterId, ballotId) {
 
         // check if result is empty
         if (voterInfo.length === 0) {
-            console.error("Voter not found in API: ", voterId);
+            console.log("Voter not found in API: ", voterId);
             validated = false;
             await saveVoterValidation(voterId, ballotId, validated);
             await saveVotingPower(voterId, ballotId, 0);
             return validated;
         }
 
-        // check if pool is registered
+        // check if voter is registered
         if (voterInfo[0].pool_status === "registered") {
             console.log("Voter is registered Pool: ", voterInfo[0].pool_status);
-            // Convert to BigInt for proper numeric comparison of large numbers
-            const livePledge = BigInt(voterInfo[0].live_pledge || "0");
-            const pledge = BigInt(voterInfo[0].pledge || "0");
-            if (livePledge >= pledge) {
-                validated = true;
-                await saveVoterValidation(voterId, ballotId, validated);
-                await saveVotingPower(voterId, ballotId, voterInfo[0].pledge);
-                return validated;
-            } else {
-                console.log("Voter live pledge is smaller than pledge: ", voterInfo[0].live_pledge, voterInfo[0].pledge);
-                validated = false;
-                await saveVoterValidation(voterId, ballotId, validated);
-                await saveVotingPower(voterId, ballotId, 0);
-                return validated;
-            }
+            validated = true;
+            await saveVoterValidation(voterId, ballotId, validated);
+            await saveVotingPower(voterId, ballotId, voterInfo[0].voting_power);
+            return validated;
         } else {
             console.log("Voter is not registered Pool: ", voterInfo[0].pool_status);
             validated = false;
@@ -106,12 +92,11 @@ export async function validateVoter(voterId, ballotId) {
 
 /**
  * Get the allowed voter count and cache the result.
- * @returns {Promise<Number>} - The total count of registered DReps
+ * @returns {Promise<Number>} - The total count of registered Pools
  */
 let allowedVoterCountCache = null;
 let allowedVoterCountTimestamp = null;
-// !! requests the allowed voter count from the voter cache - this will only work if a cronjob updates the voter cache to reflect snapshot or on-chain data
-export async function allowedVoterCount(ballotId) {
+export async function allowedVoterCount() {
     // Check if cache exists and is less than 8 hours old
     if (
         allowedVoterCountCache &&
@@ -119,13 +104,26 @@ export async function allowedVoterCount(ballotId) {
         Date.now() - allowedVoterCountTimestamp <
         1000 * 60 * 60 * validationCacheTime
     ) {
+        // console.log("Using cached allowed voter count");
         return allowedVoterCountCache;
     }
 
     try {
-        console.log("Fetching allowed voter count from Voter Cache...");
-        const voterCount = await VoterCache.find({ ballotId: ballotId, validated: true }).countDocuments();
-        allowedVoterCountCache = voterCount;
+        console.log("Fetching allowed voter count from API...");
+        const response = await fetch(API_URL + "/pool_list?pool_status=eq.registered&limit=1", {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+                authorization: `Bearer ${API_TOKEN}`,
+                prefer: "count=exact",
+            },
+        });
+        // get the total count from the response headers
+        const totalCount = response.headers.get("content-range").split("/")[1];
+        if (!totalCount) {
+            throw new Error("Failed to fetch total count from headers");
+        }
+        allowedVoterCountCache = totalCount;
         allowedVoterCountTimestamp = Date.now();
         console.log("Allowed voter count: ", allowedVoterCountCache);
     } catch (error) {
@@ -136,13 +134,12 @@ export async function allowedVoterCount(ballotId) {
 }
 
 /**
- * Get the total valid pledge of all registered Pools.
- * @returns {Promise<Number>} - The total weight of registered Pools
+ * Get the total votingpower of all registered Pools.
+ * @returns {Promise<Number>} - The total votingpower of all registered Pools
  */
 let totalWeightCache = null;
 let totalWeightTimestamp = null;
-// !! requests the allowed voter count from the voter cache - this will only work if a cronjob updates the voter cache to reflect snapshot or on-chain data
-export async function getTotalWeight(ballotId) {
+export async function getTotalWeight() {
     // Check if cache exists and is less than 8 hours old
     if (
         totalWeightCache &&
@@ -152,12 +149,18 @@ export async function getTotalWeight(ballotId) {
         return totalWeightCache;
     }
     try {
-        console.log("Fetching total weight from Voter Cache...");
-        const voters = await VoterCache.aggregate([
-            { $match: { ballotId: ballotId, validated: true } },
-            { $group: { _id: null, totalWeight: { $sum: "$votingPower" } } },
-        ]);
-        totalWeightCache = voters[0]?.totalWeight || 0;
+        console.log("Fetching total weight from API...");
+        const response = await fetch(API_URL + "/totals?limit=1", {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+                authorization: `Bearer ${API_TOKEN}`,
+            },
+        });
+        // get the total count from the response headers
+        const totals = await response.json();
+
+        totalWeightCache = totals[0]?.deposits_stake || 0;
         totalWeightTimestamp = Date.now();
         console.log("Total weight: ", totalWeightCache);
         return totalWeightCache;
@@ -166,5 +169,3 @@ export async function getTotalWeight(ballotId) {
         throw new Error("Failed to fetch total weight");
     }
 }
-
-
