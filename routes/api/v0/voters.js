@@ -499,7 +499,6 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
         title: item.ballot.title,
         votePeriodStart: item.ballot.votePeriodStart,
         votePeriodEnd: item.ballot.votePeriodEnd,
-        voteWeighted: item.ballot.voteWeighted,
         votingPower: item.votingPower || 0, // Include voting power in the response
         status: ballotWithVirtuals.status,
         proposals: votedProposals,

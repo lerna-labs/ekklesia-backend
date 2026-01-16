@@ -10,7 +10,6 @@ const { Schema } = mongoose;
  * @property {String} description - Description of the ballot
  * @property {String} voterType - Type of voters eligible for this ballot (e.g., 'stake', 'drep', 'pool')
  * @property {String} voterDescription - Human-readable description of eligible voters
- * @property {Boolean} voteWeighted - Whether votes are weighted by voter power (true) or counted equally (false)
  * @property {Number} voteThreshold - Minimum threshold required for vote acceptance (if applicable)
  * @property {Date} votePeriodStart - Start date and time of the voting period
  * @property {Date} votePeriodEnd - End date and time of the voting period
@@ -19,9 +18,10 @@ const { Schema } = mongoose;
  * @property {String} voteAuthorityAddress - Blockchain address of the voting authority
  * @property {Date} proposalPeriodStart - Start date and time for submitting proposals
  * @property {Date} proposalPeriodEnd - End date and time for submitting proposals
- * @property {String} resultBeaconToken - Token for the result beacon (null if not finalized)
+ * @property {String} resultTxHash - Token for the result transaction (null if not finalized)
  * @property {String} voterValidationScript - Script used to validate voters (default: voterValidationAlwaysTrue.js)
  * @property {String} rollupScript - Script used to calculate voting results (default: rollupBallot.js)
+ * @property {String} startupScript - Script used to start the ballot (default: startupBallot.js)
  * @property {Date} createdAt - Timestamp when the ballot was created (immutable)
  * @property {Date} updatedAt - Timestamp when the ballot was last updated
  * @property {String} status - Virtual property indicating ballot status ("live", "closed", or "upcoming")
@@ -47,11 +47,6 @@ const ballotSchema = new Schema(
     },
     voterDescription: {
       type: String,
-      required: true,
-    },
-    voteWeighted: {
-      type: Boolean,
-      default: false,
       required: true,
     },
     voteThreshold: {
@@ -100,6 +95,22 @@ const ballotSchema = new Schema(
       default: "rollupBallot.js",
       required: true,
     },
+    startupScript: {
+      type: String,
+      default: "startupBallot.js",
+      required: true,
+    },
+    startupAt: {
+      type: Date,
+      required: false,
+      default: null,
+    },
+    status: {
+      type: String,
+      enum: ["upcoming", "live", "closed"],
+      default: "upcoming",
+      required: true,
+    },
     createdAt: {
       type: Date,
       default: Date.now,
@@ -133,22 +144,6 @@ const ballotSchema = new Schema(
 // Indexes for faster queries
 ballotSchema.index({ title: 1 });
 ballotSchema.index({ voterType: 1 });
-
-// Replace is_live with a more descriptive status virtual property
-ballotSchema.virtual("status").get(function () {
-  const currentDate = new Date();
-  const voteStart = new Date(this.votePeriodStart);
-  const voteEnd = new Date(this.votePeriodEnd);
-
-  // !! need to implement results pending for non-public ballots
-  if (currentDate > voteEnd) {
-    return "closed"; // Voting period has ended
-  } else if (currentDate >= voteStart && currentDate <= voteEnd) {
-    return "live"; // Currently in voting period
-  } else {
-    return "upcoming"; // Voting period has not started yet
-  }
-});
 
 // Pre-save middleware to update the updatedAt field
 ballotSchema.pre("save", function (next) {

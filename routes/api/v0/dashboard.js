@@ -104,7 +104,7 @@ router.get("/ballots", isAuthenticated, async (req, res) => {
   const ballots = await Ballot.find({
     _id: { $in: voterBallots },
   }).select(
-    "_id title description voterType status voteWeighted votePeriodStart votePeriodEnd"
+    "_id title description voterType status votePeriodStart votePeriodEnd"
   );
 
   // add voting power to the ballots

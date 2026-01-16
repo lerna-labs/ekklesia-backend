@@ -1335,8 +1335,6 @@ paths:
                           votePeriodEnd:
                             type: string
                             format: date-time
-                          voteWeighted:
-                            type: boolean
                           votingPower:
                             type: number
                           status:
@@ -1450,8 +1448,6 @@ components:
           type: string
         voterDescription:
           type: string
-        voteWeighted:
-          type: boolean
         voteThreshold:
           type: number
           nullable: true

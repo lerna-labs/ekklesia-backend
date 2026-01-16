@@ -274,11 +274,7 @@ router.get("/:ballotId", getBallot, async (req, res) => {
     ballot.voterValidated = await validateVoter(voterToken.voterId, ballot._id);
     // get voting power
     if (ballot.voterValidated) {
-      if (ballot.voteWeighted) {
-        ballot.votingPower = await checkVotingPower(voterToken.voterId, ballot._id);
-      } else {
-        ballot.votingPower = 1; // Default voting power for non-weighted ballots
-      }
+      ballot.votingPower = await checkVotingPower(voterToken.voterId, ballot._id);
     }
   }
 
@@ -286,9 +282,7 @@ router.get("/:ballotId", getBallot, async (req, res) => {
   ballot.totalAllowedVoterCount = await allowedVoterCount();
 
   // get total weight count for ballot
-  if (ballot.voteWeighted) {
-    ballot.totalVotingPower = await getTotalWeight();
-  }
+  ballot.totalVotingPower = await getTotalWeight();
 
   // cleanup ballot data
   delete ballot.voterValidationScript;
