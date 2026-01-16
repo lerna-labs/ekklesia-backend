@@ -35,21 +35,44 @@ if (!isDatabaseConnected()) {
   await connectToDatabase();
 }
 
+// run startup script for ballots that start in the next 10 minutes
+let now = new Date();
+
+// get all ballots that start in the next 10 minutes
+const ballotsStart = await Ballot.find({
+  votePeriodStart: { $gte: now, $lt: new Date(now.getTime() + 10 * 60 * 1000) },
+  startupAt: null,
+});
+
+// process each ballot
+for (const ballot of ballotsStart) {
+  const { startupBallot } = await import("../config/" + ballot.startupScript);
+  // run startup script
+  const startupResult = await startupBallot(ballot._id);
+  // update ballot status to live
+  if (startupResult == true) {
+    await Ballot.updateOne({ _id: ballot._id }, { $set: { startupAt: now } });
+  } else {
+    console.error("STARTUP: Ballot", ballot._id, "failed");
+  }
+  console.log("STARTUP: Ballot", ballot._id, "completed");
+}
 // aggregate votes
 await aggregateVotes();
 
 // ballot rollup 
 // !! this is not live yet and needs proper testing and rewriting - if automated rollups are even a thing
 // get all ballots that ended in the last 10 minutes
-const now = new Date();
+// reset timestamp in case the former scripts run too long
+now = new Date();
 const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
-const ballots = await Ballot.find({
+const ballotsClosed = await Ballot.find({
   votePeriodEnd: { $gte: tenMinutesAgo, $lt: now },
-  resultBeacon: null,
+  resultTxHash: null,
 });
 
 // process each ballot
-for (const ballot of ballots) {
+for (const ballot of ballotsClosed) {
   console.log("ROLLUP: Ballot", ballot.name);
   // import finalization script
   const { rollupBallot } = await import("../config/" + ballot.rollupScript);
