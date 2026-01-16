@@ -116,7 +116,6 @@ const ballot = new Ballot({
     voterValidationScript: validationScript,
     rollupScript: "rollupBallot.js",
     voteFilters: true,
-    voteThreshold: 0,
     resultBeaconToken: null,
 });
 

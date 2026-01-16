@@ -10,7 +10,6 @@ const { Schema } = mongoose;
  * @property {String} description - Description of the ballot
  * @property {String} voterType - Type of voters eligible for this ballot (e.g., 'stake', 'drep', 'pool')
  * @property {String} voterDescription - Human-readable description of eligible voters
- * @property {Number} voteThreshold - Minimum threshold required for vote acceptance (if applicable)
  * @property {Date} votePeriodStart - Start date and time of the voting period
  * @property {Date} votePeriodEnd - End date and time of the voting period
  * @property {Boolean} voteFilters - Whether filtering options are enabled for this ballot
@@ -48,9 +47,6 @@ const ballotSchema = new Schema(
     voterDescription: {
       type: String,
       required: true,
-    },
-    voteThreshold: {
-      type: Number,
     },
     votePeriodStart: {
       type: Date,

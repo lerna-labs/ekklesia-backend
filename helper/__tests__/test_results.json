@@ -4,8 +4,6 @@
   "description": "The 2025 budget process has two main phases - proposal review, then reconciliation.  In the proposal review stage, anybody can comment on proposals to receive treasury funding, and DReps can poll their sentiment about proposals.  For reconciliation, DReps will be polled once more to determine which proposals go into the budget info action.  This polling is more decisive than in the proposal review phase because it will be checked against a threshold to determine which proposals go into the budget info action.",
   "voterType": "DReps",
   "voterDescription": "Cardano DReps",
-  "voteWeighted": true,
-  "voteThreshold": 0.5,
   "votePeriodStart": "2025-05-02T13:35:50.127Z",
   "voteFilters": true,
   "votePeriodEnd": "2025-05-05T13:35:50.127Z",

@@ -1448,9 +1448,6 @@ components:
           type: string
         voterDescription:
           type: string
-        voteThreshold:
-          type: number
-          nullable: true
         votePeriodStart:
           type: string
           format: date-time
