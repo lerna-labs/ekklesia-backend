@@ -65,19 +65,19 @@ module.exports = {
       max_logs: "30d",
       log_size: "10M",
     },
-    // Hourly job
+    // Minute job
     {
-      name: "preprod-cron1h",
-      script: path.resolve(__dirname, "crons/1h.js"),
+      name: "preprod-cron1min",
+      script: path.resolve(__dirname, "crons/1min.js"),
       watch: false,
       autorestart: false,
-      cron_restart: "0 * * * *",
+      cron_restart: "*/1 * * * *",
       env: {
         NODE_ENV: "development",
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
-      error_file: path.resolve(__dirname, "preprod-logs/cron1h-error.log"),
-      out_file: path.resolve(__dirname, "preprod-logs/cron1h-output.log"),
+      error_file: path.resolve(__dirname, "preprod-logs/cron1min-error.log"),
+      out_file: path.resolve(__dirname, "preprod-logs/cron1min-output.log"),
       combine_logs: true,
       merge_logs: true,
       time: true,
