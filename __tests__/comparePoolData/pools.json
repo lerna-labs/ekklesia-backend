@@ -1,0 +1,380 @@
+[
+  {
+    "pool_id_bech32": "pool123e5n6lmmy6hkqgtkrz4ev4wezll9d7x3kff6kklc7xyyj39yts",
+    "ticker": "ABLE",
+    "koios_pool_info": {
+      "pool_id_bech32": "pool123e5n6lmmy6hkqgtkrz4ev4wezll9d7x3kff6kklc7xyyj39yts",
+      "pool_id_hex": "547349ebfbd9357b010bb0c55cb2aec8bff2b7c68d929d5adfc78c42",
+      "active_epoch_no": 266,
+      "vrf_key_hash": "ae513b9460948857278c1279232503cd7754683a3a1f4cca31d534b5a41d3147",
+      "margin": 1,
+      "fixed_cost": "340000000",
+      "pledge": "9000000000",
+      "deposit": "500000000",
+      "reward_addr": "stake_test1uzq9ru7prvfv22f9qq049h0qlg8a9qvvr0tda9nhyaewd0s3gu7vj",
+      "reward_addr_delegated_drep": null,
+      "owners": [
+        "stake_test1uzq9ru7prvfv22f9qq049h0qlg8a9qvvr0tda9nhyaewd0s3gu7vj"
+      ],
+      "relays": [
+        {
+          "dns": null,
+          "srv": null,
+          "ipv4": "34.186.205.12",
+          "ipv6": null,
+          "port": 6002
+        }
+      ],
+      "meta_url": "https://hornan7.github.io/Able.json",
+      "meta_hash": "78544fcb28ca50292e8a5c585b6394b58b645feb1ebe76cf7469687f95f43af5",
+      "meta_json": {
+        "name": "ABLE Stakepool in ⚜️Québec - 🍁Canada",
+        "ticker": "ABLE",
+        "homepage": "https://able-pool.io",
+        "description": "Self-Hosted, Bare-Metal Server Nodes Only. | In Six Different Geographical Locations. | Six Reliable Operators/Owners Professionally Working Together To Secure The Network | Two Backup Servers. | Three Emergency Batteries | Two Emergency Power Generators."
+      },
+      "pool_status": "registered",
+      "retiring_epoch": null,
+      "op_cert": null,
+      "op_cert_counter": null,
+      "active_stake": null,
+      "sigma": null,
+      "block_count": null,
+      "live_pledge": null,
+      "live_stake": null,
+      "live_delegators": 0,
+      "live_saturation": null,
+      "voting_power": "1000000000000"
+    },
+    "koios_calidus_key": {
+      "pool_id_bech32": "pool123e5n6lmmy6hkqgtkrz4ev4wezll9d7x3kff6kklc7xyyj39yts",
+      "pool_status": "registered",
+      "calidus_nonce": 176944538,
+      "calidus_pub_key": "f7736498fc694ef6c58927e2eba4d1ab0d4cce6d1790ce2018a61f1573befd09",
+      "calidus_id_bech32": "calidus15yyujm9gs25cjnxvzy48la0lttp3pmu7jxm4w4tr958w0uq2x0j2u",
+      "tx_hash": "991c4f4fa1feca0715a7d539fbb2788d812fc90eaf368d3633cb6a48862da0ca",
+      "epoch_no": 264,
+      "block_height": 4328059,
+      "block_time": 1768510985
+    },
+    "blockfrost_pool_info": {
+      "pool_id": "pool123e5n6lmmy6hkqgtkrz4ev4wezll9d7x3kff6kklc7xyyj39yts",
+      "hex": "547349ebfbd9357b010bb0c55cb2aec8bff2b7c68d929d5adfc78c42",
+      "vrf_key": "ae513b9460948857278c1279232503cd7754683a3a1f4cca31d534b5a41d3147",
+      "blocks_minted": 0,
+      "blocks_epoch": 0,
+      "live_stake": "0",
+      "live_size": 0,
+      "live_saturation": 0,
+      "live_delegators": 0,
+      "active_stake": "0",
+      "active_size": 0,
+      "declared_pledge": "9000000000",
+      "live_pledge": "0",
+      "margin_cost": 1,
+      "fixed_cost": "340000000",
+      "reward_account": "stake_test1uzq9ru7prvfv22f9qq049h0qlg8a9qvvr0tda9nhyaewd0s3gu7vj",
+      "owners": [
+        "stake_test1uzq9ru7prvfv22f9qq049h0qlg8a9qvvr0tda9nhyaewd0s3gu7vj"
+      ],
+      "registration": [
+        "92b405634237c20bbe68edb9f4c375fd7eb484ab17073e4f4f204061067af207"
+      ],
+      "retirement": [],
+      "calidus_key": {
+        "id": "calidus15yyujm9gs25cjnxvzy48la0lttp3pmu7jxm4w4tr958w0uq2x0j2u",
+        "pub_key": "f7736498fc694ef6c58927e2eba4d1ab0d4cce6d1790ce2018a61f1573befd09",
+        "nonce": 176944538,
+        "tx_hash": "991c4f4fa1feca0715a7d539fbb2788d812fc90eaf368d3633cb6a48862da0ca",
+        "block_height": 4328059,
+        "block_time": 1768510985,
+        "epoch": 264
+      }
+    }
+  },
+  {
+    "pool_id_bech32": "pool1m8glad404zhwsa6k2lalm6qu95ptfffj9uk5drphmu0rsj3mnaz",
+    "ticker": "TEST",
+    "koios_pool_info": {
+      "pool_id_bech32": "pool1m8glad404zhwsa6k2lalm6qu95ptfffj9uk5drphmu0rsj3mnaz",
+      "pool_id_hex": "d9d1feb6afa8aee8775657fbfde81c2d02b4a5322f2d468c37df1e38",
+      "active_epoch_no": 257,
+      "vrf_key_hash": "0faf9e2d07c9909291d51e5776fd2715cc1b5e3cf0aa79866cd41f305171d135",
+      "margin": 0.1,
+      "fixed_cost": "340000000",
+      "pledge": "100000000000",
+      "deposit": "500000000",
+      "reward_addr": "stake_test1uz02jxdjfxrwxann6248szk9fywgdlgehkpac6c5c2rtapq0zyfwu",
+      "reward_addr_delegated_drep": null,
+      "owners": [
+        "stake_test1urqntq4wexjylnrdnp97qq79qkxxvrsa9lcnwr7ckjd6w0cr04y4p"
+      ],
+      "relays": [
+        {
+          "dns": null,
+          "srv": null,
+          "ipv4": "127.0.0.1",
+          "ipv6": null,
+          "port": 3001
+        }
+      ],
+      "meta_url": "https://my-ip.at/test/testpool.metadata.jsonashsfkjshdfjkashdjfkasdjfhsajdkhfjksadhfkjadssdjfhasdjkf",
+      "meta_hash": "93a6d4a028620f31b4315cf96a53eb05fa5f1364c4fad75bec43a9cf95b9ee96",
+      "meta_json": {
+        "name": "TESTPOOL",
+        "ticker": "TEST",
+        "homepage": "https://my-ip.at",
+        "description": "THE DESCRIPTION OF YOUR POOL"
+      },
+      "pool_status": "registered",
+      "retiring_epoch": null,
+      "op_cert": null,
+      "op_cert_counter": null,
+      "active_stake": "124326549098",
+      "sigma": 0.00026466491829624114,
+      "block_count": null,
+      "live_pledge": "124326549098",
+      "live_stake": "124326549098",
+      "live_delegators": 1,
+      "live_saturation": 0.2,
+      "voting_power": "124326549098"
+    },
+    "koios_calidus_key": {
+      "pool_id_bech32": "pool1m8glad404zhwsa6k2lalm6qu95ptfffj9uk5drphmu0rsj3mnaz",
+      "pool_status": "retired",
+      "calidus_nonce": 176946478,
+      "calidus_pub_key": "2819290ac05b4a49331d1781ce1dfc04cddfa8875abee8303ea5311878f12daf",
+      "calidus_id_bech32": "calidus15xcc3mphdwu8amrx9m6v9v4552pugr2gcsj4m8arjmx3zwc8yf8ng",
+      "tx_hash": "4277c7fe52b03c16d6d7b3c56c30dad31e4c990a61040c1a3b669ab148fbac6f",
+      "epoch_no": 264,
+      "block_height": 4328132,
+      "block_time": 1768512786
+    },
+    "blockfrost_pool_info": {
+      "pool_id": "pool1m8glad404zhwsa6k2lalm6qu95ptfffj9uk5drphmu0rsj3mnaz",
+      "hex": "d9d1feb6afa8aee8775657fbfde81c2d02b4a5322f2d468c37df1e38",
+      "vrf_key": "0faf9e2d07c9909291d51e5776fd2715cc1b5e3cf0aa79866cd41f305171d135",
+      "blocks_minted": 0,
+      "blocks_epoch": 0,
+      "live_stake": "124326549098",
+      "live_size": 0.00029360887444751906,
+      "live_saturation": 0.001957752503222176,
+      "live_delegators": 1,
+      "active_stake": "124326549098",
+      "active_size": 0.00026466491829624114,
+      "declared_pledge": "100000000000",
+      "live_pledge": "124326549098",
+      "margin_cost": 0.1,
+      "fixed_cost": "340000000",
+      "reward_account": "stake_test1uz02jxdjfxrwxann6248szk9fywgdlgehkpac6c5c2rtapq0zyfwu",
+      "owners": [
+        "stake_test1urqntq4wexjylnrdnp97qq79qkxxvrsa9lcnwr7ckjd6w0cr04y4p"
+      ],
+      "registration": [
+        "83528d780e2fc5650b3b59ae618d1fe3b75ca39b40601e56b0c969beda8d89a8",
+        "0ec45465bdff0573374e8771365f234c1a8b79b40dc1f71d2c7400b1cfe4186b",
+        "c0f324adb85d2d90018f6a39a82440392151d187afe320942490d80a0bc5f061"
+      ],
+      "retirement": [
+        "22b140062b75738337998af938ca8f8645b32334a92b7f1bc34a5d416fc2be74",
+        "7f1da12e974439681e77daffcc3dd0caa9631d21b923950300c5acc192eb6572"
+      ],
+      "calidus_key": {
+        "id": "calidus15xcc3mphdwu8amrx9m6v9v4552pugr2gcsj4m8arjmx3zwc8yf8ng",
+        "pub_key": "2819290ac05b4a49331d1781ce1dfc04cddfa8875abee8303ea5311878f12daf",
+        "nonce": 176946478,
+        "tx_hash": "4277c7fe52b03c16d6d7b3c56c30dad31e4c990a61040c1a3b669ab148fbac6f",
+        "block_height": 4328132,
+        "block_time": 1768512786,
+        "epoch": 264
+      }
+    }
+  },
+  {
+    "pool_id_bech32": "pool1jk4gd9cty2n89d6y6m8j3g63mr05drdjvqpgxqzhdzkjq4msndn",
+    "ticker": "CALID",
+    "koios_pool_info": {
+      "pool_id_bech32": "pool1jk4gd9cty2n89d6y6m8j3g63mr05drdjvqpgxqzhdzkjq4msndn",
+      "pool_id_hex": "95aa86970b22a672b744d6cf28a351d8df468db2600283005768ad20",
+      "active_epoch_no": 252,
+      "vrf_key_hash": "9e721a4ec8a2a081c38d86ff9a59a1736c93d33ee025e0ff5b56503f2d6ed0a3",
+      "margin": 0.1,
+      "fixed_cost": "300000000",
+      "pledge": "0",
+      "deposit": "500000000",
+      "reward_addr": "stake_test1uprgh7clcztzj7ss307lkw7k4fltgxp0x79muqjpl4gvrrqxcnvpz",
+      "reward_addr_delegated_drep": null,
+      "owners": [
+        "stake_test1uprgh7clcztzj7ss307lkw7k4fltgxp0x79muqjpl4gvrrqxcnvpz"
+      ],
+      "relays": [
+        {
+          "dns": null,
+          "srv": null,
+          "ipv4": "127.0.0.1",
+          "ipv6": null,
+          "port": 3001
+        }
+      ],
+      "meta_url": "https://my-ip.at/test/preprod-calid.metadata.json",
+      "meta_hash": "0ffd1c7e0b25d0af305faa72695ab8a355118b5c9444ed93203ab3471faf250d",
+      "meta_json": {
+        "name": "Calidus Testpool",
+        "ticker": "CALID",
+        "homepage": "https://stakepool.at",
+        "description": "Pool to test Calidus Keys"
+      },
+      "pool_status": "registered",
+      "retiring_epoch": null,
+      "op_cert": null,
+      "op_cert_counter": null,
+      "active_stake": "51231826931",
+      "sigma": 0.0001090617200206549,
+      "block_count": null,
+      "live_pledge": "51231826931",
+      "live_stake": "51231826931",
+      "live_delegators": 1,
+      "live_saturation": 0.08,
+      "voting_power": "51231826931"
+    },
+    "koios_calidus_key": {
+      "pool_id_bech32": "pool1jk4gd9cty2n89d6y6m8j3g63mr05drdjvqpgxqzhdzkjq4msndn",
+      "pool_status": "registered",
+      "calidus_nonce": 170628186,
+      "calidus_pub_key": "ed634d1e74a34e07e36361eade2b44f97b0dfde23f9b6f811410f0d3cce5628e",
+      "calidus_id_bech32": "calidus15yqfpa58cvpshjdwuzma06mv3na7sx4w29aluq78s8w9rwgd6whj6",
+      "tx_hash": "e2ec77810d579d6b3221f11f70fe63bb4df8a6ab33a63dac0666da7b41f960f5",
+      "epoch_no": 250,
+      "block_height": 4081978,
+      "block_time": 1762194519
+    },
+    "blockfrost_pool_info": {
+      "pool_id": "pool1jk4gd9cty2n89d6y6m8j3g63mr05drdjvqpgxqzhdzkjq4msndn",
+      "hex": "95aa86970b22a672b744d6cf28a351d8df468db2600283005768ad20",
+      "vrf_key": "9e721a4ec8a2a081c38d86ff9a59a1736c93d33ee025e0ff5b56503f2d6ed0a3",
+      "blocks_minted": 0,
+      "blocks_epoch": 0,
+      "live_stake": "51231826931",
+      "live_size": 0.00012098879241990465,
+      "live_saturation": 0.0008067402992079349,
+      "live_delegators": 1,
+      "active_stake": "51231826931",
+      "active_size": 0.0001090617200206549,
+      "declared_pledge": "50000000000",
+      "live_pledge": "51231826931",
+      "margin_cost": 0.1,
+      "fixed_cost": "300000000",
+      "reward_account": "stake_test1uprgh7clcztzj7ss307lkw7k4fltgxp0x79muqjpl4gvrrqxcnvpz",
+      "owners": [
+        "stake_test1uprgh7clcztzj7ss307lkw7k4fltgxp0x79muqjpl4gvrrqxcnvpz"
+      ],
+      "registration": [
+        "6d6563e4b69c93a1f5dd74bf0b66641afbef63dafc61a23499f98959240c0f22",
+        "05b3c12cbf2a02f1438be50c9fe1a9d7d26f15e327054b36a5f71cfa32e5d6c2"
+      ],
+      "retirement": [],
+      "calidus_key": {
+        "id": "calidus15yqfpa58cvpshjdwuzma06mv3na7sx4w29aluq78s8w9rwgd6whj6",
+        "pub_key": "ed634d1e74a34e07e36361eade2b44f97b0dfde23f9b6f811410f0d3cce5628e",
+        "nonce": 170628186,
+        "tx_hash": "e2ec77810d579d6b3221f11f70fe63bb4df8a6ab33a63dac0666da7b41f960f5",
+        "block_height": 4081978,
+        "block_time": 1762194519,
+        "epoch": 250
+      }
+    }
+  },
+  {
+    "pool_id_bech32": "pool1wdxhnkflk78u0h8kymhaga7l22rtk2xdlqrlajt4quagxh63er7",
+    "ticker": "CALI2",
+    "koios_pool_info": {
+      "pool_id_bech32": "pool1wdxhnkflk78u0h8kymhaga7l22rtk2xdlqrlajt4quagxh63er7",
+      "pool_id_hex": "734d79d93fb78fc7dcf626efd477df5286bb28cdf807fec975073a83",
+      "active_epoch_no": 252,
+      "vrf_key_hash": "be015baf340b1593b8f4554cc6ab78699878fb2f1df5565b8abd12b59eba7323",
+      "margin": 0.1,
+      "fixed_cost": "300000000",
+      "pledge": "0",
+      "deposit": "500000000",
+      "reward_addr": "stake_test1ur3684yasu2v3v3r2ne790dj98txmj0m9zkpmxtj9u6zydcutsvpn",
+      "reward_addr_delegated_drep": null,
+      "owners": [
+        "stake_test1ur3684yasu2v3v3r2ne790dj98txmj0m9zkpmxtj9u6zydcutsvpn"
+      ],
+      "relays": [
+        {
+          "dns": null,
+          "srv": null,
+          "ipv4": "127.0.0.1",
+          "ipv6": null,
+          "port": 3001
+        }
+      ],
+      "meta_url": "https://my-ip.at/test/preprod-calid2.metadata.json",
+      "meta_hash": "db0bc4158002738fa79ef8741f75d37095ce8bf6a07da25caea2b9701fe5bd3e",
+      "meta_json": {
+        "name": "Calidus Testpool-2",
+        "ticker": "CALI2",
+        "homepage": "https://stakepool.at",
+        "description": "Pool to test Calidus Keys"
+      },
+      "pool_status": "registered",
+      "retiring_epoch": null,
+      "op_cert": null,
+      "op_cert_counter": null,
+      "active_stake": "30000000000",
+      "sigma": 0.00006386365266704698,
+      "block_count": null,
+      "live_pledge": "30000000000",
+      "live_stake": "40661736583",
+      "live_delegators": 2,
+      "live_saturation": 0.06,
+      "voting_power": "40661736583"
+    },
+    "koios_calidus_key": {
+      "pool_id_bech32": "pool1wdxhnkflk78u0h8kymhaga7l22rtk2xdlqrlajt4quagxh63er7",
+      "pool_status": "registered",
+      "calidus_nonce": 170628783,
+      "calidus_pub_key": "713aef7c3c2cdd7aeb89873fdcecd61b1743597759c272cea325de56cd6eb90c",
+      "calidus_id_bech32": "calidus158cp49cy4twyetngn3733fjtedm8q0k2x3h7ay7d0jn32use2rudv",
+      "tx_hash": "24e628bedcf2238b1cd07246d0ef405091f9b173317864e6a5428ab21f927c6f",
+      "epoch_no": 250,
+      "block_height": 4081999,
+      "block_time": 1762195109
+    },
+    "blockfrost_pool_info": {
+      "pool_id": "pool1wdxhnkflk78u0h8kymhaga7l22rtk2xdlqrlajt4quagxh63er7",
+      "hex": "734d79d93fb78fc7dcf626efd477df5286bb28cdf807fec975073a83",
+      "vrf_key": "be015baf340b1593b8f4554cc6ab78699878fb2f1df5565b8abd12b59eba7323",
+      "blocks_minted": 0,
+      "blocks_epoch": 0,
+      "live_stake": "40661736583",
+      "live_size": 0.00009602652689897747,
+      "live_saturation": 0.0006402945883906108,
+      "live_delegators": 2,
+      "active_stake": "30000000000",
+      "active_size": 0.00006386365266704698,
+      "declared_pledge": "0",
+      "live_pledge": "30000000000",
+      "margin_cost": 0.1,
+      "fixed_cost": "300000000",
+      "reward_account": "stake_test1ur3684yasu2v3v3r2ne790dj98txmj0m9zkpmxtj9u6zydcutsvpn",
+      "owners": [
+        "stake_test1ur3684yasu2v3v3r2ne790dj98txmj0m9zkpmxtj9u6zydcutsvpn"
+      ],
+      "registration": [
+        "767dc942375a5d16af1f18aa426e1fbbe5b68ddab0f9f4409fb58ea5721d228d"
+      ],
+      "retirement": [],
+      "calidus_key": {
+        "id": "calidus158cp49cy4twyetngn3733fjtedm8q0k2x3h7ay7d0jn32use2rudv",
+        "pub_key": "713aef7c3c2cdd7aeb89873fdcecd61b1743597759c272cea325de56cd6eb90c",
+        "nonce": 170628783,
+        "tx_hash": "24e628bedcf2238b1cd07246d0ef405091f9b173317864e6a5428ab21f927c6f",
+        "block_height": 4081999,
+        "block_time": 1762195109,
+        "epoch": 250
+      }
+    }
+  }
+]
