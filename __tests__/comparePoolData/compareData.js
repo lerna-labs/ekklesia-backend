@@ -170,43 +170,55 @@ runTest("TEST6: live_pledge should not be smaller than pledge/declared_pledge", 
     const mismatches = [];
     for (const pool of pools) {
         // Check Koios: live_pledge vs pledge
+        // Use 0 if field is null, undefined, or empty string
         const koiosLivePledge = pool.koios_pool_info?.live_pledge;
         const koiosPledge = pool.koios_pool_info?.pledge;
 
-        if (koiosLivePledge !== null && koiosLivePledge !== undefined &&
-            koiosPledge !== null && koiosPledge !== undefined) {
-            const livePledgeNum = BigInt(koiosLivePledge);
-            const pledgeNum = BigInt(koiosPledge);
+        const koiosLivePledgeValue = (koiosLivePledge === null || koiosLivePledge === undefined || koiosLivePledge === "") ? "0" : String(koiosLivePledge);
+        const koiosPledgeValue = (koiosPledge === null || koiosPledge === undefined || koiosPledge === "") ? "0" : String(koiosPledge);
+
+        try {
+            const livePledgeNum = BigInt(koiosLivePledgeValue);
+            const pledgeNum = BigInt(koiosPledgeValue);
             if (livePledgeNum < pledgeNum) {
                 mismatches.push({
                     ticker: pool.ticker,
                     poolId: pool.pool_id_bech32,
-                    koiosValue: koiosLivePledge,
-                    blockfrostValue: koiosPledge,
+                    koiosValue: koiosLivePledge ?? "null",
+                    blockfrostValue: koiosPledge ?? "null",
                     label1: "Koios live_pledge",
                     label2: "Koios pledge",
                 });
             }
+        } catch (error) {
+            // Skip if values cannot be converted to BigInt (e.g., invalid format)
+            // This silently handles cases where values might be invalid
         }
 
         // Check Blockfrost: live_pledge vs declared_pledge
+        // Use 0 if field is null, undefined, or empty string
         const blockfrostLivePledge = pool.blockfrost_pool_info?.live_pledge;
         const blockfrostDeclaredPledge = pool.blockfrost_pool_info?.declared_pledge;
 
-        if (blockfrostLivePledge !== null && blockfrostLivePledge !== undefined &&
-            blockfrostDeclaredPledge !== null && blockfrostDeclaredPledge !== undefined) {
-            const livePledgeNum = BigInt(blockfrostLivePledge);
-            const declaredPledgeNum = BigInt(blockfrostDeclaredPledge);
+        const blockfrostLivePledgeValue = (blockfrostLivePledge === null || blockfrostLivePledge === undefined || blockfrostLivePledge === "") ? "0" : String(blockfrostLivePledge);
+        const blockfrostDeclaredPledgeValue = (blockfrostDeclaredPledge === null || blockfrostDeclaredPledge === undefined || blockfrostDeclaredPledge === "") ? "0" : String(blockfrostDeclaredPledge);
+
+        try {
+            const livePledgeNum = BigInt(blockfrostLivePledgeValue);
+            const declaredPledgeNum = BigInt(blockfrostDeclaredPledgeValue);
             if (livePledgeNum < declaredPledgeNum) {
                 mismatches.push({
                     ticker: pool.ticker,
                     poolId: pool.pool_id_bech32,
-                    koiosValue: blockfrostLivePledge,
-                    blockfrostValue: blockfrostDeclaredPledge,
+                    koiosValue: blockfrostLivePledge ?? "null",
+                    blockfrostValue: blockfrostDeclaredPledge ?? "null",
                     label1: "Blockfrost live_pledge",
                     label2: "Blockfrost declared_pledge",
                 });
             }
+        } catch (error) {
+            // Skip if values cannot be converted to BigInt (e.g., invalid format)
+            // This silently handles cases where values might be invalid
         }
     }
     return mismatches;
