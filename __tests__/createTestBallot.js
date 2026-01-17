@@ -68,10 +68,12 @@ if (!cliParams.validationScript) {
 
 let validationScript = "voterValidationAlwaysTrue.js";
 let voterType = "Stake";
+let startupScript = "startupBallot.js";
 switch (cliParams.validationScript) {
     case "poolPledge":
         validationScript = "voterValidationPoolsPledge.js";
         voterType = "SPOs (Pledge based)";
+        startupScript = "startupPledgeBasedVoting.js";
         break;
     case "poolStake":
         validationScript = "voterValidationPoolsStake.js";
@@ -115,6 +117,7 @@ const ballot = new Ballot({
     proposalPeriodEnd: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days from now
     voterValidationScript: validationScript,
     rollupScript: "rollupBallot.js",
+    startupScript: startupScript,
     voteFilters: true,
     resultBeaconToken: null,
 });
