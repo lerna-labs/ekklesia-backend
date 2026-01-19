@@ -195,8 +195,10 @@ export async function verifySignature(
             const latest_calidus_body = await latest_calidus.json();
             const calidus_key = latest_calidus_body[0];
 
-            // ? This should probably validate even if the pool is retired, so retired SPOs can still login and check former votes?
-            if (calidus_key !== undefined && calidus_key.pool_status === 'registered') {
+            // removed the pool registration check - this is done in the voter validation scripts
+            // this also enables retired pools to still login and see their former votes
+            // if (calidus_key !== undefined && calidus_key.pool_status === 'registered') {
+            if (calidus_key !== undefined) {
                 keyHash = PublicKey.from_hex(calidus_key.calidus_pub_key).hash().to_hex();
             }
             break;
