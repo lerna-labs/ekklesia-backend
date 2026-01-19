@@ -19,6 +19,7 @@ const { Schema } = mongoose;
  * @property {Date} proposalPeriodEnd - End date and time for submitting proposals
  * @property {String} resultTxHash - Token for the result transaction (null if not finalized)
  * @property {String} voterValidationScript - Script used to validate voters (default: voterValidationAlwaysTrue.js)
+ * @property {Boolean} voteWeighted - Whether the voting is weighted (default: false) - needed for UI displays mainly
  * @property {String} rollupScript - Script used to calculate voting results (default: rollupBallot.js)
  * @property {String} startupScript - Script used to start the ballot (default: startupBallot.js)
  * @property {Date} createdAt - Timestamp when the ballot was created (immutable)
@@ -46,6 +47,11 @@ const ballotSchema = new Schema(
     },
     voterDescription: {
       type: String,
+      required: true,
+    },
+    voteWeighted: {
+      type: Boolean,
+      default: false,
       required: true,
     },
     votePeriodStart: {

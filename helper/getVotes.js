@@ -134,7 +134,7 @@ export async function getPendingVoteCount(voterId) {
   // get all ballots for the pending votes
   const ballots = await Ballot.find({
     _id: { $in: ballotIds },
-  }).select("_id title description votePeriodStart votePeriodEnd status");
+  }).select("_id title description votePeriodStart votePeriodEnd voteWeighted status");
 
   // Convert to plain objects to access virtual properties
   // !! no longer needed because there are no virutals

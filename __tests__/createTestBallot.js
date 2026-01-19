@@ -109,6 +109,7 @@ const ballot = new Ballot({
     description: "This is a test ballot for the " + validationScript + " validation script.",
     voterType: voterType,
     voterDescription: "Cardano DReps",
+    voteWeighted: cliParams.voteWeighted || true,
     votePeriodStart,
     votePeriodEnd,
     voteAuthorityId: `authority-${Math.floor(Math.random() * 1000)}`,
