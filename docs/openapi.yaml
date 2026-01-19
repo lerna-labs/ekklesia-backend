@@ -268,7 +268,7 @@ paths:
                 default: desc
             - name: hasVoted
               in: query
-              description: Filter by whether authenticated user has voted
+              description: Filter by whether authenticated user has voted (only works when authenticated)
               required: false
               schema:
                 type: string
@@ -399,6 +399,7 @@ paths:
                           items:
                             type: number
                           nullable: true
+                          description: Array of vote option IDs the authenticated voter selected
                         ballotStatus:
                           type: string
                         results:
@@ -474,14 +475,19 @@ paths:
                               properties:
                                 value:
                                   type: number
+                                  description: Vote option value/id
                                 label:
                                   type: string
+                                  description: Vote option label
                                 count:
                                   type: number
+                                  description: Number of votes for this option
                                 votingPower:
                                   type: number
+                                  description: Total voting power for this option
                           totalVotes:
                             type: number
+                            description: Total number of votes cast
             '404':
               $ref: '#/components/responses/NotFound'
             '500':
@@ -673,6 +679,10 @@ paths:
                     type: string
                   signerAddressHex:
                     type: string
+                  calidusID:
+                    type: string
+                    nullable: true
+                    description: Calidus ID for pool signers (only present for pool signType)
         '400':
           $ref: '#/components/responses/BadRequest'
         '403':
@@ -775,12 +785,16 @@ paths:
                   properties:
                     dataHex:
                       type: string
+                      description: Nonce to sign (hex encoded)
                     voterId:
                       type: string
                     voterIdHex:
                       type: string
                     signerAddressHex:
                       type: string
+                    scriptAddress:
+                      type: string
+                      description: The CIP129 multisig script address
                     scriptAddress:
                       type: string
           '400':
@@ -855,8 +869,10 @@ paths:
                     nullable: true
                   multiSig:
                     type: boolean
+                    description: Whether the voter is using multisig authentication
                   pendingVotesCount:
                     type: number
+                    description: Number of pending (unsubmitted) votes for the voter
         '401':
           $ref: '#/components/responses/Unauthorized'
     /ballots:
@@ -1037,7 +1053,7 @@ paths:
             - name: transactionId
               in: query
               required: false
-              description: Optional ID of an existing transaction
+              description: Optional ID of an existing pending transaction to retrieve
               schema:
                 type: string
           requestBody:
@@ -1248,23 +1264,33 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        voterId:
-                          type: string
-                        votes:
-                          type: number
-                        lastLogin:
-                          type: string
-                          format: date-time
-                          nullable: true
-                  pagination:
-                    $ref: '#/components/schemas/Pagination'
+                oneOf:
+                  - type: object
+                    properties:
+                      status:
+                        type: string
+                        example: msg
+                      message:
+                        type: string
+                        example: No voters found
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            voterId:
+                              type: string
+                            votes:
+                              type: number
+                              description: Number of votes cast by this voter
+                            lastLogin:
+                              type: string
+                              format: date-time
+                              nullable: true
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
         '400':
           $ref: '#/components/responses/BadRequest'
         '500':
@@ -1354,16 +1380,20 @@ paths:
                                     type: string
                     ballotsVoted:
                       type: number
+                      description: Number of ballots the voter has voted on
                     proposalsVoted:
                       type: number
+                      description: Total number of proposals the voter has voted on across all ballots
                     lastVoteDate:
                       type: string
                       format: date-time
                       nullable: true
+                      description: Date of the most recent vote
                     lastLogin:
                       type: string
                       format: date-time
                       nullable: true
+                      description: Last login timestamp
           '400':
             $ref: '#/components/responses/BadRequest'
           '404':
@@ -1456,6 +1486,9 @@ components:
           format: date-time
         voteFilters:
           type: boolean
+        voteWeighted:
+          type: boolean
+          description: Whether the voting is weighted
         proposalPeriodStart:
           type: string
           format: date-time
@@ -1594,16 +1627,21 @@ components:
         merkleRoot:
           type: string
         votes:
-          type: array
-          items:
+          type: object
+          description: Collection of votes associated with this transaction
+          additionalProperties:
             type: object
             properties:
               proposalId:
                 type: string
               vote:
-                  type: array
-                  items:
-                    type: number
+                type: array
+                items:
+                  type: number
+        txHash:
+          type: string
+          nullable: true
+          description: The transaction hash after submission to blockchain
         status:
           type: string
           enum: [created, pending, submitted]
@@ -1633,15 +1671,18 @@ components:
         merkleRoot:
           type: string
         votes:
-          type: array
-          items:
-            type: object
+          type: object
+          description: Collection of votes associated with this transaction
         dataHex:
           type: string
           description: Hex-encoded merkle root for signing
         voterIdHex:
           type: string
           description: Hex-encoded voter ID
+        calidusID:
+          type: string
+          nullable: true
+          description: Calidus ID for pool signers (only present for pool signType)
 
     Signature:
       type: object
