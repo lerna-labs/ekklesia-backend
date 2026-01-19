@@ -50,7 +50,7 @@ export async function getVotes(
   // get all ballots for the votes
   const ballots = await Ballot.find({
     _id: { $in: ballotIds },
-  }).select("_id title description votePeriodStart votePeriodEnd");
+  }).select("_id title description votePeriodStart votePeriodEnd status");
   const plainBallots = ballots.map((ballot) =>
     ballot.toObject({ virtuals: true })
   );
@@ -134,9 +134,10 @@ export async function getPendingVoteCount(voterId) {
   // get all ballots for the pending votes
   const ballots = await Ballot.find({
     _id: { $in: ballotIds },
-  }).select("_id title description votePeriodStart votePeriodEnd");
+  }).select("_id title description votePeriodStart votePeriodEnd status");
 
   // Convert to plain objects to access virtual properties
+  // !! no longer needed because there are no virutals
   const plainBallots = ballots.map((ballot) =>
     ballot.toObject({ virtuals: true })
   );

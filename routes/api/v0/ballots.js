@@ -279,10 +279,10 @@ router.get("/:ballotId", getBallot, async (req, res) => {
   }
 
   // get total voter count for ballot
-  ballot.totalAllowedVoterCount = await allowedVoterCount();
+  ballot.totalAllowedVoterCount = await allowedVoterCount(ballot._id);
 
   // get total weight count for ballot
-  ballot.totalVotingPower = await getTotalWeight();
+  ballot.totalVotingPower = await getTotalWeight(ballot._id);
 
   // cleanup ballot data
   delete ballot.voterValidationScript;

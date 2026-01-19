@@ -61,8 +61,8 @@ router.get("/:proposalId", cacheControl(300), getProposal, async (req, res) => {
   const { allowedVoterCount, getTotalWeight } = await import(
     "../../../config/" + ballot.voterValidationScript
   );
-  const totalVoterCount = await allowedVoterCount();
-  const totalVotingPower = await getTotalWeight();
+  const totalVoterCount = await allowedVoterCount(ballot._id);
+  const totalVotingPower = await getTotalWeight(ballot._id);
 
   // add additional fields to proposal object
   proposal.ballotStatus = ballot.status;
