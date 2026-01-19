@@ -78,6 +78,7 @@ switch (cliParams.validationScript) {
     case "poolStake":
         validationScript = "voterValidationPoolsStake.js";
         voterType = "SPOs (Stake based)";
+        startupScript = "startupStakeBasedVoting.js";
         break;
     case "dreps":
         validationScript = "voterValidationDReps.js";
@@ -92,10 +93,9 @@ switch (cliParams.validationScript) {
         process.exit(1);
 }
 
-// set vote period start and end to 1 day from now
-let votePeriodStart = new Date();
-let votePeriodEnd = new Date();
-votePeriodEnd.setDate(votePeriodEnd.getDate() + 1);
+// set vote period start to 15 minutes from now and end to 1 day from now
+let votePeriodStart = new Date(Date.now() + 15 * 60 * 1000);
+let votePeriodEnd = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000);
 
 // console logs
 console.log("Vote period start:", votePeriodStart);
