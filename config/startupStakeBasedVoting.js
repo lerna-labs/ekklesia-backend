@@ -11,9 +11,9 @@ export async function startupBallot(ballotId) {
 
     // upsert voter cache for all pools in poolTotals.poolsData and set voting_power to pledge
     for (const pool of poolTotals.poolData) {
-        await VoterCache.findOneAndUpdate({ ballotId: ballotId, voterId: pool.pool_id_bech32 }, { votingPower: pool.active_stake }, { upsert: true });
+        await VoterCache.findOneAndUpdate({ ballotId: ballotId, voterId: pool.pool_id_bech32 }, { votingPower: pool.active_stake, validated: true }, { upsert: true });
     }
 
-    console.log("Voter cache created for", poolTotals.poolsData.length, "pools");
+    console.log("Voter cache created for", poolTotals.poolData.length, "pools");
     return true;
 }
