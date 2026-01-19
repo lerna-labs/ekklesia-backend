@@ -157,7 +157,7 @@ export async function getPoolTotals() {
 
   // Pagination setup: fetch pools in batches of 50
   let page = 1;
-  const limit = 50;
+  const limit = 75;
   let offset = (page - 1) * limit;
   let totalCount = 0;
 

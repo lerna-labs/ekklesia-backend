@@ -11,17 +11,25 @@ export async function startupBallot(ballotId) {
 
     // loop through pools and remove from poolData where live_pledge isn't larger or equal to pledge
     for (const pool of poolTotals.poolData) {
-        if (pool.live_pledge < pool.pledge) {
+        // Convert to BigInt for proper numeric comparison, treating null as 0
+        const livePledge = pool.live_pledge === null || pool.live_pledge === undefined
+            ? BigInt(0)
+            : (typeof pool.live_pledge === 'string' ? BigInt(pool.live_pledge) : BigInt(pool.live_pledge || 0));
+        const pledge = pool.pledge === null || pool.pledge === undefined
+            ? BigInt(0)
+            : (typeof pool.pledge === 'string' ? BigInt(pool.pledge) : BigInt(pool.pledge || 0));
+
+        if (livePledge < pledge) {
             console.log("Pool live pledge is smaller than pledge: ", pool.live_pledge, pool.pledge);
-            poolTotals.poolsData = poolTotals.poolsData.filter(p => p.pool_id_bech32 !== pool.pool_id_bech32);
+            poolTotals.poolData = poolTotals.poolData.filter(p => p.pool_id_bech32 !== pool.pool_id_bech32);
         }
     }
 
     // upsert voter cache for all pools in poolTotals.poolsData and set voting_power to pledge
     for (const pool of poolTotals.poolData) {
-        await VoterCache.findOneAndUpdate({ ballotId: ballotId, voterId: pool.pool_id_bech32 }, { votingPower: pool.pledge }, { upsert: true });
+        await VoterCache.findOneAndUpdate({ ballotId: ballotId, voterId: pool.pool_id_bech32 }, { votingPower: pool.live_pledge, validated: true }, { upsert: true });
     }
 
-    console.log("Voter cache created for", poolTotals.poolsData.length, "pools");
+    console.log("Voter cache created for", poolTotals.poolData.length, "pools");
     return true;
 }

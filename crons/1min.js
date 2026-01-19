@@ -34,7 +34,7 @@ if (!isDatabaseConnected()) {
 const ballotsLive = await Ballot.find({ status: "live", votePeriodEnd: { $lte: new Date() } });
 for (const ballot of ballotsLive) {
     await Ballot.updateOne({ _id: ballot._id }, { $set: { status: "closed" } });
-    console.log("1MIN: Ballot", ballot.name, "closed");
+    console.log("1MIN: Ballot", ballot._id.toString(), "closed");
 }
 
 // set upcoming ballots to live if startupAt is not null
@@ -45,7 +45,7 @@ const ballotsUpcoming = await Ballot.find({
 });
 for (const ballot of ballotsUpcoming) {
     await Ballot.updateOne({ _id: ballot._id }, { $set: { status: "live" } });
-    console.log("1MIN: Ballot", ballot.name, "set to live");
+    console.log("1MIN: Ballot", ballot._id.toString(), "set to live");
 }
 
 // disconnect from db
