@@ -82,7 +82,7 @@ export async function validateVoter(voterId, ballotId) {
             if (livePledge >= pledge) {
                 validated = true;
                 await saveVoterValidation(voterId, ballotId, validated);
-                await saveVotingPower(voterId, ballotId, voterInfo[0].pledge);
+                await saveVotingPower(voterId, ballotId, voterInfo[0].live_pledge);
                 return validated;
             } else {
                 console.log("Voter live pledge is smaller than pledge: ", voterInfo[0].live_pledge, voterInfo[0].pledge);
