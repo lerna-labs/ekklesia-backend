@@ -259,7 +259,7 @@ export async function getPoolTotals() {
 
   // Return results as strings (BigInt values converted to strings for JSON compatibility)
   return {
-    poolsData: poolData,
+    poolData: poolData,
     totalLivePledge: totalLivePledge.toString(),
     totalVotingPower: totalVotingPower.toString(),
     totalActiveStake: totalActiveStake.toString()

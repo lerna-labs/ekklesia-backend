@@ -10,7 +10,7 @@ export async function startupBallot(ballotId) {
     }
 
     // loop through pools and remove from poolData where live_pledge isn't larger or equal to pledge
-    for (const pool of poolTotals.poolsData) {
+    for (const pool of poolTotals.poolData) {
         if (pool.live_pledge < pool.pledge) {
             console.log("Pool live pledge is smaller than pledge: ", pool.live_pledge, pool.pledge);
             poolTotals.poolsData = poolTotals.poolsData.filter(p => p.pool_id_bech32 !== pool.pool_id_bech32);
@@ -18,7 +18,7 @@ export async function startupBallot(ballotId) {
     }
 
     // upsert voter cache for all pools in poolTotals.poolsData and set voting_power to pledge
-    for (const pool of poolTotals.poolsData) {
+    for (const pool of poolTotals.poolData) {
         await VoterCache.findOneAndUpdate({ ballotId: ballotId, voterId: pool.pool_id_bech32 }, { votingPower: pool.pledge }, { upsert: true });
     }
 
