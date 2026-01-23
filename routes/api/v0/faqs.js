@@ -71,8 +71,10 @@ router.get("/", cacheControl(300), async (req, res) => {
   }
 
   try {
-    // Fetch FAQs from the database
-    const faqs = await FAQ.find(matchStage).sort({ createdAt: -1 });
+    // Fetch FAQs from the database, excluding is_live from the response
+    const faqs = await FAQ.find(matchStage)
+      .select("-is_live -createdAt -updatedAt")
+      .sort({ createdAt: -1 });
 
     // Return the list of FAQs
     return res.status(200).json(faqs);
