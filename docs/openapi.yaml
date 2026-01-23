@@ -39,6 +39,8 @@ tags:
     description: Transaction management
   - name: Voters
     description: Voter information and statistics
+  - name: FAQs
+    description: Frequently asked questions
 
 paths:
   /status:
@@ -1401,6 +1403,43 @@ paths:
           '500':
             $ref: '#/components/responses/ServerError'
 
+  /faqs:
+    get:
+      tags:
+        - FAQs
+      summary: Get all live FAQs
+      description: Get all live FAQs with search and filtering capabilities. Only FAQs with is_live set to true are returned.
+      operationId: getFAQs
+      parameters:
+        - name: search
+          in: query
+          description: Search term for FAQ title or description
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - name: category
+          in: query
+          description: Filter by category
+          required: false
+          schema:
+            type: string
+            enum: [voter, proposer]
+      responses:
+        '200':
+          description: List of live FAQs matching the search and filter criteria
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FAQ'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
 components:
   securitySchemes:
     cookieAuth:
@@ -1614,6 +1653,33 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    FAQ:
+      type: object
+      properties:
+        _id:
+          type: string
+        title:
+          type: string
+          description: Title of the FAQ
+        description:
+          type: string
+          description: Description/answer content of the FAQ
+        category:
+          type: string
+          enum: [voter, proposer]
+          description: Category of the FAQ
+        is_live:
+          type: boolean
+          description: Whether the FAQ is currently live/published
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the FAQ was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the FAQ was last updated
 
     Transaction:
       type: object
