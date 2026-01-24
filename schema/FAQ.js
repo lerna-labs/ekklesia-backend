@@ -10,6 +10,7 @@ const { Schema } = mongoose;
  * @property {String} content - Answer content of the FAQ
  * @property {Array<String>} tags - Tags for the FAQ (e.g., ["voter", "proposer"])
  * @property {Boolean} is_live - Whether the FAQ is currently live/published
+ * @property {Boolean} featured - Whether the FAQ is featured
  * @property {Date} createdAt - Timestamp when the FAQ was created (immutable)
  * @property {Date} updatedAt - Timestamp when the FAQ was last updated
  */
@@ -29,6 +30,11 @@ const faqSchema = new Schema(
       default: [],
     },
     is_live: {
+      type: Boolean,
+      default: false,
+      required: true,
+    },
+    featured: {
       type: Boolean,
       default: false,
       required: true,
@@ -66,6 +72,7 @@ faqSchema.index({ title: 1 });
 faqSchema.index({ content: 1 });
 faqSchema.index({ tags: 1 });
 faqSchema.index({ is_live: 1 });
+faqSchema.index({ featured: 1 });
 
 // Text index for search functionality
 faqSchema.index({ title: "text", content: "text" });
