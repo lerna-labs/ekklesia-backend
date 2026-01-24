@@ -15,15 +15,15 @@ import validator from "validator";
  * @access Public
  *
  * @param {Object} req.query
- * @param {string} [req.query.search] - Search term for FAQ title or description
- * @param {string} [req.query.category] - Filter by category ('voter' or 'proposer')
+ * @param {string} [req.query.search] - Search term for FAQ title or content
+ * @param {string} [req.query.tags] - Filter by tags (comma-separated, e.g., 'voter,proposer')
  *
  * @returns {Array} 200 - List of live FAQs matching the search and filter criteria
  * @returns {Object} 400 - Error if query parameters are invalid
  * @returns {Object} 500 - Server error
  */
 router.get("/", cacheControl(300), async (req, res) => {
-  const { search, category } = req.query;
+  const { search, tags } = req.query;
   let matchStage = {
     is_live: true, // Only return live FAQs
   };
@@ -52,22 +52,26 @@ router.get("/", cacheControl(300), async (req, res) => {
     // Sanitize search input
     const searchQuery = validator.escape(search);
 
-    // Create search criteria that matches either title or description
+    // Create search criteria that matches either title or content
     matchStage.$or = [
       { title: { $regex: new RegExp(searchQuery, "i") } },
-      { description: { $regex: new RegExp(searchQuery, "i") } },
+      { content: { $regex: new RegExp(searchQuery, "i") } },
     ];
   }
 
-  // Validate and add category filter if provided
-  if (category) {
-    if (!["voter", "proposer"].includes(category.toLowerCase())) {
+  // Validate and add tags filter if provided
+  if (tags) {
+    const tagsList = tags.split(",").map((tag) => tag.trim()).filter(Boolean);
+    
+    if (tagsList.length === 0) {
       return res.status(400).json({
         status: "error",
-        message: "Invalid category parameter, must be 'voter' or 'proposer'",
+        message: "Invalid tags parameter, must provide at least one tag",
       });
     }
-    matchStage.category = category.toLowerCase();
+
+    // Filter FAQs that have at least one of the specified tags
+    matchStage.tags = { $in: tagsList };
   }
 
   try {

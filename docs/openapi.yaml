@@ -1413,19 +1413,19 @@ paths:
       parameters:
         - name: search
           in: query
-          description: Search term for FAQ title or description
+          description: Search term for FAQ title or content
           required: false
           schema:
             type: string
             minLength: 1
             maxLength: 100
-        - name: category
+        - name: tags
           in: query
-          description: Filter by category
+          description: Filter by tags (comma-separated, e.g., 'voter,proposer')
           required: false
           schema:
             type: string
-            enum: [voter, proposer]
+            example: voter,proposer
       responses:
         '200':
           description: List of live FAQs matching the search and filter criteria
@@ -1662,24 +1662,15 @@ components:
         title:
           type: string
           description: Title of the FAQ
-        description:
+        content:
           type: string
-          description: Description/answer content of the FAQ
-        category:
-          type: string
-          enum: [voter, proposer]
-          description: Category of the FAQ
-        is_live:
-          type: boolean
-          description: Whether the FAQ is currently live/published
-        createdAt:
-          type: string
-          format: date-time
-          description: Timestamp when the FAQ was created
-        updatedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the FAQ was last updated
+          description: Answer content of the FAQ
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tags for the FAQ (e.g., ["voter", "proposer"])
+          example: [voter]
 
     Transaction:
       type: object

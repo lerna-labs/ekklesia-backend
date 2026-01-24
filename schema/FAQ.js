@@ -7,8 +7,8 @@ const { Schema } = mongoose;
  *
  * @typedef {Object} FAQ
  * @property {String} title - Title of the FAQ
- * @property {String} description - Description/answer content of the FAQ
- * @property {String} category - Category of the FAQ ("voter" or "proposer")
+ * @property {String} content - Answer content of the FAQ
+ * @property {Array<String>} tags - Tags for the FAQ (e.g., ["voter", "proposer"])
  * @property {Boolean} is_live - Whether the FAQ is currently live/published
  * @property {Date} createdAt - Timestamp when the FAQ was created (immutable)
  * @property {Date} updatedAt - Timestamp when the FAQ was last updated
@@ -19,14 +19,14 @@ const faqSchema = new Schema(
       type: String,
       required: true,
     },
-    description: {
+    content: {
       type: String,
       required: true,
     },
-    category: {
-      type: String,
-      enum: ["voter", "proposer"],
+    tags: {
+      type: [String],
       required: true,
+      default: [],
     },
     is_live: {
       type: Boolean,
@@ -63,12 +63,12 @@ const faqSchema = new Schema(
 
 // Indexes for faster queries
 faqSchema.index({ title: 1 });
-faqSchema.index({ description: 1 });
-faqSchema.index({ category: 1 });
+faqSchema.index({ content: 1 });
+faqSchema.index({ tags: 1 });
 faqSchema.index({ is_live: 1 });
 
 // Text index for search functionality
-faqSchema.index({ title: "text", description: "text" });
+faqSchema.index({ title: "text", content: "text" });
 
 // Pre-save middleware to update the updatedAt field
 faqSchema.pre("save", function (next) {
