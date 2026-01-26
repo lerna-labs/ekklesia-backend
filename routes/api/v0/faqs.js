@@ -23,7 +23,7 @@ import validator from "validator";
  * @returns {Object} 400 - Error if query parameters are invalid
  * @returns {Object} 500 - Server error
  */
-router.get("/", cacheControl(300), async (req, res) => {
+router.get("/", async (req, res) => {
   const { search, tags, featured } = req.query;
   let matchStage = {
     is_live: true, // Only return live FAQs
@@ -86,11 +86,13 @@ router.get("/", cacheControl(300), async (req, res) => {
     matchStage.featured = featured.toLowerCase() === "true";
   }
 
+  console.log(matchStage);
+
   try {
     // Fetch FAQs from the database, excluding is_live from the response
     const faqs = await FAQ.find(matchStage)
-      .select("-is_live -createdAt -updatedAt")
-      .sort({ createdAt: -1 });
+      .select("-is_live -createdAt -updatedAt -featured")
+      .sort({ featured: -1 });
 
     // Return the list of FAQs
     return res.status(200).json(faqs);
