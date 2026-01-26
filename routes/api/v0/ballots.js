@@ -9,8 +9,6 @@ import { Vote } from "../../../schema/Vote.js";
 
 // helper
 import { verifyToken } from "../../../helper/verifyToken.js";
-// !! cache control not implemented yet
-import { cacheControl } from "../../../helper/cacheControl.js";
 import validator from "validator";
 import mongoose from "mongoose";
 import { getBallot } from "../../../helper/middleWare.js";
@@ -127,41 +125,16 @@ router.get("/", async (req, res) => {
   }
 
   try {
-    // Current date for status calculations
-    const now = new Date();
-
     // Create base aggregation pipeline for filtering
     const filterPipeline = [
       // Initial match stage for voterType and search
       { $match: matchStage },
-
-      // Add computed status field
-      // !! needs updating - this is no longer needed, the status is set by a cronjob now
-      {
-        $addFields: {
-          status: {
-            $cond: {
-              if: { $gt: ["$votePeriodEnd", now] },
-              then: {
-                $cond: {
-                  if: { $lte: ["$votePeriodStart", now] },
-                  then: "live",
-                  else: "upcoming",
-                },
-              },
-              else: "closed",
-            },
-          },
-        },
-      },
-
       // Apply status filter if provided
       ...(status ? [{ $match: { status: status.toLowerCase() } }] : []),
     ];
 
     // Count total documents matching the filter (for pagination metadata)
     const countPipeline = [...filterPipeline, { $count: "total" }];
-
     const totalResults = await Ballot.aggregate(countPipeline);
     const total = totalResults.length > 0 ? totalResults[0].total : 0;
 
@@ -199,7 +172,6 @@ router.get("/", async (req, res) => {
       { $skip: skip },
       { $limit: limitNum },
       // Exclude fields we don't want to return
-      // !! needs checking
       {
         $project: {
           id: 0,
@@ -687,6 +659,8 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       voteType: 1,
       voterBudget: 1,
       voteOptions: 1,
+      voteIncrement: 1,
+      abstainAllowed: 1,
       commentCount: 1,
       voteCount: {
         $size: {
