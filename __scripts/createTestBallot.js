@@ -127,10 +127,13 @@ const ballot = new Ballot({
 await ballot.save();
 console.log("Ballot created successfully", ballot._id);
 
+// budget proposal
+// abstain allowed
 const newProposal = new Proposal({
-    title: "Budget Proposal",
+    title: "Budget Proposal: Abstain Allowed",
     ballotId: ballot._id,
-    description: "A budget proposal, total cost is 3, all items are equally costed at 1.",
+    description: "A budget proposal, total cost is 3, all items have the same cost of 1. Abstain is allowed.",
+    abstainAllowed: true,
     data: {
         collapsible: {
             title: "Information",
@@ -210,12 +213,6 @@ const newProposal = new Proposal({
 });
 await newProposal.save();
 console.log("Proposal created successfully:", newProposal._id);
-
-
-
-
-
-
 
 
 // disconnect from db
