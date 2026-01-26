@@ -71,10 +71,23 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   // Remove duplicate votes
   const uniqueVotes = [...new Set(vote)];
 
+  // Invalidate vote submission if abstainAllowed and abstain as well as other votes are present
+  if (proposal.abstainAllowed && uniqueVotes.includes("abstain") && uniqueVotes.length > 1) {
+    return res.status(400).json({
+      status: "error",
+      message: "Invalid vote - Abstain does not allow other votes",
+    });
+  }
+
   // Get allowed option IDs from proposal.voteOptions
   let allowedOptionIds = proposal.voteOptions.map((option) => option.id);
 
-  // !! different logic for scale votes here
+  // allowed values for scale votes
+  if (proposal.voteType === "scale") {
+    const lowerBound = proposal.voteOptions[0].id;
+    const upperBound = proposal.voteOptions[proposal.voteOptions.length - 1].id;
+    allowedOptionIds = Array.from({ length: (upperBound - lowerBound) / proposal.voteIncrement + 1 }, (_, i) => lowerBound + i * proposal.voteIncrement);
+  }
 
   // Add abstain if proposal.abstainAllowed = true
   if (proposal.abstainAllowed) {
