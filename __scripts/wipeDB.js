@@ -6,6 +6,7 @@ import { Session } from "../schema/Session.js";
 import { Comment } from "../schema/Comment.js";
 import { Result } from "../schema/Result.js";
 import { VoterCache } from "../schema/VoterCache.js";
+import { FAQ } from "../schema/FAQ.js";
 
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
@@ -43,6 +44,7 @@ try {
         Comment.deleteMany({}),
         Result.deleteMany({}),
         VoterCache.deleteMany({}),
+        FAQ.deleteMany({}),
     ]);
 
     // Log deletion counts
