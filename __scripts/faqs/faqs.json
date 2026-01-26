@@ -39,7 +39,7 @@
     "title": "Where do I go if I have problems or questions",
     "content": "All polls on this page are run by [Intersect](https://intersectmbo.org). Please refer to their official comms channels on [X](https://x.com/IntersectMBO), [Telegram](https://t.me/IntersectCBC) or [Discord](https://discord.com/channels/1136727663583698984/1243451569492725760) for any questions or issues you might have with a vote.",
     "tags": ["General"],
-    "featured": false
+    "featured": true
   },
   {
     "title": "Which wallets are supported?",
@@ -63,6 +63,12 @@
     "title": "What is Ekklesia?",
     "content": "Ekklesia is a voting tool for verifiable and transparent on-chain voting on Cardano developed by [Adam Dean](https://x.com/adamkdean) & [Mad Orkestra](https://bsky.app/profile/madorkestra.com), initially funded by [IOG](https://x.com/InputOutputHK) and just received further funding from [Project Catalyst Fund14](https://projectcatalyst.io/).\n\nEkklesia is able to accommodate votes for all kind of voter groups from DReps, SPOs, token or NFT holders or simply just everyone with a Cardano wallet. It supports MultiSigs as well as CLI based authentication using the CardanoSigner.\n\nAs of today Ekklesia is still under development. You will be able to track all further development on our [Project Catalyst Profile](https://projectcatalyst.io/funds/14/cardano-use-cases-concepts/ekklesia-high-frequency-voting-on-cardano-with-hydra).",
     "tags": ["General"],
-    "featured": true
+    "featured": false
+  },
+  {
+    "title": "What are Calidus Keys?",
+    "content": "The Calidus Pool-Key is used to identify/authorize pool ownership for public/private services without the need to go thru a VRF-Secret-Key signing process. This was only possible on the CLI and SPOs don’t like to touch there secret keys that often.\n\nThe Calidus Pool-Key can be used on the cli AND with eternl directly in the Browser for Identification/Login/Authorization/etc.\n\nFor more information, please refer to the [Cardano Forum](https://forum.cardano.org/t/new-calidus-pool-key-for-spos-and-services-interacting-with-pools/143812).\n\nTo learn how to create and register your own Calidus Pool-Key, please refer to this [Calidus Tutorial](https://ecp.gitbook.io/how-to-guides-for-coincashew-method-cardano-spos/maintenance-and-daily-operations/how-to-guides-for-spos-using-coincashew-method/register-calidus-key).",
+    "tags": ["Voting", "SPOs"],
+    "featured": false
   }
 ]
