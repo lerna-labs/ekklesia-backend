@@ -56,6 +56,7 @@ try {
     console.log(`Deleted ${results[5].deletedCount} comments`);
     console.log(`Deleted ${results[6].deletedCount} results`);
     console.log(`Deleted ${results[7].deletedCount} caches`);
+    console.log(`Deleted ${results[8].deletedCount} faqs`);
     console.log("All collections wiped successfully.");
 
     console.timeEnd("Database wipe completed in");

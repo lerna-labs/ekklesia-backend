@@ -256,6 +256,38 @@ const newScaleProposal = new Proposal({
 await newScaleProposal.save();
 console.log("Proposal created successfully:", newScaleProposal._id);
 
+
+// scale proposal
+// abstain allowed
+const newScaleProposalAbstainAllowed = new Proposal({
+    title: "Scale Proposal: Abstain allowed",
+    ballotId: ballot._id,
+    description: "A scale proposal with a range of -100 to 100 and a step of 1.",
+    abstainAllowed: true,
+    voteType: "scale",
+    voteIncrement: 1,
+    voteOptions: [
+        {
+            "id": -100,
+            "label": "-100",
+            "cost": 1
+        },
+        {
+            "id": 0,
+            "label": "0",
+            "cost": 1
+        },
+        {
+            "id": 100,
+            "label": "100",
+            "cost": 1
+        },
+    ],
+});
+
+await newScaleProposalAbstainAllowed.save();
+console.log("Proposal created successfully:", newScaleProposalAbstainAllowed._id);
+
 // disconnect from db
 await disconnectFromDatabase();
 process.exit(0);
