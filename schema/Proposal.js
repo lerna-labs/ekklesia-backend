@@ -62,7 +62,12 @@ const proposalSchema = new Schema(
     voteType: {
       type: String,
       required: true,
-      default: "default",// default, budget, ranked
+      default: "default",// default, budget, ranked, scale, preference
+    },
+    voteIncrement: {
+      type: Number,
+      required: false,
+      default: 1,
     },
     voterBudget: {
       type: Number,
@@ -75,7 +80,6 @@ const proposalSchema = new Schema(
       default: [
         { id: 1, cost: 1, label: "Yes" },
         { id: 2, cost: 1, label: "No" },
-        { id: 3, cost: 1, label: "Abstain" },
       ],
     },
     abstainAllowed: {
