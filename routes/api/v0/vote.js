@@ -72,7 +72,14 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   const uniqueVotes = [...new Set(vote)];
 
   // Get allowed option IDs from proposal.voteOptions
-  const allowedOptionIds = proposal.voteOptions.map((option) => option.id);
+  let allowedOptionIds = proposal.voteOptions.map((option) => option.id);
+
+  // !! different logic for scale votes here
+
+  // Add abstain if proposal.abstainAllowed = true
+  if (proposal.abstainAllowed) {
+    allowedOptionIds.push("abstain");
+  }
 
   // Check if all values in the vote array are present in the allowed option IDs
   const invalidVotes = uniqueVotes.filter(voteId => !allowedOptionIds.includes(voteId));

@@ -98,6 +98,7 @@ export async function aggregateVotes() {
       JSON.stringify(voteAggregation, null, 2)
     );
 
+    // restructure results with labels
     const resultsWithLabels = proposal.voteOptions.map((option) => {
       // Find if there's a matching result from the aggregation
       const matchingResult = voteAggregation.find(
@@ -111,6 +112,20 @@ export async function aggregateVotes() {
         votingPower: matchingResult ? matchingResult.votingPower : 0,
       };
     });
+
+    // add abstain votes if allowed on proposal
+    if (proposal.abstainAllowed) {
+      const matchingAbstainResult = voteAggregation.find(
+        (result) => result._id == "abstain"
+      );
+
+      resultsWithLabels.push({
+        id: "abstain",
+        label: "Abstain",
+        count: matchingAbstainResult ? matchingAbstainResult.count : 0,
+        votingPower: matchingAbstainResult ? matchingAbstainResult.votingPower : 0,
+      });
+    }
 
     // upsert the result into the database
     await Result.updateOne(
