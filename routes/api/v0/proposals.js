@@ -7,7 +7,6 @@ import { Comment } from "../../../schema/Comment.js";
 import { Vote } from "../../../schema/Vote.js";
 import { Ballot } from "../../../schema/Ballot.js";
 import { Result } from "../../../schema/Result.js";
-import { Proposal } from "../../../schema/Proposal.js";
 
 // helper
 import { cacheControl } from "../../../helper/cacheControl.js";
