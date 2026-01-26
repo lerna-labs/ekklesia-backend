@@ -86,8 +86,6 @@ router.get("/", async (req, res) => {
     matchStage.featured = featured.toLowerCase() === "true";
   }
 
-  console.log(matchStage);
-
   try {
     // Fetch FAQs from the database, excluding is_live from the response
     const faqs = await FAQ.find(matchStage)
