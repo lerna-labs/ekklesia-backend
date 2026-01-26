@@ -78,6 +78,11 @@ const proposalSchema = new Schema(
         { id: 3, cost: 1, label: "Abstain" },
       ],
     },
+    abstainAllowed: {
+      type: Boolean,
+      required: true,
+      default: true,
+    },
     createdAt: {
       type: Date,
       default: Date.now,
