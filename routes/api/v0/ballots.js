@@ -9,6 +9,7 @@ import { Vote } from "../../../schema/Vote.js";
 
 // helper
 import { verifyToken } from "../../../helper/verifyToken.js";
+// !! cache control not implemented yet
 import { cacheControl } from "../../../helper/cacheControl.js";
 import validator from "validator";
 import mongoose from "mongoose";
@@ -135,6 +136,7 @@ router.get("/", async (req, res) => {
       { $match: matchStage },
 
       // Add computed status field
+      // !! needs updating - this is no longer needed, the status is set by a cronjob now
       {
         $addFields: {
           status: {
@@ -170,6 +172,27 @@ router.get("/", async (req, res) => {
     // Create data retrieval pipeline with pagination
     const dataPipeline = [
       ...filterPipeline,
+      // Lookup proposals for each ballot
+      {
+        $lookup: {
+          from: "proposals",
+          localField: "_id",
+          foreignField: "ballotId",
+          as: "proposals",
+        },
+      },
+      // Add singleProposal field if ballot has exactly one proposal - this allows for faster navigation on the frontend
+      {
+        $addFields: {
+          singleProposal: {
+            $cond: {
+              if: { $eq: [{ $size: "$proposals" }, 1] },
+              then: { $arrayElemAt: ["$proposals._id", 0] },
+              else: null,
+            },
+          },
+        },
+      },
       // Sort by voting period end date
       { $sort: { votePeriodEnd: -1 } },
       // Apply pagination
@@ -184,7 +207,12 @@ router.get("/", async (req, res) => {
           rollupScript: 0,
           voteAuthorityId: 0,
           voteAuthorityAddress: 0,
-          resultBeaconToken: 0,
+          proposalPeriodStart: 0,
+          proposalPeriodEnd: 0,
+          startupScript: 0,
+          startupAt: 0,
+          resultTxHash: 0,
+          proposals: 0, // Remove proposals array from output
         },
       },
     ];
