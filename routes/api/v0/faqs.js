@@ -17,13 +17,14 @@ import validator from "validator";
  * @param {Object} req.query
  * @param {string} [req.query.search] - Search term for FAQ title or content
  * @param {string} [req.query.tags] - Filter by tags (comma-separated, e.g., 'voter,proposer')
+ * @param {string} [req.query.featured] - Filter by featured (true or false)
  *
  * @returns {Array} 200 - List of live FAQs matching the search and filter criteria
  * @returns {Object} 400 - Error if query parameters are invalid
  * @returns {Object} 500 - Server error
  */
 router.get("/", cacheControl(300), async (req, res) => {
-  const { search, tags } = req.query;
+  const { search, tags, featured } = req.query;
   let matchStage = {
     is_live: true, // Only return live FAQs
   };
@@ -62,7 +63,7 @@ router.get("/", cacheControl(300), async (req, res) => {
   // Validate and add tags filter if provided
   if (tags) {
     const tagsList = tags.split(",").map((tag) => tag.trim()).filter(Boolean);
-    
+
     if (tagsList.length === 0) {
       return res.status(400).json({
         status: "error",
@@ -72,6 +73,17 @@ router.get("/", cacheControl(300), async (req, res) => {
 
     // Filter FAQs that have at least one of the specified tags
     matchStage.tags = { $in: tagsList };
+  }
+
+  // Validate and add featured filter if provided
+  if (featured !== undefined) {
+    if (!["true", "false"].includes(featured.toLowerCase())) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid featured parameter, must be 'true' or 'false'",
+      });
+    }
+    matchStage.featured = featured.toLowerCase() === "true";
   }
 
   try {
