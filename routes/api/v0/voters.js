@@ -480,9 +480,15 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
           // vote.submittedVote is an array of voteOption ids - extract the label from p.voteOptions
           const voteLabels = vote.submittedVote.map((id) => {
             const option = p.voteOptions.find((o) => o.id.toString() === id.toString());
+            // set label for abstain votes
             if (id === "abstain") {
               return "Abstain";
             }
+            // on scale votes return the id
+            if (p.voteType === "scale") {
+              return id;
+            }
+            // otherwise return the found label or null
             return option ? option.label : null;
           }).filter(Boolean);
 
