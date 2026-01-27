@@ -760,17 +760,19 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
         );
 
         // clean up results to not expose all single votes, only keep abstain
-        proposal.result.results = proposal.result.results.filter(result => result.id === "abstain");
+        if (proposal.result.results) {
+          proposal.result.results = proposal.result.results.filter(result => result.id === "abstain");
+          // Add a field for valid votes which are not abstain with count and votingpower
+          // get votingpower for all votes which are not abstained from voter cache
+          const votingPowerNoAbstain = proposal.validVotes.filter(vote => vote.submittedVote[0] !== "abstain").map(vote => vote.voterId).map(voterId => proposal.voterCaches.find(cache => cache.voterId === voterId)?.votingPower).reduce((sum, power) => sum + power, 0);
+          proposal.result.results.push({
+            id: "votes",
+            label: "Votes",
+            count: proposal.validVotes.filter(vote => vote.submittedVote[0] !== "abstain").length,
+            votingPower: votingPowerNoAbstain
+          });
+        }
 
-        // Add a field for valid votes which are not abstain with count and votingpower
-        // get votingpower for all votes which are not abstained from voter cache
-        const votingPowerNoAbstain = proposal.validVotes.filter(vote => vote.submittedVote[0] !== "abstain").map(vote => vote.voterId).map(voterId => proposal.voterCaches.find(cache => cache.voterId === voterId)?.votingPower).reduce((sum, power) => sum + power, 0);
-        proposal.result.results.push({
-          id: "votes",
-          label: "Votes",
-          count: proposal.validVotes.filter(vote => vote.submittedVote[0] !== "abstain").length,
-          votingPower: votingPowerNoAbstain
-        });
 
         // Clean up temporary fields used for calculation
         delete proposal.validVotes;
