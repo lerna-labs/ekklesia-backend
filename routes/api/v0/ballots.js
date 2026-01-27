@@ -362,7 +362,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
   const sortDirection = direction.toLowerCase() === "asc" ? 1 : -1;
 
   // Determine sort field and validate
-  let sortField = { _id: -1 }; // Default sort by ID, newest first
+  let sortField = { _id: 1 }; // Default sort by ID, newest first
 
   if (sort) {
     // Validate sort parameter
