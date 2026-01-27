@@ -1,6 +1,6 @@
 {
   "name": "ekklesia-backend",
-  "version": "0.5.5",
+  "version": "0.6.0",
   "main": "server.js",
   "scripts": {
     "start:dev": "NODE_ENV=development nodemon --watch '**/*.js' --ignore 'node_modules/' server.js",
