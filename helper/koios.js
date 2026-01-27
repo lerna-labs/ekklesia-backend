@@ -184,7 +184,7 @@ export async function getPoolTotals() {
   // Loop through pages until we've fetched all pools
   while (offset < totalCount) {
     try {
-      console.log(`Fetching page ${page}/${Math.ceil(totalCount / limit)}`);
+      console.log(`Fetching Pool page ${page}/${Math.ceil(totalCount / limit)}`);
 
       // First, get the list of pool IDs for this page
       const requestPoolList = await fetch(`${process.env.API_URL}/pool_list?pool_status=eq.registered&select=pool_id_bech32,pool_status&offset=${offset}&limit=${limit}`, {
@@ -264,4 +264,71 @@ export async function getPoolTotals() {
     totalVotingPower: totalVotingPower.toString(),
     totalActiveStake: totalActiveStake.toString()
   };
+}
+
+
+export async function getAllDreps() {
+  // Pagination setup: fetch dreps in batches of 50
+  let page = 1;
+  const limit = 50;
+  let offset = (page - 1) * limit;
+  let totalCount = 0;
+  let dreps = [];
+  console.log("Fetching all dreps...");
+
+  try {
+    const requestTotalCount = await fetch(`${process.env.API_URL}/drep_list?registered=eq.true&select=drep_id,registered&limit=1`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${process.env.API_TOKEN}`,
+        prefer: "count=exact", // Request exact count in response headers
+      },
+    });
+    // Extract total count from Content-Range header (format: "0-0/1234")
+    totalCount = requestTotalCount.headers.get("content-range").split("/")[1];
+    console.log(`Total dreps: ${totalCount}`);
+  } catch (error) {
+    console.error(`Error fetching total count of dreps: ${error.message}`);
+    return { error: `Error fetching total count of dreps: ${error.message}` };
+  }
+
+  while (offset < totalCount) {
+    try {
+      console.log(`Fetching DRep page ${page}/${Math.ceil(totalCount / limit)}`);
+      const requestDreps = await fetch(`${process.env.API_URL}/drep_list?registered=eq.true&select=drep_id,registered&offset=${offset}&limit=${limit}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${process.env.API_TOKEN}`,
+          prefer: "count=exact",
+        },
+      });
+      const drepsJSON = await requestDreps.json();
+
+      // get drep info for batch
+      const requestDrepInfo = await fetch(`${process.env.API_URL}/drep_info?select=drep_id,registered,amount`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${process.env.API_TOKEN}`,
+        },
+        body: JSON.stringify({
+          _drep_ids: drepsJSON.map(drep => drep.drep_id),
+        }),
+      });
+      const drepInfoJSON = await requestDrepInfo.json();
+      dreps.push(...drepInfoJSON);
+
+      page++;
+      offset = (page - 1) * limit;
+    } catch (error) {
+      console.error(`Error fetching dreps: ${error.message}`);
+      return { error: `Error fetching dreps: ${error.message}` };
+    }
+  }
+
+  console.log(`Fetched ${dreps.length} dreps`);
+  return dreps;
+
 }
