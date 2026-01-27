@@ -13,6 +13,7 @@ import validator from "validator";
 import mongoose from "mongoose";
 import { getBallot } from "../../../helper/middleWare.js";
 import { checkVotingPower } from "../../../helper/voterValidation.js";
+import { calculateSimpleMedian, calculateWeightedMedian } from "../../../helper/calculateMedians.js";
 
 /**
  * @route GET /api/v0/ballots
@@ -678,6 +679,30 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       votingPower: 1,
       result: 1,
       updatedAt: 1,
+      // Include vote data for scale voteType proposals to calculate medians
+      validVotes: {
+        $cond: {
+          if: { $eq: ["$voteType", "scale"] },
+          then: {
+            $map: {
+              input: "$validVotes",
+              as: "vote",
+              in: {
+                submittedVote: "$$vote.submittedVote",
+                voterId: "$$vote.voterId"
+              }
+            }
+          },
+          else: "$$REMOVE"
+        }
+      },
+      voterCaches: {
+        $cond: {
+          if: { $eq: ["$voteType", "scale"] },
+          then: "$voterCaches",
+          else: "$$REMOVE"
+        }
+      },
       // Only include user-specific fields when a user is logged in
       ...(voterId && {
         voterVote: "$userVote.vote",
@@ -707,6 +732,42 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
 
     // Fetch the proposals from the database
     const proposals = await Proposal.aggregate(aggregationPipeline);
+
+    // Calculate medians for scale voteType proposals
+    for (const proposal of proposals) {
+      if (proposal.voteType === "scale" && proposal.voteOptions && proposal.voteOptions.length > 0) {
+        const lowerBound = proposal.voteOptions[0].id;
+        const upperBound = proposal.voteOptions[proposal.voteOptions.length - 1].id;
+
+        // Ensure result object exists
+        if (!proposal.result) {
+          proposal.result = {};
+        }
+
+        // Calculate simple median based on submitted votes
+        proposal.result.median = calculateSimpleMedian(
+          proposal.validVotes || [],
+          lowerBound,
+          upperBound
+        );
+
+        // Calculate weighted median based on voting power
+        proposal.result.medianWeighted = calculateWeightedMedian(
+          proposal.validVotes || [],
+          proposal.voterCaches || [],
+          lowerBound,
+          upperBound
+        );
+
+        // Clean up temporary fields used for calculation
+        delete proposal.validVotes;
+        delete proposal.voterCaches;
+
+        // !! should be enabled for live deployments, leaving this in for testing rn
+        // clean up results to not expose all single votes, only keep abstain
+        // proposal.result.results = proposal.result.results.filter(result => result.id === "abstain");
+      }
+    }
 
     // Return proposals with pagination metadata and updated filters
     return res.status(200).json({
