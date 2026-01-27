@@ -7,6 +7,7 @@ import { isDatabaseConnected } from "../helper/dbManager.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import fs from "fs/promises";
+import { hydraGetStatus } from "../helper/hydra.js";
 
 // Get application version from package.json
 const __filename = fileURLToPath(import.meta.url);
@@ -54,18 +55,7 @@ router.get("/", async (req, res) => {
   };
 
   // Check Hydra Status
-  let hydraStatus = "unknown";
-  // try {
-  //   const response = await fetch(`${process.env.HYDRA_URL}/health`, {
-  //     headers: {
-  //       "x-api-key": `${process.env.HYDRA_TOKEN}`,
-  //     },
-  //   });
-  //   const data = await response.json();
-  //   hydraStatus = data.status || "unknown";
-  // } catch (error) {
-  //   console.error(`Failed to check Hydra status: ${error.message}`);
-  // }
+  let hydraStatus = await hydraGetStatus();
 
   return res.json({
     status: "operational",
