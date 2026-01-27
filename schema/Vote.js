@@ -10,8 +10,8 @@ const { Schema } = mongoose;
  * @property {ObjectId} ballotId - ID of the ballot the vote belongs to (references Ballot)
  * @property {ObjectId} proposalId - ID of the proposal being voted on (references Proposal)
  * @property {Array} vote - Current value of the vote (may differ from submittedVote if changed)
- * @property {Array} submittedVote - Value of the vote when it was last submitted to Hydra
- * @property {Date} submittedAt - Timestamp when the vote was last submitted to Hydra
+ * @property {Array} submittedVote - Value of the vote when it was last submitted
+ * @property {Date} submittedAt - Timestamp when the vote was last submitted
  * @property {Date} createdAt - Timestamp when the vote was first created (immutable)
  * @property {Date} updatedAt - Timestamp when the vote was last updated
  *
