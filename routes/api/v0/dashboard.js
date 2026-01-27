@@ -393,8 +393,6 @@ router.put(
       });
     }
 
-    // !! SUBMIT THE TRANSACTION
-
     // UPDATE ALL VOTES
     const bulkOps = [];
     for (const voteData of transaction.votes) {
@@ -444,6 +442,8 @@ router.put(
       "Votes submitted for " + voterId,
       "Ballot: " + ballotId.toString()
     );
+
+    // !! submit transaction / votes to hydra
 
     return res.status(200).json({
       status: "ok",
@@ -840,10 +840,6 @@ router.put(
         });
       }
 
-      // console.log(
-      //   `Successfully updated ${voteUpdates.modifiedCount} votes with transaction values`
-      // );
-
       // UPDATE THE TRANSACTION COLLECTION
       const transactionUpdate = await Transaction.findOneAndUpdate(
         { _id: transaction._id },
@@ -860,6 +856,8 @@ router.put(
         "MultiSig: Votes submitted for " + voterId,
         "Ballot: " + ballotId.toString()
       );
+
+      // !! submit transaction/votes to hydra
 
       return res.status(200).json({
         status: "ok",

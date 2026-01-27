@@ -18,6 +18,7 @@ import {
 } from "../../../helper/verifySignature.js";
 import { validateAddress } from "../../../helper/validateAddress.js";
 import { getCalidusKey } from "../../../helper/koios.js";
+import { hydraVoterPing } from "../../../helper/hydra.js";
 
 // enable dayjs duration plugin
 dayjs.extend(duration);
@@ -174,10 +175,6 @@ router.put("/", validateSessionRequest, async (req, res) => {
     });
   }
 
-  // console.log("Nonce data", nonceData.nonce);
-  // console.log("signerAddress", signerAddress);
-  // console.log("signature", signature);
-
   // verify signature
   let signatureVerification;
   try {
@@ -261,20 +258,7 @@ router.put("/", validateSessionRequest, async (req, res) => {
   console.log("Login successful:", signerAddress);
 
   // Ping Hydra (non-blocking)
-  console.log("Pinging Hydra for voterId:", signerAddress);
-  fetch(`${process.env.HYDRA_URL}/register`, {
-    method: "POST",
-    headers: {
-      "x-api-key": `${process.env.HYDRA_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      voterId: signerAddress
-    }),
-  })
-    .then(response => response.json())
-    .then(data => console.log("Hydra response:", data))
-    .catch(error => console.error("Failed to ping Hydra:", error));
+  hydraVoterPing(signerAddress);
 
   // Set the cookie on the response
   res.cookie("token", token, {
