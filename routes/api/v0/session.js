@@ -45,10 +45,11 @@ import { validateSessionRequest } from "../../../helper/middleWare.js";
 
 /**
  * @route GET /api/v0/session
- * @description Validate JWT token and return voter ID
+ * @description Validate JWT token and return voter ID. Used to check if user is authenticated and get their voter ID.
  * @access Private (requires authentication)
  *
- * @returns {Object} 200 - The voter ID if token is valid
+ * @returns {Object} 200 - Object containing:
+ *   - voterId: The voter ID from the validated JWT token
  * @returns {Object} 401 - Unauthorized if token is invalid or missing (handled by isAuthenticated middleware)
  */
 router.get("/", isAuthenticated, async (req, res) => {
@@ -61,16 +62,23 @@ router.get("/", isAuthenticated, async (req, res) => {
 
 /**
  * @route POST /api/v0/session
- * @description Request authentication nonce for standard (non-script) wallet
+ * @description Request authentication nonce for standard (non-script) wallet. Creates a session with a random nonce that the voter must sign to prove identity. Script addresses are not allowed (use /multisig route instead).
  * @access Public
  *
  * @param {Object} req.body
- * @param {string} req.body.signerAddress - The address of the signer (validated by middleware)
- * @param {string} req.body.signType - Type of signature ('drep', etc.) (validated by middleware)
+ * @param {string} req.body.signerAddress - The address of the signer (validated by validateSessionRequest middleware, must be valid Bech32 address)
+ * @param {string} req.body.signType - Type of signature: 'drep', 'stake', or 'pool' (validated by middleware)
  *
- * @returns {Object} 200 - Nonce to sign and voter identification data
- * @returns {Object} 400 - Error if address is a script address or invalid
- * @returns {Object} 403 - Error if address is not in allowlist (when enabled)
+ * @returns {Object} 200 - Response object containing:
+ *   - dataHex: Nonce string to sign (hex-encoded)
+ *   - voterId: Bech32 address of the voter
+ *   - voterIdHex: Hex-encoded signer address
+ *   - signerAddressHex: Hex-encoded signer address
+ *   - calidusID: Calidus ID for pool signers (only present when signType is "pool")
+ * @returns {Object} 400 - Error if:
+ *   - Address is a script address (must use /multisig route)
+ *   - Address validation fails
+ *   - Pool not found or no calidus key registered (for pool signType)
  */
 router.post("/", validateSessionRequest, async (req, res) => {
   // Get validated address from middleware
@@ -140,16 +148,22 @@ router.post("/", validateSessionRequest, async (req, res) => {
 
 /**
  * @route PUT /api/v0/session
- * @description Verify signature of nonce and issue JWT token for authentication
+ * @description Verify signature of nonce and issue JWT token for authentication. After successful verification, sets HTTP-only cookie with JWT token and clears nonce from session records. Also pings Hydra (non-blocking) to notify of voter login.
  * @access Public
  *
  * @param {Object} req.body
- * @param {string} req.body.signerAddress - The address of the signer (validated by middleware)
- * @param {string} req.body.signType - Type of signature ('drep', etc.) (validated by middleware)
- * @param {Object} req.body.signature - Signature object containing the signed nonce
+ * @param {string} req.body.signerAddress - The address of the signer (validated by validateSessionRequest middleware)
+ * @param {string} req.body.signType - Type of signature: 'drep', 'stake', or 'pool' (validated by middleware)
+ * @param {Object} req.body.signature - Signature object containing the signed nonce (structure varies by signType)
  *
- * @returns {Object} 200 - JWT token and expiration information, also sets HTTP-only cookie
- * @returns {Object} 400 - Error if signature verification fails or nonce not found
+ * @returns {Object} 200 - Response object containing:
+ *   - token: JWT token string (also set as HTTP-only cookie)
+ *   - expiresIn: ISO 8601 timestamp when the token expires
+ * @returns {Object} 400 - Error if:
+ *   - Address is a script address (must use /multisig route)
+ *   - Nonce not found in database
+ *   - Signature verification fails
+ *   - Signature verification throws an exception
  */
 router.put("/", validateSessionRequest, async (req, res) => {
   // Get signer address and signature from request body (already validated by middleware)
@@ -278,10 +292,12 @@ router.put("/", validateSessionRequest, async (req, res) => {
 
 /**
  * @route DELETE /api/v0/session
- * @description Logout by clearing authentication cookie
+ * @description Logout by clearing the authentication cookie. The cookie is cleared with the same options used when it was set (httpOnly, secure, sameSite, path).
  * @access Private (requires authentication)
  *
- * @returns {Object} 200 - Success message confirming logout
+ * @returns {Object} 200 - Success response containing:
+ *   - status: "success"
+ *   - message: "Logged out successfully"
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  */
 router.delete("/", isAuthenticated, async (req, res) => {
@@ -305,17 +321,26 @@ router.delete("/", isAuthenticated, async (req, res) => {
 
 /**
  * @route POST /api/v0/session/multisig
- * @description Request authentication nonce for multisig wallet
+ * @description Request authentication nonce for multisig wallet. Creates a session with the CIP129 script address as voterId. The script address must be a valid CIP129 multisig script address.
  * @access Public
  *
  * @param {Object} req.body
- * @param {string} req.body.signerAddress - The address of the signer (validated by middleware)
- * @param {string} req.body.signType - Type of signature ('drep', etc.) (validated by middleware)
- * @param {string} req.body.scriptAddress - The address of the multisig script
+ * @param {string} req.body.signerAddress - The address of the signer (validated by validateSessionRequest middleware)
+ * @param {string} req.body.signType - Type of signature: 'drep', 'stake', or 'pool' (validated by middleware)
+ * @param {string} req.body.scriptAddress - The CIP129 multisig script address (required, must be valid script address)
  *
- * @returns {Object} 200 - Nonce to sign and identification data including script address
- * @returns {Object} 400 - Error if script address is invalid or not a CIP129 address
- * @returns {Object} 403 - Error if address is not in allowlist (when enabled)
+ * @returns {Object} 200 - Response object containing:
+ *   - dataHex: Nonce string to sign (hex-encoded)
+ *   - voterId: Bech32 address of the signer
+ *   - voterIdHex: Hex-encoded signer address
+ *   - signerAddressHex: CIP129 script address (hex-encoded)
+ *   - scriptAddress: CIP129 multisig script address
+ * @returns {Object} 400 - Error if:
+ *   - Script address is not provided
+ *   - Script address validation fails
+ *   - Address is not a script address
+ *   - Script address is not a CIP129 address
+ * @returns {Object} 403 - Error if address is not in allowlist (when SYSTEM_ALLOWLIST is enabled)
  */
 router.post("/multisig", validateSessionRequest, async (req, res) => {
   // Get validated address from middleware
@@ -414,17 +439,26 @@ router.post("/multisig", validateSessionRequest, async (req, res) => {
 
 /**
  * @route PUT /api/v0/session/multisig
- * @description Verify signature and script membership for multisig wallet, issue JWT token
+ * @description Verify signature and script membership for multisig wallet, then issue JWT token. Verifies that the signer is a party to the multisig script and that the signature is valid. After successful verification, sets HTTP-only cookie with JWT token and clears nonce from session records.
  * @access Public
  *
  * @param {Object} req.body
- * @param {string} req.body.signerAddress - The address of the signer (validated by middleware)
- * @param {string} req.body.signType - Type of signature ('drep', etc.) (validated by middleware)
- * @param {string} req.body.scriptAddress - The address of the multisig script
- * @param {Object} req.body.signature - Signature object containing the signed nonce
+ * @param {string} req.body.signerAddress - The address of the signer (validated by validateSessionRequest middleware)
+ * @param {string} req.body.signType - Type of signature: 'drep', 'stake', or 'pool' (validated by middleware)
+ * @param {string} req.body.scriptAddress - The CIP129 multisig script address (required, must be valid CIP129 script address)
+ * @param {Object} req.body.signature - Signature object containing the signed nonce (structure varies by signType)
  *
- * @returns {Object} 200 - JWT token and expiration information, also sets HTTP-only cookie
- * @returns {Object} 400 - Error if signature verification fails, signer not party to script, or nonce not found
+ * @returns {Object} 200 - Response object containing:
+ *   - token: JWT token string (also set as HTTP-only cookie, includes multiSig: true in payload)
+ *   - expiresIn: ISO 8601 timestamp when the token expires
+ * @returns {Object} 400 - Error if:
+ *   - Script address is not provided
+ *   - Script address validation fails
+ *   - Address is not a script address
+ *   - Script address is not a CIP129 address
+ *   - Nonce not found in database
+ *   - Signer is not a party to the multisig script
+ *   - Signature verification fails
  */
 router.put("/multisig", validateSessionRequest, async (req, res) => {
   // Get signer address and signature from request body (already validated by middleware)

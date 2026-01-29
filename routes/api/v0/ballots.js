@@ -17,19 +17,27 @@ import { calculateSimpleMedian, calculateWeightedMedian } from "../../../helper/
 
 /**
  * @route GET /api/v0/ballots
- * @description Get all ballots with pagination, filtering and search capabilities
+ * @description Get all ballots with pagination, filtering and search capabilities. Results are sorted by votePeriodEnd (newest first). Each ballot includes a singleProposal field if it has exactly one proposal (for faster frontend navigation).
  * @access Public
  *
  * @param {Object} req.query
- * @param {string} [req.query.voterType] - Filter by voter type
- * @param {string} [req.query.status] - Filter by status ('live', 'closed', or 'upcoming')
- * @param {string} [req.query.search] - Search term for ballot title or ID
- * @param {number} [req.query.page=1] - Page number for pagination
- * @param {number} [req.query.limit=10] - Number of items per page (max 100)
+ * @param {string} [req.query.voterType] - Filter by voter type (case-insensitive regex match, must be alphanumeric)
+ * @param {string} [req.query.status] - Filter by status: 'live', 'closed', or 'upcoming' (case-insensitive)
+ * @param {string} [req.query.search] - Search term for ballot title or MongoDB ObjectId (1-100 characters, sanitized, case-insensitive regex match)
+ * @param {number} [req.query.page=1] - Page number for pagination (minimum: 1)
+ * @param {number} [req.query.limit=10] - Number of items per page (minimum: 1, maximum: 100)
  *
- * @returns {Object} 200 - List of ballots with pagination metadata
- * @returns {Object} 400 - Error if query parameters are invalid
- * @returns {Object} 500 - Server error
+ * @returns {Object} 200 - Response object containing:
+ *   - data: Array of ballot objects (excludes internal fields like voterValidationScript, rollupScript, etc.)
+ *   - pagination: Object with total, page, limit, totalPages
+ * @returns {Object} 400 - Error if:
+ *   - Search term is not between 1 and 100 characters
+ *   - Search contains invalid characters ($, {, })
+ *   - voterType format is invalid (not alphanumeric)
+ *   - status parameter is invalid (not 'live', 'closed', or 'upcoming')
+ *   - page parameter is invalid (not a positive integer)
+ *   - limit parameter is invalid (not between 1 and 100)
+ * @returns {Object} 500 - Server error while fetching ballots
  */
 router.get("/", async (req, res) => {
   const { voterType, status, search, page = 1, limit = 10 } = req.query;
@@ -227,11 +235,11 @@ router.get("/", async (req, res) => {
 
 /**
  * @route GET /api/v0/ballots/voterTypes
- * @description Get all unique voter types from all ballots
+ * @description Get all unique voter types from all ballots in the system. Useful for filtering or displaying voter type options.
  * @access Public
  *
- * @returns {Array} 200 - Array of unique voter types
- * @returns {Object} 500 - Server error
+ * @returns {Array<string>} 200 - Array of unique voter type strings (e.g., ["stake", "drep", "pool"])
+ * @returns {Object} 500 - Server error while fetching voter types
  */
 router.get("/voterTypes", async (req, res) => {
   try {
@@ -252,12 +260,17 @@ router.get("/voterTypes", async (req, res) => {
 
 /**
  * @route GET /api/v0/ballots/:ballotId
- * @description Get a specific ballot by ID with voter validation if token is present
- * @access Public
+ * @description Get a specific ballot by ID with voter validation and voting power if authentication token is present
+ * @access Public (enhanced with voter-specific data if authenticated)
  *
- * @param {string} req.params.ballotId - The ID of the ballot to retrieve
+ * @param {string} req.params.ballotId - The MongoDB ObjectId of the ballot to retrieve
  *
- * @returns {Object} 200 - The ballot object with additional voter-specific data if authenticated
+ * @returns {Object} 200 - The ballot object with additional fields:
+ *   - All standard ballot fields (title, description, voterType, votePeriodStart, etc.)
+ *   - voterValidated: Boolean indicating if authenticated voter is valid for this ballot (only if authenticated)
+ *   - votingPower: Number representing authenticated voter's voting power (only if authenticated and validated)
+ *   - totalAllowedVoterCount: Number of voters eligible to vote in this ballot
+ *   - totalVotingPower: Total voting power across all eligible voters
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  * @returns {Object} 500 - Server error (handled by getBallot middleware)
  */
@@ -294,23 +307,25 @@ router.get("/:ballotId", getBallot, async (req, res) => {
 
 /**
  * @route GET /api/v0/ballots/:ballotId/proposals
- * @description Get all proposals for a specific ballot with filtering, sorting and pagination
+ * @description Get all proposals for a specific ballot with filtering, sorting and pagination. Enhanced with voter-specific data (voterVote, hasVoted) if authenticated.
  * @access Public (enhanced with voter-specific data if authenticated)
  *
  * @param {string} req.params.ballotId - The ID of the ballot to get proposals for
  * @param {Object} req.query
- * @param {number} [req.query.page=1] - Page number for pagination
- * @param {number} [req.query.limit=10] - Number of items per page (max 100)
- * @param {string} [req.query.committee] - Filter by committee
- * @param {string} [req.query.roadmap] - Filter by roadmap
- * @param {string} [req.query.type] - Filter by proposal type
- * @param {string} [req.query.search] - Search term for proposal title or ID
- * @param {string} [req.query.sort] - Sort field ('cost', 'title', 'commentCount', 'voteCount')
- * @param {string} [req.query.direction='desc'] - Sort direction ('asc' or 'desc')
- * @param {string} [req.query.hasVoted] - Filter by whether authenticated user has voted ('true'/'false')
- * @param {string} [req.query.thresholdReached] - Filter by threshold status ('true'/'false')
+ * @param {number} [req.query.page=1] - Page number for pagination (minimum: 1)
+ * @param {number} [req.query.limit=10] - Number of items per page (minimum: 1, maximum: 100)
+ * @param {string} [req.query.search] - Search term for proposal title or ID (1-100 characters, sanitized)
+ * @param {string} [req.query.sort] - Sort field: 'title', 'commentCount', or 'voteCount' (default: '_id')
+ * @param {string} [req.query.direction='desc'] - Sort direction: 'asc' or 'desc'
+ * @param {string} [req.query.hasVoted] - Filter by whether authenticated user has voted: 'true' or 'false' (only works when authenticated)
+ * @param {string} [req.query.tags] - Filter by tags (comma-separated, e.g., 'tag1,tag2')
+ * @param {string} [req.query.categories] - Filter by categories (comma-separated, e.g., 'cat1,cat2')
  *
- * @returns {Object} 200 - List of proposals with pagination, sorting and filter metadata
+ * @returns {Object} 200 - Response object containing:
+ *   - data: Array of proposal objects with computed fields (commentCount, voteCount, votingPower)
+ *   - pagination: Object with total, page, limit, totalPages
+ *   - sort: Object with field and direction
+ *   - filters: Object with applied filter values
  * @returns {Object} 400 - Error if query parameters are invalid
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  * @returns {Object} 500 - Server error

@@ -16,18 +16,29 @@ import { isAuthenticated } from "../../../helper/middleWare.js";
 
 /**
  * @route POST /api/v0/comment
- * @description Creates a new comment on a specific proposal
+ * @description Creates a new comment on a specific proposal. Comments can only be created when the ballot status is "live" or "upcoming". The comment content is sanitized for security.
  * @access Private (requires authentication)
  *
  * @param {Object} req.body
- * @param {string} req.body.proposalId - ID of the proposal to comment on
- * @param {string} req.body.comment - Comment content (max 1000 characters)
+ * @param {string} req.body.proposalId - MongoDB ObjectId of the proposal to comment on (must be alphanumeric)
+ * @param {string} req.body.comment - Comment content (required, max 1000 characters, sanitized before saving)
  *
- * @returns {Object} 200 - The saved comment object
- * @returns {Object} 400 - Error if missing required fields, invalid format, or comment too long
- * @returns {Object} 403 - Error if voter not registered for the ballot
+ * @returns {Object} 200 - The saved comment object containing:
+ *   - _id: MongoDB ObjectId of the comment
+ *   - proposalId: ID of the proposal
+ *   - voterId: ID of the voter who created the comment
+ *   - content: Sanitized comment content
+ *   - createdAt: ISO 8601 timestamp when comment was created
+ *   - updatedAt: ISO 8601 timestamp when comment was last updated
+ * @returns {Object} 400 - Error if:
+ *   - Missing required fields (proposalId or comment)
+ *   - Invalid proposal ID format
+ *   - Comment exceeds 1000 characters
+ *   - Comment fails sanitization
+ *   - Ballot status is not "live" or "upcoming"
+ * @returns {Object} 403 - Error if voter is not registered/validated for the ballot
  * @returns {Object} 404 - Error if proposal or ballot not found
- * @returns {Object} 500 - Error if comment cannot be saved
+ * @returns {Object} 500 - Error if comment cannot be saved to database
  */
 router.post("/", isAuthenticated, async (req, res) => {
   const voterId = req.voterId;

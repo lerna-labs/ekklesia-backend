@@ -15,20 +15,27 @@ const API_URL = process.env.API_URL;
 
 /**
  * @route GET /api/v0/voters
- * @description Get a paginated list of voters with filtering, sorting, and search capabilities
+ * @description Get a paginated list of voters who have submitted votes, with filtering, sorting, and search capabilities. Response is cached for 300 seconds. Only voters with submitted votes are included.
  * @access Public
  *
  * @param {Object} req.query
- * @param {number} [req.query.page=1] - Page number for pagination
- * @param {number} [req.query.limit=25] - Number of items per page (max 100)
- * @param {string} [req.query.search] - Search term for voter ID
- * @param {string} [req.query.sort='votes'] - Sort field ('voterId', 'votes', or 'lastLogin')
- * @param {string} [req.query.direction='desc'] - Sort direction ('asc' or 'desc')
+ * @param {number} [req.query.page=1] - Page number for pagination (minimum: 1)
+ * @param {number} [req.query.limit=25] - Number of items per page (minimum: 1, maximum: 100)
+ * @param {string} [req.query.search=''] - Search term for voter ID (case-insensitive regex match, special regex characters escaped)
+ * @param {string} [req.query.sort='votes'] - Sort field: 'voterId', 'votes', or 'lastLogin' (default: 'votes')
+ * @param {string} [req.query.direction='desc'] - Sort direction: 'asc' or 'desc' (default: 'desc')
  *
- * @returns {Object} 200 - List of voters with pagination metadata
- * @returns {Object} 400 - Error if query parameters are invalid
- * @returns {Object} 404 - Error if no voters found
- * @returns {Object} 500 - Server error
+ * @returns {Object} 200 - Response object containing:
+ *   - data: Array of voter objects, each containing:
+ *     - voterId: ID of the voter
+ *     - votes: Number of votes cast by this voter
+ *     - lastLogin: ISO 8601 timestamp of last login (null if never logged in)
+ *   - pagination: Object with total, page, limit, totalPages
+ *   OR
+ *   - status: "msg"
+ *   - message: "No voters found" (if no voters match criteria)
+ * @returns {Object} 400 - Error if query parameters are invalid (page, limit, sort, or direction)
+ * @returns {Object} 500 - Server error while fetching voter list
  */
 router.get("/", cacheControl(300), async (req, res) => {
   const {
@@ -269,11 +276,13 @@ router.get("/", cacheControl(300), async (req, res) => {
 
 /**
  * @route GET /api/v0/voters/types
- * @description Get counts of different voter types (stake, drep, pool)
+ * @description Get counts of different voter types (stake, drep, pool) based on voters who have submitted votes. Response is cached for 300 seconds.
  * @access Public
  *
- * @returns {Array} 200 - Array of objects with voter type and count
- * @returns {Object} 500 - Server error
+ * @returns {Array} 200 - Array of objects, each containing:
+ *   - type: Voter type string ("stake", "drep", or "pool")
+ *   - count: Number of voters of this type who have submitted votes
+ * @returns {Object} 500 - Server error while fetching voter types
  */
 router.get("/types", cacheControl(300), async (req, res) => {
   try {
@@ -317,15 +326,35 @@ router.get("/types", cacheControl(300), async (req, res) => {
 
 /**
  * @route GET /api/v0/voters/:voterId
- * @description Get detailed information about a specific voter including voting history
+ * @description Get detailed information about a specific voter including voting history across all ballots. Response is cached for 300 seconds. Voter ID is validated and converted to CIP129 format if applicable. Voter must exist in VoterCache to be found.
  * @access Public
  *
- * @param {string} req.params.voterId - The ID of the voter to retrieve
+ * @param {string} req.params.voterId - The ID of the voter to retrieve (must start with "stake", "drep", or "pool")
  *
- * @returns {Object} 200 - The voter object with voting history and statistics
- * @returns {Object} 400 - Error if voter ID is invalid or missing
- * @returns {Object} 404 - Error if voter not found
- * @returns {Object} 500 - Server error
+ * @returns {Object} 200 - Voter object containing:
+ *   - voterType: Type of voter ("stake", "drep", or "pool")
+ *   - voterId: Validated voter ID (CIP129 format if applicable)
+ *   - votes: Array of ballot objects the voter has voted on, each containing:
+ *     - _id: Ballot ID
+ *     - title: Ballot title
+ *     - votePeriodStart: ISO 8601 timestamp when voting period started
+ *     - votePeriodEnd: ISO 8601 timestamp when voting period ended
+ *     - votingPower: Voting power of the voter for this ballot
+ *     - status: Ballot status ("live", "closed", or "upcoming")
+ *     - proposals: Array of proposals voted on, each containing:
+ *       - proposalId: Proposal ID
+ *       - title: Proposal title
+ *       - vote: Array of vote option labels (or IDs for scale votes, "Abstain" for abstain votes)
+ *   - ballotsVoted: Number of ballots the voter has voted on
+ *   - proposalsVoted: Total number of proposals the voter has voted on across all ballots
+ *   - lastVoteDate: ISO 8601 timestamp of most recent vote (null if never voted)
+ *   - lastLogin: ISO 8601 timestamp of last login (null if never logged in)
+ * @returns {Object} 400 - Error if:
+ *   - Voter ID is missing
+ *   - Voter ID format is invalid (doesn't start with stake, drep, or pool)
+ *   - Voter ID validation fails
+ * @returns {Object} 404 - Error if voter not found in VoterCache
+ * @returns {Object} 500 - Server error while fetching voter data
  */
 router.get("/:voterId", cacheControl(300), async (req, res) => {
   let voterId = req.params.voterId;

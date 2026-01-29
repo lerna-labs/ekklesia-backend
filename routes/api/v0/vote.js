@@ -11,19 +11,34 @@ import { isAuthenticated, getProposal } from "../../../helper/middleWare.js";
 
 /**
  * @route POST /api/v0/vote/:proposalId
- * @description Submit or update a vote on a specific proposal
+ * @description Submit or update a vote on a specific proposal. Creates a new vote or updates an existing one. Votes can be changed before submission via transaction. For budget vote type, validates that total cost doesn't exceed voterBudget. For scale vote type, validates that vote is within the allowed range with correct increment.
  * @access Private (requires authentication)
  *
- * @param {string} req.params.proposalId - ID of the proposal to vote on
+ * @param {string} req.params.proposalId - MongoDB ObjectId of the proposal to vote on
  * @param {Object} req.body
- * @param {number} req.body.vote - The vote value (must be one of the allowed values for the proposal)
+ * @param {Array<number|string>} req.body.vote - Array of vote option IDs (numbers) or "abstain" string. Must be one of the allowed values for the proposal. Duplicates are automatically removed. If abstainAllowed is true and "abstain" is included, no other votes are allowed.
  *
- * @returns {Object} 200 - The saved vote object with indication if vote was changed
- * @returns {Object} 400 - Error if ballot is not live, vote value is missing or not allowed
+ * @returns {Object} 200 - The saved vote object containing:
+ *   - _id: MongoDB ObjectId of the vote
+ *   - voterId: ID of the voter
+ *   - ballotId: ID of the ballot
+ *   - proposalId: ID of the proposal
+ *   - vote: Array of current vote option IDs
+ *   - submittedVote: Array of submitted vote option IDs (null if not yet submitted)
+ *   - submittedAt: ISO 8601 timestamp when vote was submitted (null if not yet submitted)
+ *   - changes: Boolean indicating if vote was changed (true if updatedAt > submittedAt or submittedAt is null)
+ *   - createdAt: ISO 8601 timestamp when vote was created
+ *   - updatedAt: ISO 8601 timestamp when vote was last updated
+ * @returns {Object} 400 - Error if:
+ *   - Vote data is missing, not an array, or empty
+ *   - Ballot status is not "live"
+ *   - Vote value(s) are not allowed for this proposal
+ *   - Abstain is combined with other votes (when abstainAllowed is true)
+ *   - Total cost exceeds voterBudget (for budget vote type)
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
- * @returns {Object} 403 - Error if voter not registered for ballot
+ * @returns {Object} 403 - Error if voter is not registered/validated for the ballot
  * @returns {Object} 404 - Error if proposal or ballot not found
- * @returns {Object} 500 - Error if vote cannot be saved
+ * @returns {Object} 500 - Error if vote cannot be saved to database
  */
 router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   const { proposal, voterId, proposalId } = req;

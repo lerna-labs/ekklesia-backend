@@ -10,10 +10,21 @@ import { isAuthenticated, getTransaction } from "../../../helper/middleWare.js";
 
 /**
  * @route GET /api/v0/transactions
- * @description Get all transactions for the authenticated user
+ * @description Get all transactions for the authenticated user, sorted by updatedAt (newest first)
  * @access Private (requires authentication)
  *
- * @returns {Array} 200 - List of transactions for the user sorted by update time (descending)
+ * @returns {Array} 200 - Array of transaction objects for the authenticated user, each containing:
+ *   - _id: MongoDB ObjectId of the transaction
+ *   - voterId: ID of the voter (matches authenticated user)
+ *   - ballotId: ID of the ballot
+ *   - merkleRoot: Merkle root hash of votes in transaction
+ *   - votes: Object containing vote data for each proposal
+ *   - status: Transaction status ("created", "pending", or "submitted")
+ *   - signature: Signature object (null for multisig transactions)
+ *   - multiSig: Array of signatures (empty for single-signature transactions)
+ *   - txHash: Blockchain transaction hash (null if not yet submitted)
+ *   - createdAt: ISO 8601 timestamp when transaction was created
+ *   - updatedAt: ISO 8601 timestamp when transaction was last updated
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  */
 router.get("/", isAuthenticated, async (req, res) => {
@@ -29,14 +40,14 @@ router.get("/", isAuthenticated, async (req, res) => {
 
 /**
  * @route GET /api/v0/transactions/:transactionId
- * @description Get a specific transaction by ID for the authenticated user
+ * @description Get a specific transaction by ID for the authenticated user. Only returns transactions that belong to the authenticated user.
  * @access Private (requires authentication)
  *
- * @param {string} req.params.transactionId - ID of the transaction to retrieve
+ * @param {string} req.params.transactionId - MongoDB ObjectId of the transaction to retrieve (validated by getTransaction middleware)
  *
- * @returns {Object} 200 - The requested transaction object or all user transactions if no specific transaction found
+ * @returns {Object} 200 - The transaction object containing all transaction fields (see GET /api/v0/transactions for structure)
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
- * @returns {Object} 404 - Error if transaction not found or doesn't belong to the user
+ * @returns {Object} 404 - Error if transaction not found or doesn't belong to the authenticated user
  */
 router.get(
   "/:transactionId",

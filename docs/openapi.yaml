@@ -9,7 +9,7 @@ info:
     
     ## MultiSig Support
     The API supports both standard wallet authentication and multisig wallet authentication. Use the `/multisig` endpoints for multisig wallets.
-  version: 0.5.31
+  version: 0.5.32
   contact:
     name: Adam Dean, Mad Orkestra
     license: ISC
@@ -260,6 +260,7 @@ paths:
               schema:
                 type: string
                 enum: [title, commentCount, voteCount]
+                default: _id
             - name: direction
               in: query
               description: Sort direction
@@ -397,11 +398,16 @@ paths:
                     - type: object
                       properties:
                         voterVote:
-                          type: array
-                          items:
-                            type: number
+                          oneOf:
+                            - type: array
+                              items:
+                                oneOf:
+                                  - type: number
+                                  - type: string
+                                    enum: [abstain]
+                            - type: null
                           nullable: true
-                          description: Array of vote option IDs the authenticated voter selected
+                          description: Array of vote option IDs the authenticated voter selected (or null if not voted)
                         ballotStatus:
                           type: string
                         results:
@@ -550,8 +556,12 @@ paths:
                   vote:
                     type: array
                     items:
-                      type: number
-                    description: Array of vote option IDs
+                      oneOf:
+                        - type: number
+                        - type: string
+                          enum: [abstain]
+                    description: Array of vote option IDs (numbers) or "abstain" string
+                    minItems: 1
         responses:
           '200':
             description: The saved vote object with indication if vote was changed
@@ -797,8 +807,6 @@ paths:
                     scriptAddress:
                       type: string
                       description: The CIP129 multisig script address
-                    scriptAddress:
-                      type: string
           '400':
             $ref: '#/components/responses/BadRequest'
           '403':
@@ -930,23 +938,23 @@ paths:
                         $ref: '#/components/schemas/Vote'
         '401':
           $ref: '#/components/responses/Unauthorized'
-    /{ballotId}/checkout:
-      post:
-        tags:
-          - Dashboard
-        summary: Request checkout for a ballot
-        description: Request checkout for a ballot, creating transaction data for signing
-        operationId: requestCheckout
-        security:
-          - cookieAuth: []
-          - bearerAuth: []
-        parameters:
-          - name: ballotId
-            in: path
-            required: true
-            description: ID of the ballot to checkout
-            schema:
-              type: string
+      /{ballotId}/checkout:
+        post:
+          tags:
+            - Dashboard
+          summary: Request checkout for a ballot
+          description: Request checkout for a ballot, creating transaction data for signing
+          operationId: requestCheckout
+          security:
+            - cookieAuth: []
+            - bearerAuth: []
+          parameters:
+            - name: ballotId
+              in: path
+              required: true
+              description: ID of the ballot to checkout
+              schema:
+                type: string
         requestBody:
           required: true
           content:
@@ -976,22 +984,22 @@ paths:
             $ref: '#/components/responses/Unauthorized'
           '404':
             $ref: '#/components/responses/NotFound'
-      put:
-        tags:
-          - Dashboard
-        summary: Submit signed transaction
-        description: Submit a signed transaction to finalize votes for a ballot
-        operationId: submitTransaction
-        security:
-          - cookieAuth: []
-          - bearerAuth: []
-        parameters:
-          - name: ballotId
-            in: path
-            required: true
-            description: ID of the ballot
-            schema:
-              type: string
+        put:
+          tags:
+            - Dashboard
+          summary: Submit signed transaction
+          description: Submit a signed transaction to finalize votes for a ballot
+          operationId: submitTransaction
+          security:
+            - cookieAuth: []
+            - bearerAuth: []
+          parameters:
+            - name: ballotId
+              in: path
+              required: true
+              description: ID of the ballot
+              schema:
+                type: string
         requestBody:
           required: true
           content:
@@ -1035,29 +1043,29 @@ paths:
             $ref: '#/components/responses/Unauthorized'
           '404':
             $ref: '#/components/responses/NotFound'
-      /multisig:
-        post:
-          tags:
-            - Dashboard
-          summary: Request checkout for multisig
-          description: Request checkout for a ballot using multisig, creating or retrieving transaction data
-          operationId: requestMultisigCheckout
-          security:
-            - cookieAuth: []
-            - bearerAuth: []
-          parameters:
-            - name: ballotId
-              in: path
-              required: true
-              description: ID of the ballot to checkout
-              schema:
-                type: string
-            - name: transactionId
-              in: query
-              required: false
-              description: Optional ID of an existing pending transaction to retrieve
-              schema:
-                type: string
+        /multisig:
+          post:
+            tags:
+              - Dashboard
+            summary: Request checkout for multisig
+            description: Request checkout for a ballot using multisig, creating or retrieving transaction data
+            operationId: requestMultisigCheckout
+            security:
+              - cookieAuth: []
+              - bearerAuth: []
+            parameters:
+              - name: ballotId
+                in: path
+                required: true
+                description: ID of the ballot to checkout
+                schema:
+                  type: string
+              - name: transactionId
+                in: path
+                required: false
+                description: Optional ID of an existing pending transaction to retrieve
+                schema:
+                  type: string
           requestBody:
             required: true
             content:
@@ -1089,22 +1097,22 @@ paths:
               $ref: '#/components/responses/Unauthorized'
             '404':
               $ref: '#/components/responses/NotFound'
-        put:
-          tags:
-            - Dashboard
-          summary: Submit multisig signature
-          description: Submit a signature for a multisig transaction, finalizing votes if all required signatures are present
-          operationId: submitMultisigSignature
-          security:
-            - cookieAuth: []
-            - bearerAuth: []
-          parameters:
-            - name: ballotId
-              in: path
-              required: true
-              description: ID of the ballot
-              schema:
-                type: string
+          put:
+            tags:
+              - Dashboard
+            summary: Submit multisig signature
+            description: Submit a signature for a multisig transaction, finalizing votes if all required signatures are present
+            operationId: submitMultisigSignature
+            security:
+              - cookieAuth: []
+              - bearerAuth: []
+            parameters:
+              - name: ballotId
+                in: path
+                required: true
+                description: ID of the ballot
+                schema:
+                  type: string
           requestBody:
             required: true
             content:
@@ -1426,6 +1434,13 @@ paths:
           schema:
             type: string
             example: voter,proposer
+        - name: featured
+          in: query
+          description: Filter by featured status (true or false)
+          required: false
+          schema:
+            type: string
+            enum: [true, false]
       responses:
         '200':
           description: List of live FAQs matching the search and filter criteria
@@ -1454,309 +1469,485 @@ components:
   schemas:
     StatusResponse:
       type: object
+      description: |
+        Comprehensive system status information including server health, database connection status,
+        network information, and runtime metrics. Used by monitoring tools and system administrators
+        to assess the operational state of the API server.
       properties:
         status:
           type: string
+          description: Overall system status (e.g., "operational", "degraded", "down")
           example: operational
         message:
           type: string
+          description: Human-readable status message describing the current system state
           example: System is operational
         timestamp:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the status was generated
         environment:
           type: string
+          description: Current deployment environment (e.g., "development", "production")
         network:
           type: string
+          description: Name of the blockchain network (e.g., "mainnet", "preprod", "preview")
         networkId:
           type: integer
+          description: Numeric identifier for the blockchain network
         server:
           type: object
+          description: Server runtime information and metrics
           properties:
             uptime:
               type: string
+              description: Human-readable server uptime (e.g., "5d 12h 30m 15s")
             uptimeSeconds:
               type: number
+              description: Server uptime in seconds since last restart
             version:
               type: string
+              description: Version of the API server application
             nodeVersion:
               type: string
+              description: Version of Node.js runtime
             memoryUsage:
               type: object
+              description: Current memory usage statistics
               properties:
                 rss:
                   type: string
+                  description: Resident Set Size - total memory allocated for the process
                 heapTotal:
                   type: string
+                  description: Total size of allocated heap memory
                 heapUsed:
                   type: string
+                  description: Amount of heap memory currently in use
         frontend:
           type: string
+          description: Version of the frontend application (if available)
         database:
           type: object
+          description: Database connection status and health information
           properties:
             status:
               type: string
               enum: [connected, disconnected]
+              description: Current database connection state
             message:
               type: string
+              description: Human-readable message about database connection status
 
     Ballot:
       type: object
+      description: |
+        Represents a registered ballot in the voting system. A ballot defines a voting period,
+        eligible voter types, and contains multiple proposals that voters can vote on. Ballots
+        can be in "upcoming", "live", or "closed" status based on the current time relative
+        to votePeriodStart and votePeriodEnd dates.
       properties:
         _id:
           type: string
+          description: Unique MongoDB ObjectId for the ballot
         title:
           type: string
+          description: Title of the ballot
         description:
           type: string
+          description: Detailed description of what the ballot is about
         ipfsHash:
           type: string
           nullable: true
+          description: IPFS hash of the ballot metadata (optional, for decentralized storage)
         voterType:
           type: string
+          description: Type of voters eligible for this ballot (e.g., 'stake', 'drep', 'pool')
         voterDescription:
           type: string
+          description: Human-readable description of who is eligible to vote in this ballot
         votePeriodStart:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the voting period begins
         votePeriodEnd:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the voting period ends
         voteFilters:
           type: boolean
+          description: Whether filtering options (tags, categories) are enabled for proposals in this ballot
         voteWeighted:
           type: boolean
-          description: Whether the voting is weighted
+          description: Whether votes in this ballot are weighted by voting power (true) or counted equally (false)
         proposalPeriodStart:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the proposal submission period begins
         proposalPeriodEnd:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the proposal submission period ends
         resultTxHash:
           type: string
           nullable: true
+          description: Blockchain transaction hash where final results were recorded (null if not yet finalized)
         status:
           type: string
           enum: [live, closed, upcoming]
+          description: |
+            Current status of the ballot:
+            - "upcoming": Voting period has not started yet
+            - "live": Voting period is currently active
+            - "closed": Voting period has ended
         createdAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the ballot was created
         updatedAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the ballot was last updated
 
     Proposal:
       type: object
+      description: |
+        Represents a registered proposal within a ballot. Proposals are items that voters can vote on.
+        Each proposal belongs to a specific ballot and contains details about what's being voted on,
+        along with configurable voting options. Proposals support multiple vote types including
+        default (Yes/No), budget (with cost constraints), ranked, scale (numeric range), and preference voting.
       properties:
         _id:
           type: string
+          description: Unique MongoDB ObjectId for the proposal
         ballotId:
           type: string
+          description: ID of the ballot this proposal belongs to
         ipfsHash:
           type: string
           nullable: true
+          description: IPFS hash of the proposal metadata (optional, for decentralized storage)
         title:
           type: string
+          description: Title of the proposal
         description:
           type: string
+          description: Detailed description of the proposal content
         categories:
           type: array
           items:
             type: string
+          description: Array of category labels for organizing proposals (e.g., ["Governance", "Treasury"])
         tags:
           type: array
           items:
             type: string
+          description: Array of tag labels for filtering and searching proposals
         data:
           type: object
           nullable: true
+          description: Additional structured data related to the proposal (format varies by proposal type)
         voteType:
           type: string
-          enum: [default, budget, ranked]
+          enum: [default, budget, ranked, scale, preference]
+          description: |
+            Type of voting system for this proposal:
+            - "default": Standard voting with predefined options (Yes/No/Abstain)
+            - "budget": Voting with cost constraints where voters have a budget to allocate
+            - "ranked": Voters rank options in order of preference
+            - "scale": Numeric scale voting (e.g., 1-10) with configurable increment
+            - "preference": Voters express preferences among multiple options
+        voteIncrement:
+          type: number
+          description: Increment value for scale votes (e.g., 1 for integer scale, 0.5 for half-point scale)
         voterBudget:
           type: number
+          description: Budget limit for voters in budget vote type (total cost of selected options cannot exceed this)
+        abstainAllowed:
+          type: boolean
+          description: Whether voters can select an "abstain" option (if true, abstain cannot be combined with other votes)
         voteOptions:
           type: array
           items:
             type: object
             properties:
               id:
-                type: number
+                oneOf:
+                  - type: number
+                  - type: string
+                    enum: [abstain]
+                description: Vote option ID (number) or "abstain" string
               cost:
                 type: number
+                description: Cost of selecting this option (used in budget vote type, defaults to 1)
               label:
                 type: string
+                description: Display label for this vote option (e.g., "Yes", "No", "Strongly Agree")
+          description: Array of available voting options for this proposal
         commentCount:
           type: number
+          description: Number of comments posted on this proposal (computed field)
         voteCount:
           type: number
+          description: Number of unique voters who have submitted votes on this proposal (computed field)
         votingPower:
           type: number
+          description: Total voting power of all votes cast on this proposal (computed field, only in weighted ballots)
         result:
           type: object
           nullable: true
+          description: Calculated voting results object (structure varies by voteType, null if results not yet calculated)
         updatedAt:
           type: string
           format: date-time
           nullable: true
+          description: ISO 8601 timestamp when the proposal was last updated (or when results were last calculated)
         createdAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the proposal was created
 
     Vote:
       type: object
+      description: |
+        Represents a vote cast by a voter for a specific proposal within a ballot. Votes can exist
+        in two states: pending (not yet submitted) and submitted. When votes are submitted via
+        transaction, the submittedVote and submittedAt fields are updated. If a voter changes their
+        vote before submission, only the vote field changes. Each voter can only have one vote per proposal.
       properties:
         _id:
           type: string
+          description: Unique MongoDB ObjectId for the vote record
         voterId:
           type: string
+          description: ID of the voter who cast the vote (references Voter, format depends on voterType)
         ballotId:
           type: string
+          description: ID of the ballot this vote belongs to
         proposalId:
           type: string
+          description: ID of the proposal being voted on
         vote:
           type: array
           items:
-            type: number
+            oneOf:
+              - type: number
+              - type: string
+                enum: [abstain]
+          description: |
+            Current value of the vote (may differ from submittedVote if changed after initial submission).
+            Array of vote option IDs (numbers) or "abstain" string. For scale votes, contains the numeric value.
+            For budget votes, contains multiple option IDs that fit within the voter's budget.
         submittedVote:
           type: array
           items:
-            type: number
+            oneOf:
+              - type: number
+              - type: string
+                enum: [abstain]
           nullable: true
+          description: |
+            Value of the vote when it was last submitted via transaction. This is the vote that counts
+            toward results. Null if the vote has never been submitted. Array of vote option IDs that
+            were submitted (numbers) or "abstain" string.
         submittedAt:
           type: string
           format: date-time
           nullable: true
+          description: ISO 8601 timestamp when the vote was last submitted via transaction (null if never submitted)
         createdAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the vote was first created
         updatedAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the vote was last updated (changes when vote value is modified)
 
     Comment:
       type: object
+      description: |
+        Represents a comment made by a voter on a proposal. Comments allow voters to provide feedback,
+        ask questions, or discuss proposals. Comments are public and visible to all users viewing the proposal.
+        Each comment is associated with a specific proposal and the voter who created it.
       properties:
         _id:
           type: string
+          description: Unique MongoDB ObjectId for the comment
         proposalId:
           type: string
+          description: ID of the proposal this comment belongs to
         voterId:
           type: string
+          description: ID of the voter who made the comment
         content:
           type: string
+          description: The content of the comment (max 1000 characters, sanitized for security)
         createdAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the comment was created
         updatedAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the comment was last updated
 
     FAQ:
       type: object
+      description: |
+        Represents a frequently asked question in the voting system. FAQs help users understand
+        how to use the platform, voting procedures, and common questions. Only FAQs with is_live=true
+        are returned by the API. FAQs can be tagged for filtering and can be marked as featured
+        to appear prominently on the homepage.
       properties:
         _id:
           type: string
+          description: Unique MongoDB ObjectId for the FAQ
         title:
           type: string
-          description: Title of the FAQ
+          description: Title/question text of the FAQ
         content:
           type: string
-          description: Answer content of the FAQ
+          description: Answer content of the FAQ (supports markdown formatting)
         tags:
           type: array
           items:
             type: string
-          description: Tags for the FAQ (e.g., ["voter", "proposer"])
+          description: Tags for categorizing the FAQ (e.g., ["voter", "proposer", "technical"])
           example: [voter]
 
     Transaction:
       type: object
+      description: |
+        Represents a transaction for submitting votes in the voting system. Transactions batch multiple
+        votes together for efficient blockchain submission. Transactions track the state of vote submissions
+        from initial creation through signature verification to final submission. Transactions may require
+        single signatures or multiple signatures (via the multiSig array) depending on the voter type.
+        The merkleRoot provides cryptographic integrity verification for all votes in the transaction.
       properties:
         _id:
           type: string
+          description: Unique MongoDB ObjectId for the transaction
         voterId:
           type: string
+          description: ID of the voter associated with this transaction
         ballotId:
           type: string
+          description: ID of the ballot this transaction belongs to
         merkleRoot:
           type: string
+          description: |
+            Merkle root hash of all votes in this transaction. Used for cryptographic verification
+            of vote integrity. This is the data that must be signed by the voter.
         votes:
           type: object
-          description: Collection of votes associated with this transaction
+          description: |
+            Collection of votes associated with this transaction. Keys are proposal IDs, values contain
+            the vote data for each proposal. Structure: { [proposalId]: { proposalId: string, vote: number[] } }
           additionalProperties:
             type: object
             properties:
               proposalId:
                 type: string
+                description: ID of the proposal being voted on
               vote:
                 type: array
                 items:
-                  type: number
+                  oneOf:
+                    - type: number
+                    - type: string
+                      enum: [abstain]
+                description: Array of vote option IDs (numbers) or "abstain" string for this proposal
         txHash:
           type: string
           nullable: true
-          description: The transaction hash after submission to blockchain
+          description: Blockchain transaction hash after successful submission (null if not yet submitted to blockchain)
         status:
           type: string
           enum: [created, pending, submitted]
+          description: |
+            Current status of the transaction:
+            - "created": Transaction created but not yet signed
+            - "pending": Transaction signed but multisig incomplete (for multisig transactions)
+            - "submitted": Transaction fully signed and votes have been submitted
         signature:
           $ref: '#/components/schemas/Signature'
           nullable: true
+          description: Signature object for single-signature transactions (null for multisig transactions)
         multiSig:
           type: array
           items:
             $ref: '#/components/schemas/Signature'
+          description: Array of signatures for multisig transactions (empty for single-signature transactions)
         createdAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the transaction was created
         updatedAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the transaction was last updated
 
     TransactionResponse:
       type: object
+      description: |
+        Response object returned when requesting checkout for a ballot. Contains the transaction data
+        that needs to be signed by the voter, along with hex-encoded values for signing operations.
+        This is used in the checkout flow where voters sign their votes before final submission.
       properties:
         _id:
           type: string
+          description: Unique MongoDB ObjectId for the transaction
         voterId:
           type: string
+          description: ID of the voter associated with this transaction
         ballotId:
           type: string
+          description: ID of the ballot this transaction belongs to
         merkleRoot:
           type: string
+          description: Merkle root hash of all votes in this transaction
         votes:
           type: object
-          description: Collection of votes associated with this transaction
+          description: Collection of votes associated with this transaction (same structure as Transaction.votes)
         dataHex:
           type: string
-          description: Hex-encoded merkle root for signing
+          description: Hex-encoded merkle root for signing (this is what the voter signs)
         voterIdHex:
           type: string
-          description: Hex-encoded voter ID
+          description: Hex-encoded voter ID (used for signature verification)
         calidusID:
           type: string
           nullable: true
-          description: Calidus ID for pool signers (only present for pool signType)
+          description: Calidus ID for pool signers (only present when signType is "pool")
 
     Signature:
       type: object
-      description: Signature object structure (varies by signature type)
+      description: |
+        Signature object structure for verifying voter identity and vote integrity. The structure
+        varies by signature type (drep, stake, pool) and includes cryptographic proof that the voter
+        signed the transaction data. For multisig transactions, multiple signature objects are stored
+        in an array until all required signatures are collected.
       additionalProperties: true
 
     Pagination:
       type: object
+      description: |
+        Pagination metadata included in paginated API responses. Provides information about the
+        total number of items, current page, items per page, and total number of pages available.
       properties:
         total:
           type: integer
+          description: Total number of items matching the query (across all pages)
         page:
           type: integer
+          description: Current page number (1-indexed)
         limit:
           type: integer
+          description: Number of items per page (maximum 100)
         totalPages:
           type: integer
+          description: Total number of pages available (calculated as ceil(total / limit))
 
   responses:
     BadRequest:

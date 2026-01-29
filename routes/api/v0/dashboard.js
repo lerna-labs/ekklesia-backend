@@ -26,10 +26,14 @@ import { getCalidusKey } from "../../../helper/koios.js";
 
 /**
  * @route GET /api/v0/dashboard
- * @description Get authenticated voter stats including last login time and pending votes count
+ * @description Get authenticated voter stats including last login time, multisig status, and pending votes count
  * @access Private (requires authentication)
  *
- * @returns {Object} 200 - Voter information including voter ID, last login timestamp, and pending votes count
+ * @returns {Object} 200 - Voter information object containing:
+ *   - voterId: ID of the authenticated voter
+ *   - lastLogin: ISO 8601 timestamp of last login (null if never logged in, from most recent Session record)
+ *   - multiSig: Boolean indicating if voter is using multisig authentication
+ *   - pendingVotesCount: Number of pending (unsubmitted) votes for the voter
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  */
 router.get("/", isAuthenticated, async (req, res) => {
@@ -53,10 +57,19 @@ router.get("/", isAuthenticated, async (req, res) => {
 
 /**
  * @route GET /api/v0/dashboard/ballots
- * @description Get all ballots the authenticated voter can vote on or has already voted on
+ * @description Get all ballots the authenticated voter can vote on or has already voted on. Includes ballots the voter has already voted on plus live ballots where the voter is validated. Results are sorted by votePeriodStart (earliest first).
  * @access Private (requires authentication)
  *
- * @returns {Array} 200 - List of ballots with voter-specific information (voting power)
+ * @returns {Array} 200 - Array of ballot objects, each containing:
+ *   - _id: MongoDB ObjectId of the ballot
+ *   - title: Title of the ballot
+ *   - description: Description of the ballot
+ *   - voterType: Type of voters eligible for this ballot
+ *   - status: Ballot status ("live", "closed", or "upcoming")
+ *   - votePeriodStart: ISO 8601 timestamp when voting period starts
+ *   - votePeriodEnd: ISO 8601 timestamp when voting period ends
+ *   - voteWeighted: Boolean indicating if votes are weighted
+ *   - votingPower: Number representing voter's voting power for this ballot (0 if no voting power)
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  */
 router.get("/ballots", isAuthenticated, async (req, res) => {
@@ -135,10 +148,21 @@ router.get("/ballots", isAuthenticated, async (req, res) => {
 
 /**
  * @route GET /api/v0/dashboard/pending
- * @description Get all pending votes for the authenticated voter
+ * @description Get all pending (unsubmitted) votes for the authenticated voter. Pending votes are votes that have been created but not yet submitted via transaction.
  * @access Private (requires authentication)
  *
- * @returns {Array} 200 - List of pending votes or message if no pending votes exist
+ * @returns {Object|Array} 200 - Response containing:
+ *   - If pending votes exist: Array of vote objects, each containing:
+ *     - _id: MongoDB ObjectId of the vote
+ *     - voterId: ID of the voter
+ *     - ballotId: ID of the ballot
+ *     - proposalId: ID of the proposal
+ *     - vote: Array of current vote option IDs
+ *     - submittedVote: null (not yet submitted)
+ *     - submittedAt: null (not yet submitted)
+ *     - createdAt: ISO 8601 timestamp when vote was created
+ *     - updatedAt: ISO 8601 timestamp when vote was last updated
+ *   - If no pending votes: Object with message: "no pending votes"
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  */
 router.get("/pending", isAuthenticated, async (req, res) => {
@@ -156,16 +180,31 @@ router.get("/pending", isAuthenticated, async (req, res) => {
 
 /**
  * @route POST /api/v0/dashboard/:ballotId/checkout
- * @description Request checkout for a ballot, creating transaction data for signing
+ * @description Request checkout for a ballot, creating transaction data for signing. Creates a transaction object containing all pending votes for the ballot, generates a merkle root, and returns hex-encoded data ready for signing. The signerAddress must match the authenticated voterId.
  * @access Private (requires authentication)
  *
- * @param {string} req.params.ballotId - ID of the ballot to checkout
+ * @param {string} req.params.ballotId - MongoDB ObjectId of the ballot to checkout
  * @param {Object} req.body
- * @param {string} req.body.signerAddress - Address of the signer
- * @param {string} req.body.signType - Type of signature ('drep', etc.)
+ * @param {string} req.body.signerAddress - Address of the signer (must match authenticated voterId, validated and converted to CIP129 if applicable)
+ * @param {string} req.body.signType - Type of signature: 'drep', 'stake', or 'pool' (used for address validation and Calidus key lookup)
  *
- * @returns {Object} 200 - Transaction data for signing
- * @returns {Object} 400 - Error if ballot is not live, missing parameters, or invalid signer address
+ * @returns {Object} 200 - TransactionResponse object containing:
+ *   - _id: MongoDB ObjectId of the transaction
+ *   - voterId: ID of the voter
+ *   - ballotId: ID of the ballot
+ *   - merkleRoot: Merkle root hash of all votes in transaction
+ *   - votes: Object containing vote data for each proposal
+ *   - dataHex: Hex-encoded merkle root (this is what the voter signs)
+ *   - voterIdHex: Hex-encoded signer address
+ *   - calidusID: Calidus ID for pool signers (only present when signType is "pool")
+ * @returns {Object} 400 - Error if:
+ *   - Ballot status is not "live"
+ *   - signerAddress is missing
+ *   - signType is missing
+ *   - Address validation fails
+ *   - Signer address does not match authenticated voterId
+ *   - Pool not found or no calidus key registered (for pool signType)
+ *   - Voter is not validated/allowed to vote on this ballot (not in VoterCache or validated=false)
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  */
@@ -280,18 +319,30 @@ router.post(
 
 /**
  * @route PUT /api/v0/dashboard/:ballotId/checkout
- * @description Submit a signed transaction to finalize votes for a ballot
+ * @description Submit a signed transaction to finalize votes for a ballot. Verifies the signature, updates all votes in the transaction to submitted status, and updates the transaction status to "submitted". The signerAddress must match the authenticated voterId.
  * @access Private (requires authentication)
  *
- * @param {string} req.params.ballotId - ID of the ballot
+ * @param {string} req.params.ballotId - MongoDB ObjectId of the ballot
  * @param {Object} req.body
- * @param {string} req.body.signerAddress - Address of the signer
- * @param {string} req.body.signType - Type of signature ('drep', etc.)
- * @param {string} req.body.data - Merkle root of the transaction data
- * @param {Object} req.body.signature - Signature object
+ * @param {string} req.body.signerAddress - Address of the signer (must match authenticated voterId, validated and converted to CIP129 if applicable)
+ * @param {string} req.body.signType - Type of signature: 'drep', 'stake', or 'pool' (used for address validation)
+ * @param {string} req.body.data - Merkle root of the transaction data (must match existing transaction merkleRoot)
+ * @param {Object} req.body.signature - Signature object containing the signed merkle root (structure varies by signType)
  *
- * @returns {Object} 200 - Confirmation of submitted votes with transaction ID
- * @returns {Object} 400 - Error if parameters invalid, signature verification fails, or votes update fails
+ * @returns {Object} 200 - Success response containing:
+ *   - status: "ok"
+ *   - message: "Votes submitted"
+ *   - transaction: MongoDB ObjectId of the updated transaction
+ * @returns {Object} 400 - Error if:
+ *   - Ballot status is not "live"
+ *   - signerAddress is missing
+ *   - signType is missing
+ *   - data (merkleRoot) is missing
+ *   - Address validation fails
+ *   - Signer address does not match authenticated voterId
+ *   - Transaction not found (no transaction with matching voterId, ballotId, status="created", and merkleRoot)
+ *   - Signature verification fails
+ *   - Vote updates fail (no votes were modified)
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  */
@@ -455,18 +506,33 @@ router.put(
 
 /**
  * @route POST /api/v0/dashboard/:ballotId/checkout/multisig/:transactionId?
- * @description Request checkout for a ballot using multisig, creating or retrieving transaction data
+ * @description Request checkout for a ballot using multisig, creating or retrieving transaction data. If transactionId is provided, retrieves existing pending transaction. Otherwise, creates new transaction and deletes any existing pending transaction for this voter/ballot. The scriptAddress must be a valid CIP129 multisig script address.
  * @access Private (requires authentication)
  *
- * @param {string} req.params.ballotId - ID of the ballot to checkout
- * @param {string} req.params.transactionId - Optional ID of an existing transaction
+ * @param {string} req.params.ballotId - MongoDB ObjectId of the ballot to checkout
+ * @param {string} [req.params.transactionId] - Optional MongoDB ObjectId of an existing pending transaction to retrieve
  * @param {Object} req.body
- * @param {string} req.body.scriptAddress - Address of the multisig script
- * @param {string} req.body.signerAddress - Address of the signer
- * @param {string} req.body.signType - Type of signature ('drep', etc.)
+ * @param {string} req.body.scriptAddress - CIP129 multisig script address (required, must be valid script address)
+ * @param {string} req.body.signerAddress - Address of the signer (validated, converted to CIP129 if applicable)
+ * @param {string} req.body.signType - Type of signature: 'drep', 'stake', or 'pool' (used for address validation)
  *
- * @returns {Object} 200 - Transaction data for signing
- * @returns {Object} 400 - Error if ballot is not live, missing parameters, invalid addresses, or transaction not found
+ * @returns {Object} 200 - TransactionResponse object containing:
+ *   - _id: MongoDB ObjectId of the transaction
+ *   - voterId: ID of the voter (matches signerAddress)
+ *   - ballotId: ID of the ballot
+ *   - merkleRoot: Merkle root hash of all votes in transaction
+ *   - votes: Object containing vote data for each proposal
+ *   - dataHex: Hex-encoded merkle root (this is what the voter signs)
+ *   - voterIdHex: Hex-encoded signer address
+ * @returns {Object} 400 - Error if:
+ *   - Ballot status is not "live"
+ *   - scriptAddress is missing
+ *   - signerAddress is missing
+ *   - signType is missing
+ *   - Script address validation fails
+ *   - Address is not a script address
+ *   - Voter is not validated/allowed to vote on this ballot
+ *   - Pending transaction not found (when transactionId is provided)
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  */
@@ -636,21 +702,32 @@ router.post(
 
 /**
  * @route PUT /api/v0/dashboard/:ballotId/checkout/multisig
- * @description Submit a signature for a multisig transaction, finalizing votes if all required signatures are present
+ * @description Submit a signature for a multisig transaction. Verifies that the signer is a party to the multisig script and adds the signature to the transaction's multiSig array. If all required signatures are collected, finalizes votes by updating them to submitted status and sets transaction status to "submitted". Otherwise, sets transaction status to "pending" and returns info message.
  * @access Private (requires authentication)
  *
- * @param {string} req.params.ballotId - ID of the ballot
+ * @param {string} req.params.ballotId - MongoDB ObjectId of the ballot
  * @param {Object} req.body
- * @param {string} req.body.signerAddress - Address of the signer
- * @param {string} req.body.signType - Type of signature ('drep', etc.)
- * @param {string} req.body.scriptAddress - Address of the multisig script
- * @param {string} req.body.data - Merkle root of the transaction data
- * @param {Object} req.body.signature - Signature object
+ * @param {string} req.body.signerAddress - Address of the signer (validated, converted to CIP129 if applicable)
+ * @param {string} req.body.signType - Type of signature: 'drep', 'stake', or 'pool' (used for address validation)
+ * @param {string} req.body.scriptAddress - CIP129 multisig script address (required, must be valid script address)
+ * @param {string} req.body.data - Merkle root of the transaction data (must match existing transaction merkleRoot)
+ * @param {Object} req.body.signature - Signature object containing the signed merkle root (structure varies by signType, signedAt timestamp is added automatically)
  *
- * @returns {Object} 200 - Confirmation of submitted signature or finalized votes with transaction ID
- * @returns {Object} 400 - Error if parameters invalid, signature verification fails, or votes update fails
+ * @returns {Object} 200 - Response object, one of:
+ *   - If multisig incomplete: { status: "info", message: "MultiSig not complete yet" }
+ *   - If multisig complete: { status: "ok", message: "Votes submitted", transaction: MongoDB ObjectId string }
+ * @returns {Object} 400 - Error if:
+ *   - Ballot status is not "live"
+ *   - signerAddress is missing
+ *   - signType is missing
+ *   - scriptAddress is missing
+ *   - data (merkleRoot) is missing
+ *   - Address validation fails
+ *   - Voter is not validated/allowed to vote on this ballot
+ *   - Transaction not found (no transaction with matching voterId, ballotId, status in ["created","pending"], and merkleRoot)
+ *   - Vote updates fail (no votes were modified, when multisig is complete)
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
- * @returns {Object} 403 - Error if signer is not a party to the multisig script
+ * @returns {Object} 403 - Error if signer is not a party to the multisig script (signature verification fails)
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  */
 router.put(
