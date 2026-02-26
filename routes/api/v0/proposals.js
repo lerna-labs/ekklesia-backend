@@ -40,7 +40,7 @@ router.get("/:proposalId", cacheControl(300), getProposal, async (req, res) => {
   // fetch total vote count
   const totalVotes = await Vote.countDocuments({
     proposalId,
-    submittedValue: { $exists: true, $ne: null },
+    submittedVote: { $exists: true, $ne: null },
   });
 
   // fetch user vote
@@ -51,7 +51,7 @@ router.get("/:proposalId", cacheControl(300), getProposal, async (req, res) => {
     }).lean();
 
     // add user vote to proposal object
-    proposal.voterVote = userVote?.value ?? null;
+    proposal.voterVote = userVote?.submittedVote ?? userVote?.vote ?? null;
   }
 
   // fetch results
@@ -141,9 +141,9 @@ router.get("/:proposalId/results", getProposal, async (req, res) => {
   // Get the ballot ID from the proposal
   const ballotId = proposal.ballotId;
 
-  // vote aggregation
+  // vote aggregation (only submitted votes; group by first option in submittedVote array)
   const voteAggregation = await Vote.aggregate([
-    { $match: { proposalId } },
+    { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
     {
       $lookup: {
         from: "votercaches", // collection name in MongoDB
@@ -173,7 +173,7 @@ router.get("/:proposalId/results", getProposal, async (req, res) => {
     },
     {
       $group: {
-        _id: "$submittedValue",
+        _id: { $arrayElemAt: ["$submittedVote", 0] },
         count: { $sum: 1 },
         votingPower: { $sum: "$votingPower" },
       },
