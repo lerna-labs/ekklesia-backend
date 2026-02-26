@@ -170,7 +170,7 @@ export async function getSubmittedVotes(voterId) {
         1000,
       ],
     },
-  }).select("ballotId submittedValue proposalId");
+  }).select("ballotId submittedVote proposalId");
 
   // create array of individual ballotIds and remove duplicates
   const ballotIds = [...new Set(votes.map((vote) => vote.ballotId))];
@@ -198,15 +198,16 @@ export async function getSubmittedVotes(voterId) {
     );
     // add votes to each proposal object
     ballot.proposals.forEach((proposal) => {
-      // return submitted value from votes array
-      proposal.vote = votes.find(
-        (vote) => String(vote.proposalId) === String(proposal._id)
-      ).submittedValue;
+      // return submitted value from votes array (first element for single-option, else full array)
+      const vote = votes.find(
+        (v) => String(v.proposalId) === String(proposal._id)
+      );
+      proposal.vote = vote?.submittedVote?.[0] ?? vote?.submittedVote ?? null;
 
       // convert vote to label if voteLabels is true
       proposal.voteLabel = proposal.voteOptions.find(
         (el) => el.value === proposal.vote
-      ).label;
+      )?.label;
 
       proposal.description = proposal.data?.description;
       // remove data.voteOptions from proposal object

@@ -10,6 +10,7 @@ const { Schema } = mongoose;
  * @property {String} voterId - The ID of the voter who is validated (references Voter)
  * @property {Boolean} validated - Whether the voter has been validated for this ballot
  * @property {Number} votingPower - The calculated voting power of the voter for this ballot
+ * @property {String} voterGroup - Optional group for this voter on this ballot (e.g. "drep", "pool", "default"); used for results by group
  * @property {Date} createdAt - Timestamp when the validation record was created (immutable)
  * @property {Date} updatedAt - Timestamp when the validation record was last updated
  *
@@ -43,6 +44,10 @@ const voterCacheSchema = new Schema(
       type: Number,
       default: 0,
     },
+    voterGroup: {
+      type: String,
+      default: "default",
+    },
     createdAt: {
       type: Date,
       default: Date.now,
@@ -62,6 +67,7 @@ const voterCacheSchema = new Schema(
 // Indexes for faster queries
 voterCacheSchema.index({ voterId: 1 });
 voterCacheSchema.index({ ballotId: 1 });
+voterCacheSchema.index({ ballotId: 1, voterGroup: 1 });
 
 // Pre-save middleware to update the updatedAt field
 voterCacheSchema.pre("save", function (next) {

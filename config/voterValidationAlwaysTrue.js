@@ -23,7 +23,7 @@ export async function validateVoter(voterId, ballotId) {
   validated = true;
 
   // Save the validation to the database
-  await saveVoterValidation(voterId, ballotId, validated);
+  await saveVoterValidation(voterId, ballotId, validated, "default");
 
   // return the validation status
   return validated;
