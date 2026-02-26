@@ -55,8 +55,8 @@ async function startServer() {
     // Serve static files from the public directory (SvelteKit assets)
     app.use(express.static(join(__dirname, "public")));
 
-    // Handle SPA routing - serve index.html for all non-API routes
-    app.get("*", (req, res, next) => {
+    // Handle SPA routing - serve index.html for all non-API routes (Express 5: named wildcard)
+    app.get("/{*splat}", (req, res, next) => {
       // Skip API routes
       if (req.path.startsWith("/api/")) {
         return next();
@@ -64,8 +64,8 @@ async function startServer() {
       res.sendFile(join(__dirname, "public", "index.html"));
     });
 
-    // 404 handler (only for API routes now)
-    app.use("/api/*", (req, res) => {
+    // 404 handler (only for API routes now) (Express 5: named wildcard)
+    app.use("/api/{*rest}", (req, res) => {
       res.status(404).json({ error: "API route not found" });
     });
 
