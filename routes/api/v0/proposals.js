@@ -117,6 +117,102 @@ router.get("/:proposalId/comments", getProposal, async (req, res) => {
 });
 
 /**
+ * @route GET /api/v0/proposals/:proposalId/results/grouped
+ * @description Get voting results for a specific proposal broken down by voter group. Uses stored resultsByGroup when available, else computes on-the-fly.
+ * @access Public
+ *
+ * @param {string} req.params.proposalId - MongoDB ObjectId of the proposal
+ * @returns {Object} 200 - { proposalId, groups: { "<voterGroup>": { results: [{ value, label, count, votingPower }], totalVotes }, ... } }
+ */
+router.get("/:proposalId/results/grouped", getProposal, async (req, res) => {
+  const { proposalId, proposal } = req;
+  const ballotId = proposal.ballotId;
+
+  const resultDoc = await Result.findOne({ proposalId }).lean();
+
+  if (resultDoc?.resultsByGroup && Object.keys(resultDoc.resultsByGroup).length > 0) {
+    const groups = {};
+    for (const [groupKey, groupData] of Object.entries(resultDoc.resultsByGroup)) {
+      const results = (groupData.results || []).map((r) => {
+        const option = proposal.voteOptions?.find((o) => o.id == r.id || o.value == r.id);
+        return {
+          value: option?.value ?? r.id,
+          label: option?.label ?? r.label ?? String(r.id),
+          count: r.count,
+          votingPower: r.votingPower,
+        };
+      });
+      groups[groupKey] = {
+        results,
+        totalVotes: groupData.totalVotes ?? results.reduce((sum, r) => sum + r.count, 0),
+      };
+    }
+    return res.status(200).json({ proposalId: proposalId.toString(), groups });
+  }
+
+  // Fallback: on-the-fly aggregation (mirror cron: unwind submittedVote, group by voterGroup + vote value)
+  const byGroupAggregation = await Vote.aggregate([
+    { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
+    {
+      $lookup: {
+        from: "votercaches",
+        let: { voterId: "$voterId", ballotId },
+        pipeline: [
+          { $match: { $expr: { $and: [{ $eq: ["$voterId", "$$voterId"] }, { $eq: ["$ballotId", "$$ballotId"] }] } } },
+        ],
+        as: "voterData",
+      },
+    },
+    {
+      $addFields: {
+        votingPower: { $ifNull: [{ $arrayElemAt: ["$voterData.votingPower", 0] }, 1] },
+        voterGroup: { $ifNull: [{ $arrayElemAt: ["$voterData.voterGroup", 0] }, "default"] },
+      },
+    },
+    { $unwind: { path: "$submittedVote", preserveNullAndEmptyArrays: false } },
+    {
+      $group: {
+        _id: { voterGroup: "$voterGroup", voteValue: "$submittedVote" },
+        count: { $sum: 1 },
+        votingPower: { $sum: "$votingPower" },
+      },
+    },
+  ]);
+
+  const groups = {};
+  for (const row of byGroupAggregation) {
+    const groupKey = row._id.voterGroup;
+    if (!groups[groupKey]) groups[groupKey] = { results: [], totalVotes: 0 };
+    const option = proposal.voteOptions?.find((o) => o.id == row._id.voteValue || o.value == row._id.voteValue);
+    groups[groupKey].results.push({
+      value: option?.value ?? row._id.voteValue,
+      label: option?.label ?? (row._id.voteValue === "abstain" ? "Abstain" : String(row._id.voteValue)),
+      count: row.count,
+      votingPower: row.votingPower,
+    });
+    groups[groupKey].totalVotes += row.count;
+  }
+  if (proposal.abstainAllowed) {
+    for (const groupKey of Object.keys(groups)) {
+      if (!groups[groupKey].results.some((r) => r.value === "abstain")) {
+        const abstainRow = byGroupAggregation.find(
+          (r) => r._id.voterGroup === groupKey && r._id.voteValue === "abstain"
+        );
+        groups[groupKey].results.push({
+          value: "abstain",
+          label: "Abstain",
+          count: abstainRow ? abstainRow.count : 0,
+          votingPower: abstainRow ? abstainRow.votingPower : 0,
+        });
+        if (abstainRow) groups[groupKey].totalVotes += abstainRow.count;
+      }
+    }
+  }
+
+  return res.status(200).json({ proposalId: proposalId.toString(), groups });
+});
+
+/**
  * @route GET /api/v0/proposals/:proposalId/results
  * @description Get voting results for a specific proposal with vote counts and voting power. Results are calculated from submitted votes only.
  * @access Public

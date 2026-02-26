@@ -68,8 +68,8 @@ export async function validateVoter(voterId, ballotId) {
         if (voterInfo.length === 0) {
             console.error("Voter not found in API: ", voterId);
             validated = false;
-            await saveVoterValidation(voterId, ballotId, validated);
-            await saveVotingPower(voterId, ballotId, 0);
+            await saveVoterValidation(voterId, ballotId, validated, "pool");
+            await saveVotingPower(voterId, ballotId, 0, "pool");
             return validated;
         }
 
@@ -81,21 +81,21 @@ export async function validateVoter(voterId, ballotId) {
             const pledge = BigInt(voterInfo[0].pledge || "0");
             if (livePledge >= pledge) {
                 validated = true;
-                await saveVoterValidation(voterId, ballotId, validated);
-                await saveVotingPower(voterId, ballotId, voterInfo[0].live_pledge);
+                await saveVoterValidation(voterId, ballotId, validated, "pool");
+                await saveVotingPower(voterId, ballotId, voterInfo[0].live_pledge, "pool");
                 return validated;
             } else {
                 console.log("Voter live pledge is smaller than pledge: ", voterInfo[0].live_pledge, voterInfo[0].pledge);
                 validated = false;
-                await saveVoterValidation(voterId, ballotId, validated);
-                await saveVotingPower(voterId, ballotId, 0);
+                await saveVoterValidation(voterId, ballotId, validated, "pool");
+                await saveVotingPower(voterId, ballotId, 0, "pool");
                 return validated;
             }
         } else {
             console.log("Voter is not registered Pool: ", voterInfo[0].pool_status);
             validated = false;
-            await saveVoterValidation(voterId, ballotId, validated);
-            await saveVotingPower(voterId, ballotId, 0);
+            await saveVoterValidation(voterId, ballotId, validated, "pool");
+            await saveVotingPower(voterId, ballotId, 0, "pool");
             return validated;
         }
     } catch (error) {

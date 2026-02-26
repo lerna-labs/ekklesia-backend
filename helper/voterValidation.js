@@ -68,6 +68,7 @@ export async function checkVoterValidation(voterId, ballotId) {
  * @param {string} voterId - The ID of the voter
  * @param {string|ObjectId} ballotId - The ID of the ballot
  * @param {boolean} validated - The validation status to save
+ * @param {string} [voterGroup] - Optional group for this voter on this ballot (e.g. "drep", "pool", "default")
  * @returns {Promise<Object>} The updated or created validation document
  * @throws {Error} If validation cannot be saved
  *
@@ -76,11 +77,13 @@ export async function checkVoterValidation(voterId, ballotId) {
  * Uses findOneAndUpdate with upsert to either create a new record or
  * update an existing one, depending on whether a record already exists.
  */
-export async function saveVoterValidation(voterId, ballotId, validated) {
+export async function saveVoterValidation(voterId, ballotId, validated, voterGroup) {
+  const update = { validated, ballotId, voterId };
+  if (voterGroup !== undefined) update.voterGroup = voterGroup;
   // Save the validation to the database
   const newValidation = await VoterCache.findOneAndUpdate(
     { ballotId, voterId },
-    { validated, ballotId, voterId },
+    update,
     { upsert: true, new: true }
   );
   if (!newValidation) {
@@ -144,6 +147,7 @@ export async function checkVotingPower(voterId, ballotId) {
  * @param {string} voterId - The ID of the voter
  * @param {string|ObjectId} ballotId - The ID of the ballot
  * @param {number} votingPower - The voting power to save
+ * @param {string} [voterGroup] - Optional group for this voter on this ballot
  * @returns {Promise<Object>} The updated validation document
  * @throws {Error} If voting power cannot be saved
  *
@@ -152,17 +156,19 @@ export async function checkVotingPower(voterId, ballotId) {
  * This function does not create a new record if none exists (upsert: false),
  * so saveVoterValidation should be called first for new voters.
  */
-export async function saveVotingPower(voterId, ballotId, votingPower) {
+export async function saveVotingPower(voterId, ballotId, votingPower, voterGroup) {
   conditionalLog(
     "CACHE: Saving voting power for",
     voterId,
     ballotId.toString(),
     votingPower
   );
+  const update = { votingPower };
+  if (voterGroup !== undefined) update.voterGroup = voterGroup;
   // Save the validation to the database
   const newValidation = await VoterCache.findOneAndUpdate(
     { ballotId, voterId },
-    { votingPower },
+    update,
     { upsert: false, new: true }
   );
   if (!newValidation) {
