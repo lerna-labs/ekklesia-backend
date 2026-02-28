@@ -144,6 +144,68 @@ export async function isPartyToScript(
 }
 
 
+/**
+ * Validates that a list of signatures satisfies the script's required signers.
+ * Uses isPartyToScript per signature and tracks unique signers via getScriptCriteria.signers.
+ *
+ * @param {string} payload - Hex-encoded payload (e.g. merkle root) that was signed
+ * @param {string} address - Script address (bech32)
+ * @param {Object[]} signatures - Array of signature objects (e.g. transaction.multiSig)
+ * @param {Object} [script_body] - Optional script body; fetched via getScript if omitted
+ * @returns {Promise<boolean>} True if script satisfied, false otherwise or on error
+ */
+export async function validateScriptSignatures(
+    payload,
+    address,
+    signatures,
+    script_body
+) {
+    if (!payload || !address || !Array.isArray(signatures)) {
+        return false;
+    }
+    const address_type = getAddressType(address);
+    if (address_type.hashType !== "script") {
+        return false;
+    }
+    if (!script_body) {
+        try {
+            script_body = await getScript(address_type.keyHash.trim());
+        } catch (e) {
+            return false;
+        }
+    }
+    if (!script_body || script_body.type !== "timelock") {
+        return false;
+    }
+    const script_criteria = getScriptCriteria(script_body.value);
+    for (let signature of signatures) {
+        try {
+            signature = standardize_signature(signature);
+        } catch (e) {
+            continue;
+        }
+        const is_signature_in_script = await isPartyToScript(
+            payload,
+            address,
+            signature,
+            script_body
+        );
+        if (is_signature_in_script === true) {
+            const { verification_key } = get_key_signature_and_payload(
+                signature,
+                payload
+            );
+            const SignatureKeyHash = verification_key.hash().to_hex();
+            if (script_criteria.signers.includes(SignatureKeyHash)) {
+                continue; // double signer, do not count
+            }
+            script_criteria.signers.push(SignatureKeyHash);
+            script_criteria.signed++;
+        }
+    }
+    return script_criteria.signed >= script_criteria.required;
+}
+
 export function getScriptCriteria(
     script_contents,
     carry = {keys: [], signers: [], signed: 0, required: 1, count: 0}
