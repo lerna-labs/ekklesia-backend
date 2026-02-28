@@ -115,15 +115,6 @@ const ballotSchema = new Schema(
       default: "upcoming",
       required: true,
     },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-      immutable: true,
-    },
-    updatedAt: {
-      type: Date,
-      default: Date.now,
-    },
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
@@ -148,12 +139,6 @@ const ballotSchema = new Schema(
 // Indexes for faster queries
 ballotSchema.index({ title: 1 });
 ballotSchema.index({ voterType: 1 });
-
-// Pre-save middleware to update the updatedAt field
-ballotSchema.pre("save", function (next) {
-  this.updatedAt = new Date();
-  next();
-});
 
 const Ballot = mongoose.model("Ballot", ballotSchema);
 export { Ballot };

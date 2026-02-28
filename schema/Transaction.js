@@ -64,15 +64,6 @@ const transactionSchema = new Schema(
       default: "created",
       required: true,
     },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-      immutable: true,
-    },
-    updatedAt: {
-      type: Date,
-      default: Date.now,
-    },
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
@@ -84,12 +75,6 @@ const transactionSchema = new Schema(
 transactionSchema.index({ voterId: 1 });
 transactionSchema.index({ ballotId: 1 });
 transactionSchema.index({ status: 1 });
-
-// Pre-save middleware to update the updatedAt field
-transactionSchema.pre("save", function (next) {
-  this.updatedAt = new Date();
-  next();
-});
 
 const Transaction = mongoose.model("Transaction", transactionSchema);
 export { Transaction };

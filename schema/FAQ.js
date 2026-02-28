@@ -38,16 +38,7 @@ const faqSchema = new Schema(
       type: Boolean,
       default: false,
       required: true,
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-      immutable: true,
-    },
-    updatedAt: {
-      type: Date,
-      default: Date.now,
-    },
+    }
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
@@ -75,12 +66,6 @@ faqSchema.index({ is_live: 1 });
 
 // Text index for search functionality
 faqSchema.index({ title: "text", content: "text" });
-
-// Pre-save middleware to update the updatedAt field
-faqSchema.pre("save", function (next) {
-  this.updatedAt = new Date();
-  next();
-});
 
 const FAQ = mongoose.model("FAQ", faqSchema);
 export { FAQ };

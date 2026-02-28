@@ -36,16 +36,7 @@ const commentSchema = new Schema(
     content: {
       type: String,
       required: true,
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-      immutable: true,
-    },
-    updatedAt: {
-      type: Date,
-      default: Date.now,
-    },
+    }
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
@@ -55,12 +46,6 @@ const commentSchema = new Schema(
 
 // Indexes for faster queries
 commentSchema.index({ proposalId: 1 });
-
-// Pre-save middleware to update the updatedAt field
-commentSchema.pre("save", function (next) {
-  this.updatedAt = new Date();
-  next();
-});
 
 const Comment = mongoose.model("Comment", commentSchema);
 export { Comment };

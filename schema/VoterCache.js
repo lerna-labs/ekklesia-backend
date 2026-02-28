@@ -47,16 +47,7 @@ const voterCacheSchema = new Schema(
     voterGroup: {
       type: String,
       default: "default",
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-      immutable: true,
-    },
-    updatedAt: {
-      type: Date,
-      default: Date.now,
-    },
+    }
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
@@ -69,11 +60,6 @@ voterCacheSchema.index({ voterId: 1 });
 voterCacheSchema.index({ ballotId: 1 });
 voterCacheSchema.index({ ballotId: 1, voterGroup: 1 });
 
-// Pre-save middleware to update the updatedAt field
-voterCacheSchema.pre("save", function (next) {
-  this.updatedAt = new Date();
-  next();
-});
 
 const VoterCache = mongoose.model("VoterCache", voterCacheSchema);
 export { VoterCache };

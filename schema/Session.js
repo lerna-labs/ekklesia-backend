@@ -53,11 +53,5 @@ const sessionSchema = new Schema(
 // Indexes for faster queries
 sessionSchema.index({ voterId: 1 });
 
-// Pre-save middleware to update the updatedAt field
-sessionSchema.pre("save", function (next) {
-  this.updatedAt = new Date();
-  next();
-});
-
 const Session = mongoose.model("Session", sessionSchema);
 export { Session };

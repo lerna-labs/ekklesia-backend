@@ -51,11 +51,5 @@ const resultSchema = new Schema(
   }
 );
 
-// Pre-save middleware to update the updatedAt field
-resultSchema.pre("save", function (next) {
-  this.updatedAt = new Date();
-  next();
-});
-
 const Result = mongoose.model("Result", resultSchema);
 export { Result };
