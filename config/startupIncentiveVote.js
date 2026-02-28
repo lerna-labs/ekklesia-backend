@@ -1,10 +1,10 @@
 import { UserCache } from "../schema/UserCache.js";
-import { getPoolTotals, getAllDreps } from "../helper/koios.js";
+import { fetchPoolTotals, fetchAllDReps } from "../helper/koios.js";
 
 export async function startupBallot(ballotId) {
     console.log("Startup Script for Ballot", ballotId);
 
-    const poolTotals = await getPoolTotals();
+    const poolTotals = await fetchPoolTotals();
     if (poolTotals.error) {
         console.error(poolTotals.error);
         process.exit(1);
@@ -38,7 +38,7 @@ export async function startupBallot(ballotId) {
     console.log("Voter cache created for", poolTotals.poolData.length, "pools");
 
 
-    const dreps = await getAllDreps();
+    const dreps = await fetchAllDReps();
     if (dreps.error) {
         console.error(dreps.error);
         process.exit(1);

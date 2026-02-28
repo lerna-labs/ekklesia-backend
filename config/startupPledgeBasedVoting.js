@@ -1,9 +1,9 @@
 // creates the voter cache for all eligable pools and checks if live_pledge is equal or greater than pledge
-import { getPoolTotals } from "../helper/koios.js";
+import { fetchPoolTotals } from "../helper/koios.js";
 import { UserCache } from "../schema/UserCache.js";
 export async function startupBallot(ballotId) {
     console.log("Startup Script for Ballot", ballotId);
-    const poolTotals = await getPoolTotals();
+    const poolTotals = await fetchPoolTotals();
     if (poolTotals.error) {
         console.error(poolTotals.error);
         process.exit(1);
