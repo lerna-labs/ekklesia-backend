@@ -5,7 +5,7 @@ import { createVoterTree } from "../helper/createVoterTree.js";
 /**
  * Creates or updates a transaction record for submitting votes
  *
- * @param {string} voterId - The ID of the voter submitting votes
+ * @param {string} userId - The ID of the voter submitting votes
  * @param {string} ballotId - The ID of the ballot being voted on
  * @returns {Object} A cleaned transaction object containing votes and merkle root
  * @throws {Error} If no votes are found for the specified voter and ballot
@@ -21,10 +21,10 @@ import { createVoterTree } from "../helper/createVoterTree.js";
  * The returned transaction object contains the ballot ID, voter ID,
  * cleaned vote objects, and the merkle root hash for verification.
  */
-export async function createTransaction(voterId, ballotId) {
+export async function createTransaction(userId, ballotId) {
   // get votes for this ballot
   const votes = await Vote.find({
-    voterId,
+    userId,
     ballotId,
   }).sort({ _id: -1 });
   if (votes.length === 0) {
@@ -38,7 +38,7 @@ export async function createTransaction(voterId, ballotId) {
   const cleanVotes = votes.map((vote) => {
     const voteObj = vote.toObject();
     delete voteObj._id;
-    delete voteObj.voterId;
+    delete voteObj.userId;
     delete voteObj.ballotId;
     delete voteObj.createdAt;
     delete voteObj.updatedAt;
@@ -50,7 +50,7 @@ export async function createTransaction(voterId, ballotId) {
   // Create merkle tree from votes
   const voteData = {
     ballotId,
-    voterId,
+    userId,
     votes: cleanVotes,
   };
 
@@ -58,7 +58,7 @@ export async function createTransaction(voterId, ballotId) {
 
   // store transaction in db
   const transaction = await Transaction.findOneAndUpdate(
-    { voterId, ballotId, status: "created" },
+    { userId, ballotId, status: "created" },
     {
       $set: {
         votes: cleanVotes,

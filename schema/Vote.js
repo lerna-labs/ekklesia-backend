@@ -6,7 +6,7 @@ const { Schema } = mongoose;
  * Represents a vote cast by a voter for a specific proposal within a ballot
  *
  * @typedef {Object} Vote
- * @property {String} voterId - ID of the voter who cast the vote (references Voter, format depends on voterType)
+ * @property {String} userId - ID of the voter who cast the vote (references Voter, format depends on voterType)
  * @property {ObjectId} ballotId - ID of the ballot the vote belongs to (references Ballot)
  * @property {ObjectId} proposalId - ID of the proposal being voted on (references Proposal)
  * @property {Array<Number|String>} vote - Current value of the vote (may differ from submittedVote if changed)
@@ -26,14 +26,14 @@ const { Schema } = mongoose;
  * Votes can exist in two states: pending (not yet submitted) and submitted.
  * When votes are submitted via transaction, the submittedVote and submittedAt fields are updated.
  * If a voter changes their vote before submission, only the vote field changes.
- * Each voter can only have one vote per proposal (enforced by unique index on proposalId + voterId).
- * Composite indexes are maintained for efficient querying by voterId, proposalId, and ballotId.
+ * Each voter can only have one vote per proposal (enforced by unique index on proposalId + userId).
+ * Composite indexes are maintained for efficient querying by userId, proposalId, and ballotId.
  * Timestamps are automatically managed to track creation and modification times.
  * The __v version key is removed from documents for cleaner output.
  */
 const voteSchema = new Schema(
   {
-    voterId: {
+    userId: {
       type: String,
       required: true,
       ref: "Voter",
@@ -68,10 +68,10 @@ const voteSchema = new Schema(
 );
 
 // Indexes for faster queries
-voteSchema.index({ voterId: 1 });
+voteSchema.index({ userId: 1 });
 voteSchema.index({ proposalId: 1 });
 voteSchema.index({ ballotId: 1 });
-voteSchema.index({ proposalId: 1, voterId: 1 }, { unique: true });
+voteSchema.index({ proposalId: 1, userId: 1 }, { unique: true });
 
 const Vote = mongoose.model("Vote", voteSchema);
 export { Vote };

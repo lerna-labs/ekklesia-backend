@@ -22,11 +22,11 @@ import { PublicKey } from "@emurgo/cardano-serialization-lib-nodejs";
  * @description
  * This middleware:
  * 1. Extracts and verifies the authentication token from the request
- * 2. If valid, adds voter information (voterId, signType, multiSig) to the request object
+ * 2. If valid, adds voter information (userId, signType, multiSig) to the request object
  * 3. If invalid, returns an appropriate error response
  *
  * On success, adds the following properties to the request:
- * - req.voterId: The authenticated voter's ID
+ * - req.userId: The authenticated voter's ID
  * - req.signType: The type of signature used ('drep', etc.)
  * - req.multiSig: Boolean indicating if this is a multisig authentication
  */
@@ -39,7 +39,7 @@ export function isAuthenticated(req, res, next) {
         message: voterToken.message,
       });
     } else {
-      req.voterId = voterToken.voterId;
+      req.userId = voterToken.userId;
       req.signType = voterToken.signType;
       req.multiSig = voterToken.multiSig || false;
       return next();
@@ -85,7 +85,7 @@ export async function getTransaction(req, res, next) {
     // find transaction in database
     const transaction = await Transaction.findOne({
       _id: transactionId,
-      voterId: req.voterId,
+      userId: req.userId,
     });
     if (!transaction) {
       return res.status(404).json({

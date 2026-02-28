@@ -3,13 +3,13 @@ const { Schema } = mongoose;
 
 /**
  * User Schema
- * Stores display name and last login per voter (voterId = _id).
+ * Stores display name and last login per voter (userId = _id).
  * _id is bech32 stake address or CIP129 drep/script id.
  */
 const userSchema = new Schema(
   {
     _id: {
-      type: String, // voterId: bech32 stake address or cip129 drep id
+      type: String, // userId: bech32 stake address or cip129 drep id
       immutable: true,
     },
     name: {

@@ -21,7 +21,7 @@ dotenv.config({ path: envPath });
  * {
  *   status: "success",
  *   message: "Token is valid",
- *   voterId: <decoded voter ID>,
+ *   userId: <decoded voter ID>,
  *   signType: <decoded sign type>,
  *   multiSig: <boolean indicating if multisig>,
  *   exp: <token expiration timestamp>
@@ -73,7 +73,7 @@ export function verifyToken(req) {
     const decoded = jwt.verify(token, JWT_SECRET);
 
     // Make sure the token contains the required fields
-    if (!decoded || !decoded.voterId) {
+    if (!decoded || !decoded.userId) {
       return {
         status: "error",
         message: "Invalid token format",
@@ -85,7 +85,7 @@ export function verifyToken(req) {
     return {
       status: "success",
       message: "Token is valid",
-      voterId: decoded.voterId,
+      userId: decoded.userId,
       signType: decoded.signType,
       multiSig: decoded.multiSig || false,
       exp: decoded.exp,

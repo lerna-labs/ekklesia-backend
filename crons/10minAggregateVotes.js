@@ -1,5 +1,5 @@
 import { Vote } from "../schema/Vote.js";
-import { VoterCache } from "../schema/VoterCache.js";
+import { UserCache } from "../schema/UserCache.js";
 import { Proposal } from "../schema/Proposal.js";
 import { Result } from "../schema/Result.js";
 
@@ -44,14 +44,14 @@ export async function aggregateVotes() {
       { $match: { proposalId } },
       {
         $lookup: {
-          from: "votercaches", // collection name in MongoDB
-          let: { voterId: "$voterId", ballotId: proposal.ballotId },
+          from: "usercaches", // collection name in MongoDB
+          let: { userId: "$userId", ballotId: proposal.ballotId },
           pipeline: [
             {
               $match: {
                 $expr: {
                   $and: [
-                    { $eq: ["$voterId", "$$voterId"] },
+                    { $eq: ["$userId", "$$userId"] },
                     { $eq: ["$ballotId", "$$ballotId"] },
                   ],
                 },
@@ -132,14 +132,14 @@ export async function aggregateVotes() {
       { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
       {
         $lookup: {
-          from: "votercaches",
-          let: { voterId: "$voterId", ballotId: proposal.ballotId },
+          from: "usercaches",
+          let: { userId: "$userId", ballotId: proposal.ballotId },
           pipeline: [
             {
               $match: {
                 $expr: {
                   $and: [
-                    { $eq: ["$voterId", "$$voterId"] },
+                    { $eq: ["$userId", "$$userId"] },
                     { $eq: ["$ballotId", "$$ballotId"] },
                   ],
                 },

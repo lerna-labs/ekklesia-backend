@@ -7,7 +7,7 @@ const { Schema } = mongoose;
  *
  * @typedef {Object} Comment
  * @property {ObjectId} proposalId - The ID of the proposal this comment belongs to (references Proposal)
- * @property {String} voterId - The ID of the voter who made the comment (references Voter)
+ * @property {String} userId - The ID of the voter who made the comment (references Voter)
  * @property {String} content - The content of the comment (required, max 1000 characters, sanitized for security)
  * @property {Date} createdAt - Timestamp when the comment was created (immutable)
  * @property {Date} updatedAt - Timestamp when the comment was last updated
@@ -28,7 +28,7 @@ const commentSchema = new Schema(
       required: true,
       ref: "Proposal",
     },
-    voterId: {
+    userId: {
       type: String,
       required: true,
       ref: "Voter",

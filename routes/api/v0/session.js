@@ -80,10 +80,10 @@ function setAuthCookie(res, token, expiryDate) {
   });
 }
 
-async function consumeNonce(voterId, nonceExpiryTime) {
+async function consumeNonce(userId, nonceExpiryTime) {
   const nonceData = await Session.findOneAndUpdate(
     {
-      voterId,
+      userId,
       nonce: { $ne: null },
       createdAt: { $gte: nonceExpiryTime },
     },
@@ -93,14 +93,14 @@ async function consumeNonce(voterId, nonceExpiryTime) {
   return nonceData;
 }
 
-async function clearNoncesForUser(voterId) {
+async function clearNoncesForUser(userId) {
   await Session.updateMany(
-    { voterId, nonce: { $ne: null } },
+    { userId, nonce: { $ne: null } },
     { $set: { nonce: null } }
   );
   const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
   await Session.deleteMany({
-    voterId,
+    userId,
     nonce: null,
     createdAt: { $lt: thirtyMinutesAgo },
   });
@@ -122,15 +122,15 @@ function validateScriptAddress(scriptAddress) {
 
 /**
  * @route GET /api/v0/session
- * @description Validate JWT and return voterId plus User name/lastLogin when present.
+ * @description Validate JWT and return userId plus User name/lastLogin when present.
  * @access Private (requires authentication)
  */
 router.get("/", isAuthenticated, async (req, res) => {
-  const { voterId } = req;
+  const { userId } = req;
   let name;
   let lastLogin;
   try {
-    const userDoc = await User.findById(voterId).select("name lastLogin").lean();
+    const userDoc = await User.findById(userId).select("name lastLogin").lean();
     if (userDoc) {
       if (userDoc.name != null) name = userDoc.name;
       if (userDoc.lastLogin != null) lastLogin = userDoc.lastLogin;
@@ -138,7 +138,7 @@ router.get("/", isAuthenticated, async (req, res) => {
   } catch (err) {
     console.error("Error fetching user for session GET:", err);
   }
-  const payload = { voterId };
+  const payload = { userId };
   if (name !== undefined) payload.name = name;
   if (lastLogin !== undefined) payload.lastLogin = lastLogin;
   return res.status(200).json(payload);
@@ -167,7 +167,7 @@ router.post("/", nonceRequestLimiter, validateSessionRequest, async (req, res) =
     const nonce = generateNonce("Sign in! ");
     try {
       const login = new Session({
-        voterId: validatedScriptAddress,
+        userId: validatedScriptAddress,
         nonce,
       });
       await login.save();
@@ -180,8 +180,8 @@ router.post("/", nonceRequestLimiter, validateSessionRequest, async (req, res) =
     }
     return res.status(200).json({
       dataHex: nonce,
-      voterId: validatedScriptAddress,
-      voterIdHex: req.signerAddress,
+      userId: validatedScriptAddress,
+      userIdHex: req.signerAddress,
       signerAddressHex: req.signerAddress,
       scriptAddress: validatedScriptAddress,
     });
@@ -209,7 +209,7 @@ router.post("/", nonceRequestLimiter, validateSessionRequest, async (req, res) =
   console.log("Login request", addressBech32);
   const nonce = generateNonce("Sign in! ");
   try {
-    const login = new Session({ voterId: addressBech32, nonce });
+    const login = new Session({ userId: addressBech32, nonce });
     await login.save();
   } catch (error) {
     console.error("Error saving session to database:", error);
@@ -220,8 +220,8 @@ router.post("/", nonceRequestLimiter, validateSessionRequest, async (req, res) =
   }
   const response = {
     dataHex: nonce,
-    voterId: addressBech32,
-    voterIdHex: req.signerAddress,
+    userId: addressBech32,
+    userIdHex: req.signerAddress,
     signerAddressHex: req.signerAddress,
   };
   if (calidusID) response.calidusID = calidusID;
@@ -289,7 +289,7 @@ router.put("/", sessionVerificationLimiter, validateSessionRequest, async (req, 
     let token;
     try {
       token = jwt.sign(
-        { voterId: validatedScriptAddress, signType, multiSig: true },
+        { userId: validatedScriptAddress, signType, multiSig: true },
         process.env.JWT_SECRET,
         { expiresIn: JWT_MAX_AGE }
       );
@@ -322,7 +322,7 @@ router.put("/", sessionVerificationLimiter, validateSessionRequest, async (req, 
     return res.status(200).json({
       token,
       expiresIn: expiryDate,
-      voterId: validatedScriptAddress,
+      userId: validatedScriptAddress,
     });
   }
 
@@ -377,7 +377,7 @@ router.put("/", sessionVerificationLimiter, validateSessionRequest, async (req, 
   let token;
   try {
     token = jwt.sign(
-      { voterId: addressBech32, signType },
+      { userId: addressBech32, signType },
       process.env.JWT_SECRET,
       { expiresIn: JWT_MAX_AGE }
     );
@@ -424,7 +424,7 @@ router.put("/", sessionVerificationLimiter, validateSessionRequest, async (req, 
   return res.status(200).json({
     token,
     expiresIn: expiryDate,
-    voterId: addressBech32,
+    userId: addressBech32,
   });
 });
 
@@ -434,14 +434,14 @@ router.put("/", sessionVerificationLimiter, validateSessionRequest, async (req, 
  * @access Private (requires authentication)
  */
 router.delete("/", isAuthenticated, async (req, res) => {
-  const { voterId } = req;
+  const { userId } = req;
   res.clearCookie("token", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
     path: "/",
   });
-  console.log("Logout success", voterId);
+  console.log("Logout success", userId);
   return res.status(200).json({
     status: "success",
     message: "Logged out successfully",

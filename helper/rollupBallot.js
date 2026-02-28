@@ -60,7 +60,7 @@ export async function rollupBallot($results, $weight, $epoch_no) {
         const proposal_voters = [];
 
         for (const vote of proposal.votes) {
-            const id_parts = getAddressType(vote.voterId);
+            const id_parts = getAddressType(vote.userId);
             const voter_key_id = id_parts.keyHash;
 
             // Prefer submittedVote (schema field); accept legacy submittedValue for backward compatibility

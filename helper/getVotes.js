@@ -3,20 +3,20 @@ import { Ballot } from "../schema/Ballot.js";
 import { Proposal } from "../schema/Proposal.js";
 
 // !! NEEDS REWRITE !!
-// returns all votes for a given voterId, ballotId, or voteType = pending
+// returns all votes for a given userId, ballotId, or voteType = pending
 // if voteType is pending, it will return all votes that are pending
 // if voteType is submitted, it will return all votes that are submitted
 export async function getVotes(
-  voterId = false,
+  userId = false,
   ballotId = false,
   voteType = false,
   voteLabels = false
 ) {
   // build voteSelect object
   const voteSelect = {};
-  // add voterId
-  if (voterId) {
-    voteSelect.voterId = voterId;
+  // add userId
+  if (userId) {
+    voteSelect.userId = userId;
   }
   // add ballotId
   if (ballotId) {
@@ -106,10 +106,10 @@ export async function getVotes(
   return plainBallots;
 }
 
-// returns the pending vote count for a voterId on active ballots
-export async function getPendingVoteCount(voterId) {
+// returns the pending vote count for a userId on active ballots
+export async function getPendingVoteCount(userId) {
   const pendingVotes = await Vote.find({
-    voterId,
+    userId,
     $or: [
       { submittedAt: null },
       {
@@ -156,11 +156,11 @@ export async function getPendingVoteCount(voterId) {
   return pendingVotesOnLiveBallots.length;
 }
 
-// returns the submitted votes for a voterId on all ballots a voter has voted on based on the transaction collection
-export async function getSubmittedVotes(voterId) {
-  // get transactions for the voterId, but only the ones with status submitted and only the last one per ballotId
+// returns the submitted votes for a userId on all ballots a voter has voted on based on the transaction collection
+export async function getSubmittedVotes(userId) {
+  // get transactions for the userId, but only the ones with status submitted and only the last one per ballotId
   const votes = await Vote.find({
-    voterId,
+    userId,
     submittedAt: { $ne: null },
     $expr: {
       $lt: [
