@@ -35,7 +35,7 @@ import { verifyToken } from "../../../helper/verifyToken.js";
 router.get("/:proposalId", cacheControl(300), getProposal, async (req, res) => {
   const { proposalId, proposal } = req;
   const voterToken = verifyToken(req);
-  const voterId = voterToken.voterId || false;
+  const userId = voterToken.userId || false;
 
   // fetch total vote count
   const totalVotes = await Vote.countDocuments({
@@ -44,10 +44,10 @@ router.get("/:proposalId", cacheControl(300), getProposal, async (req, res) => {
   });
 
   // fetch user vote
-  if (voterId) {
+  if (userId) {
     const userVote = await Vote.findOne({
       proposalId,
-      voterId,
+      userId,
     }).lean();
 
     // add user vote to proposal object
@@ -90,7 +90,7 @@ router.get("/:proposalId", cacheControl(300), getProposal, async (req, res) => {
  * @returns {Array} 200 - Array of comment objects sorted by createdAt (descending), each containing:
  *   - _id: MongoDB ObjectId of the comment
  *   - proposalId: ID of the proposal
- *   - voterId: ID of the voter who created the comment
+ *   - userId: ID of the voter who created the comment
  *   - content: Comment content (sanitized)
  *   - createdAt: ISO 8601 timestamp when comment was created
  *   - updatedAt: ISO 8601 timestamp when comment was last updated
@@ -156,9 +156,9 @@ router.get("/:proposalId/results/grouped", getProposal, async (req, res) => {
     {
       $lookup: {
         from: "votercaches",
-        let: { voterId: "$voterId", ballotId },
+        let: { userId: "$userId", ballotId },
         pipeline: [
-          { $match: { $expr: { $and: [{ $eq: ["$voterId", "$$voterId"] }, { $eq: ["$ballotId", "$$ballotId"] }] } } },
+          { $match: { $expr: { $and: [{ $eq: ["$userId", "$$userId"] }, { $eq: ["$ballotId", "$$ballotId"] }] } } },
         ],
         as: "voterData",
       },
@@ -243,13 +243,13 @@ router.get("/:proposalId/results", getProposal, async (req, res) => {
     {
       $lookup: {
         from: "votercaches", // collection name in MongoDB
-        let: { voterId: "$voterId", ballotId: ballotId },
+        let: { userId: "$userId", ballotId: ballotId },
         pipeline: [
           {
             $match: {
               $expr: {
                 $and: [
-                  { $eq: ["$voterId", "$$voterId"] },
+                  { $eq: ["$userId", "$$userId"] },
                   { $eq: ["$ballotId", "$$ballotId"] },
                 ],
               },

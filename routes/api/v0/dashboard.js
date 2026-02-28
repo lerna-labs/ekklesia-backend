@@ -30,25 +30,25 @@ import { fetchCalidusKey } from "../../../helper/koios.js";
  * @access Private (requires authentication)
  *
  * @returns {Object} 200 - Voter information object containing:
- *   - voterId: ID of the authenticated voter
+ *   - userId: ID of the authenticated voter
  *   - lastLogin: ISO 8601 timestamp of last login (null if never logged in, from most recent Session record)
  *   - multiSig: Boolean indicating if voter is using multisig authentication
  *   - pendingVotesCount: Number of pending (unsubmitted) votes for the voter
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  */
 router.get("/", isAuthenticated, async (req, res) => {
-  const voterId = req.voterId;
+  const userId = req.userId;
 
   // get last login timestamp
-  const lastLogin = await Session.findOne({ voterId }).sort({
+  const lastLogin = await Session.findOne({ userId }).sort({
     updatedAt: -1,
   });
 
   // check for pending votes
-  const pendingVotesCount = await getPendingVoteCount(voterId);
+  const pendingVotesCount = await getPendingVoteCount(userId);
 
   return res.status(200).json({
-    voterId,
+    userId,
     lastLogin: lastLogin ? lastLogin.updatedAt : null,
     multiSig: req.multiSig,
     pendingVotesCount,
@@ -73,9 +73,9 @@ router.get("/", isAuthenticated, async (req, res) => {
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  */
 router.get("/ballots", isAuthenticated, async (req, res) => {
-  const voterId = req.voterId;
+  const userId = req.userId;
   // get all ballots the voter has already voted on
-  const votedBallots = await Vote.find({ voterId }).distinct("ballotId");
+  const votedBallots = await Vote.find({ userId }).distinct("ballotId");
 
   // get all live ballots and validate voter against their respective voter validation
   const liveBallots = await Ballot.find({
@@ -97,10 +97,10 @@ router.get("/ballots", isAuthenticated, async (req, res) => {
       "../../../config/" + ballot.voterValidationScript
     );
     // validate voter against ballot
-    const isValidVoter = await validateVoter(voterId, ballotId);
+    const isValidVoter = await validateVoter(userId, ballotId);
     if (isValidVoter) {
       // get voting power for the voter
-      const weight = await checkVotingPower(voterId, ballotId);
+      const weight = await checkVotingPower(userId, ballotId);
       if (weight) {
         // add voting power to the list
         voterVotingPower.push({
@@ -154,7 +154,7 @@ router.get("/ballots", isAuthenticated, async (req, res) => {
  * @returns {Object|Array} 200 - Response containing:
  *   - If pending votes exist: Array of vote objects, each containing:
  *     - _id: MongoDB ObjectId of the vote
- *     - voterId: ID of the voter
+ *     - userId: ID of the voter
  *     - ballotId: ID of the ballot
  *     - proposalId: ID of the proposal
  *     - vote: Array of current vote option IDs
@@ -166,9 +166,9 @@ router.get("/ballots", isAuthenticated, async (req, res) => {
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  */
 router.get("/pending", isAuthenticated, async (req, res) => {
-  const voterId = req.voterId;
+  const userId = req.userId;
 
-  const pendingVotes = await getVotes(voterId, false, "pending", true);
+  const pendingVotes = await getVotes(userId, false, "pending", true);
   if (pendingVotes.length === 0) {
     return res.status(200).json({
       message: "no pending votes",
@@ -180,29 +180,29 @@ router.get("/pending", isAuthenticated, async (req, res) => {
 
 /**
  * @route POST /api/v0/dashboard/:ballotId/checkout
- * @description Request checkout for a ballot, creating transaction data for signing. Creates a transaction object containing all pending votes for the ballot, generates a merkle root, and returns hex-encoded data ready for signing. The signerAddress must match the authenticated voterId.
+ * @description Request checkout for a ballot, creating transaction data for signing. Creates a transaction object containing all pending votes for the ballot, generates a merkle root, and returns hex-encoded data ready for signing. The signerAddress must match the authenticated userId.
  * @access Private (requires authentication)
  *
  * @param {string} req.params.ballotId - MongoDB ObjectId of the ballot to checkout
  * @param {Object} req.body
- * @param {string} req.body.signerAddress - Address of the signer (must match authenticated voterId, validated and converted to CIP129 if applicable)
+ * @param {string} req.body.signerAddress - Address of the signer (must match authenticated userId, validated and converted to CIP129 if applicable)
  * @param {string} req.body.signType - Type of signature: 'drep', 'stake', or 'pool' (used for address validation and Calidus key lookup)
  *
  * @returns {Object} 200 - TransactionResponse object containing:
  *   - _id: MongoDB ObjectId of the transaction
- *   - voterId: ID of the voter
+ *   - userId: ID of the voter
  *   - ballotId: ID of the ballot
  *   - merkleRoot: Merkle root hash of all votes in transaction
  *   - votes: Object containing vote data for each proposal
  *   - dataHex: Hex-encoded merkle root (this is what the voter signs)
- *   - voterIdHex: Hex-encoded signer address
+ *   - userIdHex: Hex-encoded signer address
  *   - calidusID: Calidus ID for pool signers (only present when signType is "pool")
  * @returns {Object} 400 - Error if:
  *   - Ballot status is not "live"
  *   - signerAddress is missing
  *   - signType is missing
  *   - Address validation fails
- *   - Signer address does not match authenticated voterId
+ *   - Signer address does not match authenticated userId
  *   - Pool not found or no calidus key registered (for pool signType)
  *   - Voter is not validated/allowed to vote on this ballot (not in VoterCache or validated=false)
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
@@ -213,14 +213,14 @@ router.post(
   isAuthenticated,
   getBallot,
   async (req, res) => {
-    const voterId = req.voterId;
+    const userId = req.userId;
     const ballot = req.ballot;
     const ballotId = ballot._id;
 
     // check if ballot is live
     if (ballot.status !== "live") {
       console.log(
-        "Checkout attempt (post) from " + voterId,
+        "Checkout attempt (post) from " + userId,
         "CLOSED Ballot: " + ballotId.toString()
       );
       return res.status(400).json({
@@ -229,7 +229,7 @@ router.post(
       });
     }
 
-    console.log("Checkout for " + voterId, "Ballot: " + ballotId.toString());
+    console.log("Checkout for " + userId, "Ballot: " + ballotId.toString());
 
     // get signer address from request body
     let { signerAddress, signType } = req.body;
@@ -248,7 +248,7 @@ router.post(
       });
     }
 
-    // Check if signerAddress is a valid voterId
+    // Check if signerAddress is a valid userId
     let addressBech32 = validateAddress(signerAddress, signType);
     if (addressBech32.error) {
       return res.status(400).json({
@@ -258,11 +258,11 @@ router.post(
     }
     // account for drep 105/129 addresses
     if (addressBech32.cip129) addressBech32 = addressBech32.cip129;
-    // Check if signerAddress matches voterId
-    if (addressBech32 !== voterId) {
+    // Check if signerAddress matches userId
+    if (addressBech32 !== userId) {
       return res.status(400).json({
         status: "error",
-        message: "Given address does not match voterId",
+        message: "Given address does not match userId",
       });
     }
 
@@ -289,7 +289,7 @@ router.post(
 
     // check if voter is in voter cache and validated against ballot
     const checkVoterCache = await VoterCache.findOne({
-      voterId,
+      userId,
       ballotId,
     });
     if (!checkVoterCache || checkVoterCache.validated === false) {
@@ -305,10 +305,10 @@ router.post(
     }
 
     // create transaction object
-    const transactionResponse = await createTransaction(voterId, ballotId);
+    const transactionResponse = await createTransaction(userId, ballotId);
     // create data to sign
     transactionResponse.dataHex = stringToHex(transactionResponse.merkleRoot);
-    transactionResponse.voterIdHex = signerAddress;
+    transactionResponse.userIdHex = signerAddress;
     if (calidusID) {
       transactionResponse.calidusID = calidusID;
     }
@@ -319,12 +319,12 @@ router.post(
 
 /**
  * @route PUT /api/v0/dashboard/:ballotId/checkout
- * @description Submit a signed transaction to finalize votes for a ballot. Verifies the signature, updates all votes in the transaction to submitted status, and updates the transaction status to "submitted". The signerAddress must match the authenticated voterId.
+ * @description Submit a signed transaction to finalize votes for a ballot. Verifies the signature, updates all votes in the transaction to submitted status, and updates the transaction status to "submitted". The signerAddress must match the authenticated userId.
  * @access Private (requires authentication)
  *
  * @param {string} req.params.ballotId - MongoDB ObjectId of the ballot
  * @param {Object} req.body
- * @param {string} req.body.signerAddress - Address of the signer (must match authenticated voterId, validated and converted to CIP129 if applicable)
+ * @param {string} req.body.signerAddress - Address of the signer (must match authenticated userId, validated and converted to CIP129 if applicable)
  * @param {string} req.body.signType - Type of signature: 'drep', 'stake', or 'pool' (used for address validation)
  * @param {string} req.body.data - Merkle root of the transaction data (must match existing transaction merkleRoot)
  * @param {Object} req.body.signature - Signature object containing the signed merkle root (structure varies by signType)
@@ -339,8 +339,8 @@ router.post(
  *   - signType is missing
  *   - data (merkleRoot) is missing
  *   - Address validation fails
- *   - Signer address does not match authenticated voterId
- *   - Transaction not found (no transaction with matching voterId, ballotId, status="created", and merkleRoot)
+ *   - Signer address does not match authenticated userId
+ *   - Transaction not found (no transaction with matching userId, ballotId, status="created", and merkleRoot)
  *   - Signature verification fails
  *   - Vote updates fail (no votes were modified)
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
@@ -351,15 +351,15 @@ router.put(
   isAuthenticated,
   getBallot,
   async (req, res) => {
-    console.log("Submit transaction for " + req.voterId);
-    const voterId = req.voterId;
+    console.log("Submit transaction for " + req.userId);
+    const userId = req.userId;
     const ballot = req.ballot;
     const ballotId = ballot._id;
 
     // check if ballot is live
     if (ballot.status !== "live") {
       console.log(
-        "Checkout attempt (put) from " + voterId,
+        "Checkout attempt (put) from " + userId,
         "CLOSED Ballot: " + ballotId.toString()
       );
       return res.status(400).json({
@@ -385,7 +385,7 @@ router.put(
       });
     }
 
-    // Check if signerAddress is a valid voterId
+    // Check if signerAddress is a valid userId
     let addressBech32 = validateAddress(signerAddress, signType);
     if (addressBech32.error) {
       console.error("Address validation error", addressBech32);
@@ -398,12 +398,12 @@ router.put(
     // account for drep 105/129 addresses
     if (addressBech32.cip129) addressBech32 = addressBech32.cip129;
 
-    // check if address in request body matches voterId
-    if (addressBech32 !== voterId) {
-      console.error("Address validation error", addressBech32, voterId);
+    // check if address in request body matches userId
+    if (addressBech32 !== userId) {
+      console.error("Address validation error", addressBech32, userId);
       return res.status(400).json({
         status: "error",
-        message: "given address does not match voterId",
+        message: "given address does not match userId",
       });
     }
 
@@ -418,7 +418,7 @@ router.put(
 
     // GET TRANSACTION FROM DB
     const transaction = await Transaction.findOne({
-      voterId,
+      userId,
       ballotId,
       status: "created",
       merkleRoot,
@@ -433,7 +433,7 @@ router.put(
     // VERIFY SIGNATURE
     const signatureVerification = await verifySignature(
       stringToHex(transaction.merkleRoot),
-      voterId,
+      userId,
       req.body.signature
     );
 
@@ -451,7 +451,7 @@ router.put(
       bulkOps.push({
         updateOne: {
           filter: {
-            voterId: voterId,
+            userId: userId,
             ballotId: ballotId,
             proposalId: voteData.proposalId,
           },
@@ -490,7 +490,7 @@ router.put(
     );
 
     console.log(
-      "Votes submitted for " + voterId,
+      "Votes submitted for " + userId,
       "Ballot: " + ballotId.toString()
     );
 
@@ -519,12 +519,12 @@ router.put(
  *
  * @returns {Object} 200 - TransactionResponse object containing:
  *   - _id: MongoDB ObjectId of the transaction
- *   - voterId: ID of the voter (matches signerAddress)
+ *   - userId: ID of the voter (matches signerAddress)
  *   - ballotId: ID of the ballot
  *   - merkleRoot: Merkle root hash of all votes in transaction
  *   - votes: Object containing vote data for each proposal
  *   - dataHex: Hex-encoded merkle root (this is what the voter signs)
- *   - voterIdHex: Hex-encoded signer address
+ *   - userIdHex: Hex-encoded signer address
  * @returns {Object} 400 - Error if:
  *   - Ballot status is not "live"
  *   - scriptAddress is missing
@@ -538,7 +538,7 @@ router.put(
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  */
 const checkoutMultisigPost = async (req, res) => {
-  const voterId = req.voterId;
+  const userId = req.userId;
   const ballot = req.ballot;
   const ballotId = ballot._id;
   const { transactionId } = req.params;
@@ -546,7 +546,7 @@ const checkoutMultisigPost = async (req, res) => {
   // check if ballot is live
     if (ballot.status !== "live") {
       console.log(
-        "MS: Checkout attempt (post) from " + voterId,
+        "MS: Checkout attempt (post) from " + userId,
         "CLOSED Ballot: " + ballotId.toString()
       );
       return res.status(400).json({
@@ -583,7 +583,7 @@ const checkoutMultisigPost = async (req, res) => {
       });
     }
 
-    console.log("Checkout for " + voterId, "Ballot: " + ballotId.toString());
+    console.log("Checkout for " + userId, "Ballot: " + ballotId.toString());
 
     // get signer address from request body
     let { signerAddress, signType, scriptAddress } = req.body;
@@ -609,7 +609,7 @@ const checkoutMultisigPost = async (req, res) => {
       });
     }
 
-    // Check if signerAddress is a valid voterId
+    // Check if signerAddress is a valid userId
     let addressBech32 = validateAddress(signerAddress, signType);
     if (addressBech32.error) {
       return res.status(400).json({
@@ -619,12 +619,12 @@ const checkoutMultisigPost = async (req, res) => {
     }
     // account for drep 105/129 addresses
     if (addressBech32.cip129) addressBech32 = addressBech32.cip129;
-    // Check if signerAddress matches voterId
+    // Check if signerAddress matches userId
     // !! commented out for multisig
-    // if (addressBech32 !== voterId) {
+    // if (addressBech32 !== userId) {
     //   return res.status(400).json({
     //     status: "error",
-    //     message: "given address does not match voterId",
+    //     message: "given address does not match userId",
     //   });
     // }
 
@@ -638,7 +638,7 @@ const checkoutMultisigPost = async (req, res) => {
 
     // check if voter is in voter cache and validated against ballot
     const checkVoterCache = await VoterCache.findOne({
-      voterId,
+      userId,
       ballotId,
     });
     if (!checkVoterCache || checkVoterCache.validated === false) {
@@ -658,7 +658,7 @@ const checkoutMultisigPost = async (req, res) => {
     if (transactionId) {
       transactionResponse = await Transaction.findOne({
         _id: transactionId,
-        voterId,
+        userId,
         ballotId,
         status: "pending",
       }).lean();
@@ -672,12 +672,12 @@ const checkoutMultisigPost = async (req, res) => {
     } else {
       // check if pending transaction exists and delete it if it does
       const pendingTransaction = await Transaction.findOneAndDelete({
-        voterId,
+        userId,
         ballotId,
         status: "pending",
       });
       if (pendingTransaction) {
-        console.log("Pending transaction found and deleted", voterId, ballotId);
+        console.log("Pending transaction found and deleted", userId, ballotId);
         // delete the transaction
         await Transaction.deleteOne({
           _id: pendingTransaction._id,
@@ -685,14 +685,14 @@ const checkoutMultisigPost = async (req, res) => {
       }
 
       // create new transaction object
-      transactionResponse = await createTransaction(voterId, ballotId);
+      transactionResponse = await createTransaction(userId, ballotId);
     }
 
     // create transaction object
     // create data to sign
     transactionResponse.dataHex = stringToHex(transactionResponse.merkleRoot);
-    transactionResponse.voterIdHex = signerAddress;
-    transactionResponse.voterId = signerAddress;
+    transactionResponse.userIdHex = signerAddress;
+    transactionResponse.userId = signerAddress;
     return res.status(200).json(transactionResponse);
 };
 
@@ -733,7 +733,7 @@ router.post(
  *   - data (merkleRoot) is missing
  *   - Address validation fails
  *   - Voter is not validated/allowed to vote on this ballot
- *   - Transaction not found (no transaction with matching voterId, ballotId, status in ["created","pending"], and merkleRoot)
+ *   - Transaction not found (no transaction with matching userId, ballotId, status in ["created","pending"], and merkleRoot)
  *   - Vote updates fail (no votes were modified, when multisig is complete)
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  * @returns {Object} 403 - Error if signer is not a party to the multisig script (signature verification fails)
@@ -744,15 +744,15 @@ router.put(
   isAuthenticated,
   getBallot,
   async (req, res) => {
-    console.log("Submit transaction for " + req.voterId);
-    const voterId = req.voterId;
+    console.log("Submit transaction for " + req.userId);
+    const userId = req.userId;
     const ballot = req.ballot;
     const ballotId = ballot._id;
 
     // check if ballot is live
     if (ballot.status !== "live") {
       console.log(
-        "MS: Checkout attempt (put) from " + voterId,
+        "MS: Checkout attempt (put) from " + userId,
         "CLOSED Ballot: " + ballotId.toString()
       );
       return res.status(400).json({
@@ -785,7 +785,7 @@ router.put(
       });
     }
 
-    // Check if signerAddress is a valid voterId
+    // Check if signerAddress is a valid userId
     let addressBech32 = validateAddress(signerAddress, signType);
     if (addressBech32.error) {
       return res.status(400).json({
@@ -794,18 +794,18 @@ router.put(
       });
     }
 
-    // check if address in request body matches voterId
+    // check if address in request body matches userId
     // !! commented out for multisig
-    // if (addressBech32 !== voterId) {
+    // if (addressBech32 !== userId) {
     //   return res.status(400).json({
     //     status: "error",
-    //     message: "given address does not match voterId",
+    //     message: "given address does not match userId",
     //   });
     // }
 
     // check if voter is in voter cache and validated against ballot
     const checkVoterCache = await VoterCache.findOne({
-      voterId,
+      userId,
       ballotId,
     });
     if (!checkVoterCache || checkVoterCache.validated === false) {
@@ -831,7 +831,7 @@ router.put(
 
     // GET TRANSACTION FROM DB
     const transaction = await Transaction.findOne({
-      voterId,
+      userId,
       ballotId,
       status: { $in: ["created", "pending"] },
       merkleRoot,
@@ -847,14 +847,14 @@ router.put(
     // check if party to script and verify signature
     const isParty = await isPartyToScript(
       stringToHex(transaction.merkleRoot),
-      voterId,
+      userId,
       req.body.signature
     );
     if (!isParty || isParty.error) {
       console.error(
         "isPartyToScript verification failed",
         signerAddress,
-        voterId,
+        userId,
         isParty
       );
       return res.status(403).json({
@@ -876,7 +876,7 @@ router.put(
       console.log(
         "Multisig not complete",
         ballotId.toString(),
-        voterId,
+        userId,
         scriptAddress
       );
 
@@ -905,7 +905,7 @@ router.put(
         bulkOps.push({
           updateOne: {
             filter: {
-              voterId: voterId,
+              userId: userId,
               ballotId: ballotId,
               proposalId: voteData.proposalId,
             },
@@ -939,7 +939,7 @@ router.put(
       );
 
       console.log(
-        "MultiSig: Votes submitted for " + voterId,
+        "MultiSig: Votes submitted for " + userId,
         "Ballot: " + ballotId.toString()
       );
 

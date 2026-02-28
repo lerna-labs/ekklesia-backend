@@ -713,9 +713,9 @@ paths:
               schema:
                 type: object
                 required:
-                  - voterId
+                  - userId
                 properties:
-                  voterId:
+                  userId:
                     type: string
                   name:
                     type: string
@@ -734,8 +734,8 @@ paths:
       summary: Request authentication nonce
       description: |
         Request nonce for signing. Single endpoint for standard and multisig.
-        - Standard: send signerAddress and signType; voterId is the signer address.
-        - Multisig: also send scriptAddress (CIP129 script address); voterId in response is the script address.
+        - Standard: send signerAddress and signType; userId is the signer address.
+        - Multisig: also send scriptAddress (CIP129 script address); userId in response is the script address.
         Rate-limited (nonce requests per minute).
       operationId: requestNonce
       requestBody:
@@ -768,10 +768,10 @@ paths:
                   dataHex:
                     type: string
                     description: Nonce to sign (hex encoded)
-                  voterId:
+                  userId:
                     type: string
                     description: Signer address (standard) or script address (multisig)
-                  voterIdHex:
+                  userIdHex:
                     type: string
                   signerAddressHex:
                     type: string
@@ -829,7 +829,7 @@ paths:
                   expiresIn:
                     type: string
                     format: date-time
-                  voterId:
+                  userId:
                     type: string
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -877,7 +877,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  voterId:
+                  userId:
                     type: string
                   lastLogin:
                     type: string
@@ -1311,7 +1311,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [voterId, votes, lastLogin]
+            enum: [userId, votes, lastLogin]
             default: votes
         - name: direction
           in: query
@@ -1343,7 +1343,7 @@ paths:
                         items:
                           type: object
                           properties:
-                            voterId:
+                            userId:
                               type: string
                             votes:
                               type: number
@@ -1382,7 +1382,7 @@ paths:
                         type: number
           '500':
             $ref: '#/components/responses/ServerError'
-    /{voterId}:
+    /{userId}:
       get:
         tags:
           - Voters
@@ -1390,7 +1390,7 @@ paths:
         description: Get detailed information about a specific voter including voting history
         operationId: getVoter
         parameters:
-          - name: voterId
+          - name: userId
             in: path
             required: true
             description: The ID of the voter to retrieve
@@ -1407,7 +1407,7 @@ paths:
                     voterType:
                       type: string
                       enum: [stake, drep, pool]
-                    voterId:
+                    userId:
                       type: string
                     votes:
                       type: array
@@ -1771,7 +1771,7 @@ components:
         _id:
           type: string
           description: Unique MongoDB ObjectId for the vote record
-        voterId:
+        userId:
           type: string
           description: ID of the voter who cast the vote (references Voter, format depends on voterType)
         ballotId:
@@ -1830,7 +1830,7 @@ components:
         proposalId:
           type: string
           description: ID of the proposal this comment belongs to
-        voterId:
+        userId:
           type: string
           description: ID of the voter who made the comment
         content:
@@ -1881,7 +1881,7 @@ components:
         _id:
           type: string
           description: Unique MongoDB ObjectId for the transaction
-        voterId:
+        userId:
           type: string
           description: ID of the voter associated with this transaction
         ballotId:
@@ -1951,7 +1951,7 @@ components:
         _id:
           type: string
           description: Unique MongoDB ObjectId for the transaction
-        voterId:
+        userId:
           type: string
           description: ID of the voter associated with this transaction
         ballotId:
@@ -1966,7 +1966,7 @@ components:
         dataHex:
           type: string
           description: Hex-encoded merkle root for signing (this is what the voter signs)
-        voterIdHex:
+        userIdHex:
           type: string
           description: Hex-encoded voter ID (used for signature verification)
         calidusID:

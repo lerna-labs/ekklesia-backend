@@ -7,7 +7,7 @@ const { Schema } = mongoose;
  *
  * @typedef {Object} VoterCache
  * @property {ObjectId} ballotId - The ID of the ballot this validation belongs to (references Ballot)
- * @property {String} voterId - The ID of the voter who is validated (references Voter)
+ * @property {String} userId - The ID of the voter who is validated (references Voter)
  * @property {Boolean} validated - Whether the voter has been validated for this ballot
  * @property {Number} votingPower - The calculated voting power of the voter for this ballot
  * @property {String} voterGroup - Optional group for this voter on this ballot (e.g. "drep", "pool", "default"); used for results by group
@@ -20,7 +20,7 @@ const { Schema } = mongoose;
  * When a voter is first validated against a ballot's requirements or has their voting power
  * calculated, the result is stored in this cache for quick retrieval in future requests.
  * This improves response times for ballot operations that require voter validation.
- * Composite indexes are maintained on voterId and ballotId for efficient lookups.
+ * Composite indexes are maintained on userId and ballotId for efficient lookups.
  * Timestamps are automatically managed to track creation and last update times.
  * The __v version key is removed from documents for cleaner output.
  */
@@ -31,7 +31,7 @@ const voterCacheSchema = new Schema(
       required: true,
       ref: "Ballot",
     },
-    voterId: {
+    userId: {
       type: String,
       required: true,
       ref: "Voter",
@@ -61,7 +61,7 @@ const voterCacheSchema = new Schema(
 );
 
 // Indexes for faster queries
-voterCacheSchema.index({ voterId: 1 });
+voterCacheSchema.index({ userId: 1 });
 voterCacheSchema.index({ ballotId: 1 });
 voterCacheSchema.index({ ballotId: 1, voterGroup: 1 });
 

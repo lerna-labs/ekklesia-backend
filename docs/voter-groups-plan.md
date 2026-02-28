@@ -2,8 +2,8 @@
 
 ## Current architecture
 
-- **Voter identity**: There is no Voter collection; `voterId` is a string (e.g. wallet address or DRep key) used across [Vote](schema/Vote.js), [VoterCache](schema/VoterCache.js), [Session](schema/Session.js), etc.
-- **VoterCache** ([schema/VoterCache.js](schema/VoterCache.js)): One document per `(ballotId, voterId)` with `validated` and `votingPower`. Populated when a voter is validated (login or first vote); validation is delegated to ballot's `voterValidationScript` (e.g. [voterValidationDReps.js](config/voterValidationDReps.js), [voterValidationPoolsStake.js](config/voterValidationPoolsStake.js)).
+- **Voter identity**: There is no Voter collection; `userId` is a string (e.g. wallet address or DRep key) used across [Vote](schema/Vote.js), [VoterCache](schema/VoterCache.js), [Session](schema/Session.js), etc.
+- **VoterCache** ([schema/VoterCache.js](schema/VoterCache.js)): One document per `(ballotId, userId)` with `validated` and `votingPower`. Populated when a voter is validated (login or first vote); validation is delegated to ballot's `voterValidationScript` (e.g. [voterValidationDReps.js](config/voterValidationDReps.js), [voterValidationPoolsStake.js](config/voterValidationPoolsStake.js)).
 - **Results**: Proposal results are read from [Result](schema/Result.js) (cron [10minAggregateVotes.js](crons/10minAggregateVotes.js)) or computed on-the-fly in [routes/api/v0/proposals.js](routes/api/v0/proposals.js) (`GET .../results`): aggregate Votes, join VoterCache, group by `submittedVote` (see [docs/submittedVote-vs-submittedValue.md](submittedVote-vs-submittedValue.md)); cron uses `$unwind` on `submittedVote`, proposals route groups by first element.
 
 To support **results separated by voter group**, each voter must have a group for a ballot, and aggregations must group by that group as well as by vote option.
@@ -26,8 +26,8 @@ To support **results separated by voter group**, each voter must have a group fo
 
 **File:** [helper/voterValidation.js](helper/voterValidation.js)
 
-- **saveVoterValidation(voterId, ballotId, validated, voterGroup?)**: Add optional 4th argument `voterGroup`; include it in the `findOneAndUpdate` update object when provided.
-- **saveVotingPower(voterId, ballotId, votingPower, voterGroup?)**: Add optional 4th argument `voterGroup`; include it in the update object when provided.
+- **saveVoterValidation(userId, ballotId, validated, voterGroup?)**: Add optional 4th argument `voterGroup`; include it in the `findOneAndUpdate` update object when provided.
+- **saveVotingPower(userId, ballotId, votingPower, voterGroup?)**: Add optional 4th argument `voterGroup`; include it in the update object when provided.
 
 ---
 

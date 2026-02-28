@@ -26,7 +26,7 @@ import { isAuthenticated } from "../../../helper/middleWare.js";
  * @returns {Object} 200 - The saved comment object containing:
  *   - _id: MongoDB ObjectId of the comment
  *   - proposalId: ID of the proposal
- *   - voterId: ID of the voter who created the comment
+ *   - userId: ID of the voter who created the comment
  *   - content: Sanitized comment content
  *   - createdAt: ISO 8601 timestamp when comment was created
  *   - updatedAt: ISO 8601 timestamp when comment was last updated
@@ -41,7 +41,7 @@ import { isAuthenticated } from "../../../helper/middleWare.js";
  * @returns {Object} 500 - Error if comment cannot be saved to database
  */
 router.post("/", isAuthenticated, async (req, res) => {
-  const voterId = req.voterId;
+  const userId = req.userId;
 
   // Validate the request body
   const { proposalId, comment } = req.body;
@@ -89,7 +89,7 @@ router.post("/", isAuthenticated, async (req, res) => {
     "../../../config/" + ballot.voterValidationScript
   );
   // validate voter
-  const isValidVoter = await validateVoter(voterId, ballot._id);
+  const isValidVoter = await validateVoter(userId, ballot._id);
   // return error if voter is not valid
   if (!isValidVoter) {
     return res.status(403).json({
@@ -126,7 +126,7 @@ router.post("/", isAuthenticated, async (req, res) => {
   // Create a new comment
   const newComment = new Comment({
     proposalId,
-    voterId,
+    userId,
     content: sanitizedComment,
   });
 

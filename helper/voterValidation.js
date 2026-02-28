@@ -20,7 +20,7 @@ function conditionalLog(...args) {
 /**
  * Checks if a voter has already been validated for a specific ballot
  *
- * @param {string} voterId - The ID of the voter to check
+ * @param {string} userId - The ID of the voter to check
  * @param {string|ObjectId} ballotId - The ID of the ballot to check against
  * @returns {Object|null} The validation record if found, null otherwise
  *
@@ -29,22 +29,22 @@ function conditionalLog(...args) {
  * been validated for the specified ballot. Returns the full validation
  * record if found, which includes validation status and voting power.
  */
-export async function checkVoterValidation(voterId, ballotId) {
+export async function checkVoterValidation(userId, ballotId) {
   conditionalLog(
     "CACHE: Checking voter validation",
-    voterId,
+    userId,
     "ballotId:",
     ballotId.toString()
   );
   // Check if the address is already validated
   const existingValidation = await VoterCache.findOne({
     ballotId,
-    voterId,
+    userId,
   }).lean();
   if (!existingValidation) {
     conditionalLog(
       "CACHE: No validation found",
-      voterId,
+      userId,
       "ballotId:",
       ballotId.toString()
     );
@@ -52,7 +52,7 @@ export async function checkVoterValidation(voterId, ballotId) {
   } else {
     conditionalLog(
       "CACHE: Found validation",
-      voterId,
+      userId,
       "ballotId:",
       ballotId.toString(),
       "validated:",
@@ -65,7 +65,7 @@ export async function checkVoterValidation(voterId, ballotId) {
 /**
  * Saves the validation status of a voter for a specific ballot
  *
- * @param {string} voterId - The ID of the voter
+ * @param {string} userId - The ID of the voter
  * @param {string|ObjectId} ballotId - The ID of the ballot
  * @param {boolean} validated - The validation status to save
  * @param {string} [voterGroup] - Optional group for this voter on this ballot (e.g. "drep", "pool", "default")
@@ -77,12 +77,12 @@ export async function checkVoterValidation(voterId, ballotId) {
  * Uses findOneAndUpdate with upsert to either create a new record or
  * update an existing one, depending on whether a record already exists.
  */
-export async function saveVoterValidation(voterId, ballotId, validated, voterGroup) {
-  const update = { validated, ballotId, voterId };
+export async function saveVoterValidation(userId, ballotId, validated, voterGroup) {
+  const update = { validated, ballotId, userId };
   if (voterGroup !== undefined) update.voterGroup = voterGroup;
   // Save the validation to the database
   const newValidation = await VoterCache.findOneAndUpdate(
-    { ballotId, voterId },
+    { ballotId, userId },
     update,
     { upsert: true, new: true }
   );
@@ -92,7 +92,7 @@ export async function saveVoterValidation(voterId, ballotId, validated, voterGro
   // Log the saved validation
   conditionalLog(
     "CACHE: Voter validation saved for",
-    voterId,
+    userId,
     ballotId.toString(),
     validated
   );
@@ -101,7 +101,7 @@ export async function saveVoterValidation(voterId, ballotId, validated, voterGro
 /**
  * Checks and retrieves the voting power from voter cache if available
  *
- * @param {string} voterId - The ID of the voter
+ * @param {string} userId - The ID of the voter
  * @param {string|ObjectId} ballotId - The ID of the ballot
  * @returns {number|boolean} The voting power if found, false otherwise
  *
@@ -110,30 +110,30 @@ export async function saveVoterValidation(voterId, ballotId, validated, voterGro
  * for the specified ballot. Returns the voting power value if found,
  * or false if no record exists or voting power hasn't been set.
  */
-export async function checkVotingPower(voterId, ballotId) {
+export async function checkVotingPower(userId, ballotId) {
   conditionalLog(
     "CACHE: Checking voting power for",
-    voterId,
+    userId,
     "ballotId:",
     ballotId.toString()
   );
   // Check if the address is already validated
   const existingValidation = await VoterCache.findOne({
     ballotId,
-    voterId,
+    userId,
   }).lean();
   conditionalLog("Existing validation found", existingValidation);
   if (!existingValidation) {
     conditionalLog(
       "CACHE: No voting power found for",
-      voterId,
+      userId,
       ballotId.toString()
     );
     return false;
   } else {
     conditionalLog(
       "CACHE: Found voting power for",
-      voterId,
+      userId,
       ballotId.toString(),
       existingValidation.votingPower
     );
@@ -144,7 +144,7 @@ export async function checkVotingPower(voterId, ballotId) {
 /**
  * Saves the voting power of a voter for a specific ballot
  *
- * @param {string} voterId - The ID of the voter
+ * @param {string} userId - The ID of the voter
  * @param {string|ObjectId} ballotId - The ID of the ballot
  * @param {number} votingPower - The voting power to save
  * @param {string} [voterGroup] - Optional group for this voter on this ballot
@@ -156,10 +156,10 @@ export async function checkVotingPower(voterId, ballotId) {
  * This function does not create a new record if none exists (upsert: false),
  * so saveVoterValidation should be called first for new voters.
  */
-export async function saveVotingPower(voterId, ballotId, votingPower, voterGroup) {
+export async function saveVotingPower(userId, ballotId, votingPower, voterGroup) {
   conditionalLog(
     "CACHE: Saving voting power for",
-    voterId,
+    userId,
     ballotId.toString(),
     votingPower
   );
@@ -167,7 +167,7 @@ export async function saveVotingPower(voterId, ballotId, votingPower, voterGroup
   if (voterGroup !== undefined) update.voterGroup = voterGroup;
   // Save the validation to the database
   const newValidation = await VoterCache.findOneAndUpdate(
-    { ballotId, voterId },
+    { ballotId, userId },
     update,
     { upsert: false, new: true }
   );
@@ -177,7 +177,7 @@ export async function saveVotingPower(voterId, ballotId, votingPower, voterGroup
   // Log the saved validation
   conditionalLog(
     "CACHE Voter validation saved for",
-    voterId,
+    userId,
     ballotId.toString(),
     votingPower
   );

@@ -83,9 +83,9 @@ function makeProposal(ballotId, options = {}) {
 }
 
 function makeVoterCaches(ballotId, list) {
-  return list.map(({ voterId, voterGroup, votingPower }) => ({
+  return list.map(({ userId, voterGroup, votingPower }) => ({
     ballotId,
-    voterId,
+    userId,
     voterGroup,
     votingPower,
     validated: true,
@@ -129,28 +129,28 @@ runDescribe("aggregateVotes grouped results", () => {
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
 
     const drepVoters = [10, 20, 30, 40, 50].map((power, i) => ({
-      voterId: `voter-drep-${i + 1}`,
+      userId: `voter-drep-${i + 1}`,
       voterGroup: "drep",
       votingPower: power,
     }));
     const poolVoters = [1, 2, 3, 4, 5].map((power, i) => ({
-      voterId: `voter-pool-${i + 1}`,
+      userId: `voter-pool-${i + 1}`,
       voterGroup: "pool",
       votingPower: power,
     }));
     await VoterCache.insertMany(makeVoterCaches(ballot._id, [...drepVoters, ...poolVoters]));
 
     const votes = [
-      { voterId: "voter-drep-1", submittedVote: [1], vote: [1] },
-      { voterId: "voter-drep-2", submittedVote: [1], vote: [1] },
-      { voterId: "voter-drep-3", submittedVote: [1], vote: [1] },
-      { voterId: "voter-drep-4", submittedVote: [2], vote: [2] },
-      { voterId: "voter-drep-5", submittedVote: [2], vote: [2] },
-      { voterId: "voter-pool-1", submittedVote: [1], vote: [1] },
-      { voterId: "voter-pool-2", submittedVote: [1], vote: [1] },
-      { voterId: "voter-pool-3", submittedVote: [2], vote: [2] },
-      { voterId: "voter-pool-4", submittedVote: [2], vote: [2] },
-      { voterId: "voter-pool-5", submittedVote: [2], vote: [2] },
+      { userId: "voter-drep-1", submittedVote: [1], vote: [1] },
+      { userId: "voter-drep-2", submittedVote: [1], vote: [1] },
+      { userId: "voter-drep-3", submittedVote: [1], vote: [1] },
+      { userId: "voter-drep-4", submittedVote: [2], vote: [2] },
+      { userId: "voter-drep-5", submittedVote: [2], vote: [2] },
+      { userId: "voter-pool-1", submittedVote: [1], vote: [1] },
+      { userId: "voter-pool-2", submittedVote: [1], vote: [1] },
+      { userId: "voter-pool-3", submittedVote: [2], vote: [2] },
+      { userId: "voter-pool-4", submittedVote: [2], vote: [2] },
+      { userId: "voter-pool-5", submittedVote: [2], vote: [2] },
     ].map((v) => ({
       ballotId: ballot._id,
       proposalId: proposal._id,
@@ -190,28 +190,28 @@ runDescribe("aggregateVotes grouped results", () => {
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: true }));
 
     const drepVoters = [10, 20, 30, 40, 50].map((power, i) => ({
-      voterId: `voter-drep-${i + 1}`,
+      userId: `voter-drep-${i + 1}`,
       voterGroup: "drep",
       votingPower: power,
     }));
     const poolVoters = [1, 2, 3, 4, 5].map((power, i) => ({
-      voterId: `voter-pool-${i + 1}`,
+      userId: `voter-pool-${i + 1}`,
       voterGroup: "pool",
       votingPower: power,
     }));
     await VoterCache.insertMany(makeVoterCaches(ballot._id, [...drepVoters, ...poolVoters]));
 
     const votes = [
-      { voterId: "voter-drep-1", submittedVote: ["abstain"], vote: ["abstain"] },
-      { voterId: "voter-drep-2", submittedVote: [1], vote: [1] },
-      { voterId: "voter-drep-3", submittedVote: [1], vote: [1] },
-      { voterId: "voter-drep-4", submittedVote: [2], vote: [2] },
-      { voterId: "voter-drep-5", submittedVote: [2], vote: [2] },
-      { voterId: "voter-pool-1", submittedVote: [1], vote: [1] },
-      { voterId: "voter-pool-2", submittedVote: [1], vote: [1] },
-      { voterId: "voter-pool-3", submittedVote: [2], vote: [2] },
-      { voterId: "voter-pool-4", submittedVote: [2], vote: [2] },
-      { voterId: "voter-pool-5", submittedVote: [2], vote: [2] },
+      { userId: "voter-drep-1", submittedVote: ["abstain"], vote: ["abstain"] },
+      { userId: "voter-drep-2", submittedVote: [1], vote: [1] },
+      { userId: "voter-drep-3", submittedVote: [1], vote: [1] },
+      { userId: "voter-drep-4", submittedVote: [2], vote: [2] },
+      { userId: "voter-drep-5", submittedVote: [2], vote: [2] },
+      { userId: "voter-pool-1", submittedVote: [1], vote: [1] },
+      { userId: "voter-pool-2", submittedVote: [1], vote: [1] },
+      { userId: "voter-pool-3", submittedVote: [2], vote: [2] },
+      { userId: "voter-pool-4", submittedVote: [2], vote: [2] },
+      { userId: "voter-pool-5", submittedVote: [2], vote: [2] },
     ].map((v) => ({
       ballotId: ballot._id,
       proposalId: proposal._id,
@@ -249,30 +249,30 @@ runDescribe("aggregateVotes grouped results", () => {
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
 
     const drepVoters = [10, 20, 30, 40, 50].map((power, i) => ({
-      voterId: `voter-drep-${i + 1}`,
+      userId: `voter-drep-${i + 1}`,
       voterGroup: "drep",
       votingPower: power,
     }));
     const poolVoters = [1, 2, 3, 4, 5].map((power, i) => ({
-      voterId: `voter-pool-${i + 1}`,
+      userId: `voter-pool-${i + 1}`,
       voterGroup: "pool",
       votingPower: power,
     }));
-    const defaultVoter = { voterId: "voter-default-1", voterGroup: "default", votingPower: 7 };
+    const defaultVoter = { userId: "voter-default-1", voterGroup: "default", votingPower: 7 };
     await VoterCache.insertMany(makeVoterCaches(ballot._id, [...drepVoters, ...poolVoters, defaultVoter]));
 
     const votes = [
-      { voterId: "voter-drep-1", submittedVote: [1], vote: [1] },
-      { voterId: "voter-drep-2", submittedVote: [1], vote: [1] },
-      { voterId: "voter-drep-3", submittedVote: [1], vote: [1] },
-      { voterId: "voter-drep-4", submittedVote: [2], vote: [2] },
-      { voterId: "voter-drep-5", submittedVote: [2], vote: [2] },
-      { voterId: "voter-pool-1", submittedVote: [1], vote: [1] },
-      { voterId: "voter-pool-2", submittedVote: [1], vote: [1] },
-      { voterId: "voter-pool-3", submittedVote: [2], vote: [2] },
-      { voterId: "voter-pool-4", submittedVote: [2], vote: [2] },
-      { voterId: "voter-pool-5", submittedVote: [2], vote: [2] },
-      { voterId: "voter-default-1", submittedVote: [1], vote: [1] },
+      { userId: "voter-drep-1", submittedVote: [1], vote: [1] },
+      { userId: "voter-drep-2", submittedVote: [1], vote: [1] },
+      { userId: "voter-drep-3", submittedVote: [1], vote: [1] },
+      { userId: "voter-drep-4", submittedVote: [2], vote: [2] },
+      { userId: "voter-drep-5", submittedVote: [2], vote: [2] },
+      { userId: "voter-pool-1", submittedVote: [1], vote: [1] },
+      { userId: "voter-pool-2", submittedVote: [1], vote: [1] },
+      { userId: "voter-pool-3", submittedVote: [2], vote: [2] },
+      { userId: "voter-pool-4", submittedVote: [2], vote: [2] },
+      { userId: "voter-pool-5", submittedVote: [2], vote: [2] },
+      { userId: "voter-default-1", submittedVote: [1], vote: [1] },
     ].map((v) => ({
       ballotId: ballot._id,
       proposalId: proposal._id,

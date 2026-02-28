@@ -45,13 +45,13 @@ export async function aggregateVotes() {
       {
         $lookup: {
           from: "votercaches", // collection name in MongoDB
-          let: { voterId: "$voterId", ballotId: proposal.ballotId },
+          let: { userId: "$userId", ballotId: proposal.ballotId },
           pipeline: [
             {
               $match: {
                 $expr: {
                   $and: [
-                    { $eq: ["$voterId", "$$voterId"] },
+                    { $eq: ["$userId", "$$userId"] },
                     { $eq: ["$ballotId", "$$ballotId"] },
                   ],
                 },
@@ -133,13 +133,13 @@ export async function aggregateVotes() {
       {
         $lookup: {
           from: "votercaches",
-          let: { voterId: "$voterId", ballotId: proposal.ballotId },
+          let: { userId: "$userId", ballotId: proposal.ballotId },
           pipeline: [
             {
               $match: {
                 $expr: {
                   $and: [
-                    { $eq: ["$voterId", "$$voterId"] },
+                    { $eq: ["$userId", "$$userId"] },
                     { $eq: ["$ballotId", "$$ballotId"] },
                   ],
                 },

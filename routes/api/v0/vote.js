@@ -20,7 +20,7 @@ import { isAuthenticated, getProposal } from "../../../helper/middleWare.js";
  *
  * @returns {Object} 200 - The saved vote object containing:
  *   - _id: MongoDB ObjectId of the vote
- *   - voterId: ID of the voter
+ *   - userId: ID of the voter
  *   - ballotId: ID of the ballot
  *   - proposalId: ID of the proposal
  *   - vote: Array of current vote option IDs
@@ -41,7 +41,7 @@ import { isAuthenticated, getProposal } from "../../../helper/middleWare.js";
  * @returns {Object} 500 - Error if vote cannot be saved to database
  */
 router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
-  const { proposal, voterId, proposalId } = req;
+  const { proposal, userId, proposalId } = req;
 
   // Get ballot data
   const ballot = await Ballot.findOne({ _id: proposal.ballotId });
@@ -64,7 +64,7 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
     "../../../config/" + ballot.voterValidationScript
   );
   // validate voter
-  const isValidVoter = await validateVoter(voterId, ballot._id);
+  const isValidVoter = await validateVoter(userId, ballot._id);
   // return error if voter is not valid
   if (!isValidVoter) {
     return res.status(403).json({
@@ -135,13 +135,13 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   const voteData = {
     ballotId: proposal.ballotId,
     proposalId,
-    voterId,
+    userId,
     vote: uniqueVotes,
   };
 
   // save the vote to the database and return the saved vote
   const saveVote = await Vote.findOneAndUpdate(
-    { proposalId: req.params.proposalId, voterId: voterId },
+    { proposalId: req.params.proposalId, userId: userId },
     voteData,
     { new: true, upsert: true }
   );

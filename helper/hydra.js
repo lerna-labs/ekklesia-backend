@@ -32,9 +32,9 @@ export async function hydraGetStatus() {
 
 
 // ping Hydra on voter login
-export async function hydraVoterPing(voterId) {
-    // return if no voterId is present
-    if (!voterId) {
+export async function hydraVoterPing(userId) {
+    // return if no userId is present
+    if (!userId) {
         if (verbose) console.error("hydraVoterPing: Voter ID is required");
         return;
     }
@@ -52,7 +52,7 @@ export async function hydraVoterPing(voterId) {
     }
 
     // ping Hydra
-    if (verbose) console.log("Pinging Hydra for voterId:", voterId);
+    if (verbose) console.log("Pinging Hydra for userId:", userId);
     try {
         fetch(`${process.env.HYDRA_URL}/register`, {
             method: "POST",
@@ -61,7 +61,7 @@ export async function hydraVoterPing(voterId) {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                voterId
+                userId
             }),
         })
         const data = await response.json();

@@ -5,8 +5,8 @@ import { VoterCache } from "../schema/VoterCache.js";
  * @param {String} address - The address to validate
  * @returns {Promise<Boolean>} - Always returns true
  */
-export async function validateVoter(voterId, ballotId) {
-    const voter = await VoterCache.findOne({ ballotId: ballotId, voterId: voterId, validated: true });
+export async function validateVoter(userId, ballotId) {
+    const voter = await VoterCache.findOne({ ballotId: ballotId, userId: userId, validated: true });
     if (!voter) {
         return false;
     }

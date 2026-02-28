@@ -3,11 +3,11 @@ import crypto from "crypto";
 
 /**
  * Creates a Merkle tree from votes data and returns the root hash
- * @param {Object} data - The vote data containing ballotId, voterId, and votes
+ * @param {Object} data - The vote data containing ballotId, userId, and votes
  * @returns {Object} - Object containing the Merkle root hash and basic tree info
  */
 export function createVoterTree(data) {
-  const { ballotId, voterId, votes } = data;
+  const { ballotId, userId, votes } = data;
 
   if (!votes || !Array.isArray(votes) || votes.length === 0) {
     throw new Error("Invalid votes data");
@@ -16,10 +16,10 @@ export function createVoterTree(data) {
   // Create leaf data for each vote
   const leaves = votes.map((vote) => {
     // Create a standardized representation of the vote to hash
-    // Use the voterId from the parent object if not present in vote
+    // Use the userId from the parent object if not present in vote
     const voteData = {
       proposalId: vote.proposalId,
-      voterId: vote.voterId || voterId, // Use vote.voterId if available, otherwise use the parent voterId
+      userId: vote.userId || userId, // Use vote.userId if available, otherwise use the parent userId
       vote: vote.vote,
       ballotId,
     };
@@ -45,7 +45,7 @@ export function createVoterTree(data) {
   return {
     rootHash,
     ballotId,
-    voterId,
+    userId,
     getSerializedTree: () => ({
       rootHash,
       ballotId,

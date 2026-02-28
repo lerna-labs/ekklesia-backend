@@ -22,12 +22,12 @@ const API_URL = process.env.API_URL;
  * @param {number} [req.query.page=1] - Page number for pagination (minimum: 1)
  * @param {number} [req.query.limit=25] - Number of items per page (minimum: 1, maximum: 100)
  * @param {string} [req.query.search=''] - Search term for voter ID (case-insensitive regex match, special regex characters escaped)
- * @param {string} [req.query.sort='votes'] - Sort field: 'voterId', 'votes', or 'lastLogin' (default: 'votes')
+ * @param {string} [req.query.sort='votes'] - Sort field: 'userId', 'votes', or 'lastLogin' (default: 'votes')
  * @param {string} [req.query.direction='desc'] - Sort direction: 'asc' or 'desc' (default: 'desc')
  *
  * @returns {Object} 200 - Response object containing:
  *   - data: Array of voter objects, each containing:
- *     - voterId: ID of the voter
+ *     - userId: ID of the voter
  *     - votes: Number of votes cast by this voter
  *     - lastLogin: ISO 8601 timestamp of last login (null if never logged in)
  *   - pagination: Object with total, page, limit, totalPages
@@ -66,7 +66,7 @@ router.get("/", cacheControl(300), async (req, res) => {
   }
 
   // Validate sort parameters
-  const validSortFields = ["voterId", "votes", "lastLogin"];
+  const validSortFields = ["userId", "votes", "lastLogin"];
   const validDirections = ["asc", "desc"];
 
   if (!validSortFields.includes(sort)) {
@@ -102,7 +102,7 @@ router.get("/", cacheControl(300), async (req, res) => {
       : null;
 
     if (search) {
-      matchConditions.voterId = searchRegex;
+      matchConditions.userId = searchRegex;
     }
 
     // First count total unique voters with filters applied
@@ -112,7 +112,7 @@ router.get("/", cacheControl(300), async (req, res) => {
       },
       {
         $group: {
-          _id: "$voterId",
+          _id: "$userId",
         },
       },
       ...(search
@@ -140,7 +140,7 @@ router.get("/", cacheControl(300), async (req, res) => {
       },
       {
         $group: {
-          _id: "$voterId",
+          _id: "$userId",
           votes: { $sum: 1 },
         },
       },
@@ -159,11 +159,11 @@ router.get("/", cacheControl(300), async (req, res) => {
         {
           $lookup: {
             from: "sessions",
-            let: { voterId: "$_id" },
+            let: { userId: "$_id" },
             pipeline: [
               {
                 $match: {
-                  $expr: { $eq: ["$voterId", "$$voterId"] },
+                  $expr: { $eq: ["$userId", "$$userId"] },
                 },
               },
               { $sort: { updatedAt: -1 } },
@@ -199,7 +199,7 @@ router.get("/", cacheControl(300), async (req, res) => {
     const sortOrder = direction === "asc" ? 1 : -1;
 
     // Create sort stage based on requested field
-    if (sort === "voterId") {
+    if (sort === "userId") {
       pipeline.push({ $sort: { _id: sortOrder } });
     } else if (sort === "votes") {
       pipeline.push({ $sort: { votes: sortOrder, _id: 1 } });
@@ -215,7 +215,7 @@ router.get("/", cacheControl(300), async (req, res) => {
       {
         $project: {
           _id: 0,
-          voterId: "$_id",
+          userId: "$_id",
           votes: 1,
           lastLogin: 1,
         },
@@ -235,21 +235,21 @@ router.get("/", cacheControl(300), async (req, res) => {
     // (since in that case we already have the data)
     if (sort !== "lastLogin") {
       // Get the last login for each voter
-      const voterIds = voters.map((voter) => voter.voterId);
+      const userIds = voters.map((voter) => voter.userId);
       const lastLogins = await Session.find({
-        voterId: { $in: voterIds },
+        userId: { $in: userIds },
       }).sort({ updatedAt: -1 });
 
       const lastLoginMap = {};
       lastLogins.forEach((login) => {
-        if (!lastLoginMap[login.voterId]) {
-          lastLoginMap[login.voterId] = login.updatedAt;
+        if (!lastLoginMap[login.userId]) {
+          lastLoginMap[login.userId] = login.updatedAt;
         }
       });
 
       // Add last login to each voter
       voters.forEach((voter) => {
-        voter.lastLogin = lastLoginMap[voter.voterId] || null;
+        voter.lastLogin = lastLoginMap[voter.userId] || null;
       });
     }
 
@@ -291,18 +291,18 @@ router.get("/types", cacheControl(300), async (req, res) => {
         $match: { submittedVote: { $exists: true } },
       },
       {
-        $group: { _id: "$voterId" },
+        $group: { _id: "$userId" },
       },
     ]);
 
     // Extract voter types from IDs
     const voterTypes = voters.reduce((types, voter) => {
-      const voterId = voter._id;
-      if (voterId.startsWith("stake")) {
+      const userId = voter._id;
+      if (userId.startsWith("stake")) {
         types.stake = (types.stake || 0) + 1;
-      } else if (voterId.startsWith("drep")) {
+      } else if (userId.startsWith("drep")) {
         types.drep = (types.drep || 0) + 1;
-      } else if (voterId.startsWith("pool")) {
+      } else if (userId.startsWith("pool")) {
         types.pool = (types.pool || 0) + 1;
       }
       return types;
@@ -325,15 +325,15 @@ router.get("/types", cacheControl(300), async (req, res) => {
 });
 
 /**
- * @route GET /api/v0/voters/:voterId
+ * @route GET /api/v0/voters/:userId
  * @description Get detailed information about a specific voter including voting history across all ballots. Response is cached for 300 seconds. Voter ID is validated and converted to CIP129 format if applicable. Voter must exist in VoterCache to be found.
  * @access Public
  *
- * @param {string} req.params.voterId - The ID of the voter to retrieve (must start with "stake", "drep", or "pool")
+ * @param {string} req.params.userId - The ID of the voter to retrieve (must start with "stake", "drep", or "pool")
  *
  * @returns {Object} 200 - Voter object containing:
  *   - voterType: Type of voter ("stake", "drep", or "pool")
- *   - voterId: Validated voter ID (CIP129 format if applicable)
+ *   - userId: Validated voter ID (CIP129 format if applicable)
  *   - votes: Array of ballot objects the voter has voted on, each containing:
  *     - _id: Ballot ID
  *     - title: Ballot title
@@ -356,9 +356,9 @@ router.get("/types", cacheControl(300), async (req, res) => {
  * @returns {Object} 404 - Error if voter not found in VoterCache
  * @returns {Object} 500 - Server error while fetching voter data
  */
-router.get("/:voterId", cacheControl(300), async (req, res) => {
-  let voterId = req.params.voterId;
-  if (!voterId) {
+router.get("/:userId", cacheControl(300), async (req, res) => {
+  let userId = req.params.userId;
+  if (!userId) {
     return res.status(400).json({
       status: "error",
       message: "Voter ID is required",
@@ -367,11 +367,11 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
 
   // Check voter ID type
   let voterType;
-  if (voterId.startsWith("stake")) {
+  if (userId.startsWith("stake")) {
     voterType = "stake";
-  } else if (voterId.startsWith("drep")) {
+  } else if (userId.startsWith("drep")) {
     voterType = "drep";
-  } else if (voterId.startsWith("pool")) {
+  } else if (userId.startsWith("pool")) {
     voterType = "pool";
   } else {
     return res.status(400).json({
@@ -380,17 +380,17 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
     });
   }
 
-  let voterIdValidated = validateAddress(voterId, voterType);
-  if (voterIdValidated.error) {
+  let userIdValidated = validateAddress(userId, voterType);
+  if (userIdValidated.error) {
     return res.status(400).json({
       status: "error",
-      message: voterIdValidated.error,
+      message: userIdValidated.error,
     });
   }
   // use CIP129 from here on
-  if (voterIdValidated.cip129) voterIdValidated = voterIdValidated.cip129;
+  if (userIdValidated.cip129) userIdValidated = userIdValidated.cip129;
   // check if voter is in votercache
-  const voterCache = await VoterCache.findOne({ voterId: voterIdValidated });
+  const voterCache = await VoterCache.findOne({ userId: userIdValidated });
   if (!voterCache) {
     return res.status(404).json({
       status: "error",
@@ -399,7 +399,7 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
   }
 
   // // get voter data from API
-  // let voterData = await getVoterData(voterId, voterType);
+  // let voterData = await getVoterData(userId, voterType);
   // if (voterData.error) {
   //   console.log("Error fetching voter data:", voterData.error);
   //   return res.status(voterData.status).json(voterData);
@@ -408,13 +408,13 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
   // add voterType to voterData
   let voterData = {};
   voterData.voterType = voterType;
-  voterData.voterId = voterIdValidated;
+  voterData.userId = userIdValidated;
 
   // get votes for the voter - needs pagination at some point
   const ballots = await Vote.aggregate([
     {
       $match: {
-        voterId: voterIdValidated,
+        userId: userIdValidated,
         submittedAt: { $ne: null },
       },
     },
@@ -439,14 +439,14 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
     {
       $lookup: {
         from: "votercaches",
-        let: { ballotId: "$_id", voter: voterIdValidated },
+        let: { ballotId: "$_id", voter: userIdValidated },
         pipeline: [
           {
             $match: {
               $expr: {
                 $and: [
                   { $eq: ["$ballotId", "$$ballotId"] },
-                  { $eq: ["$voterId", "$$voter"] },
+                  { $eq: ["$userId", "$$voter"] },
                 ],
               },
             },
@@ -558,7 +558,7 @@ router.get("/:voterId", cacheControl(300), async (req, res) => {
 
   // get last login for the voter
   const lastLogin = await Session.findOne({
-    voterId: voterIdValidated,
+    userId: userIdValidated,
   }).sort({ updatedAt: -1 });
   if (lastLogin) {
     voterData.lastLogin = lastLogin.updatedAt;

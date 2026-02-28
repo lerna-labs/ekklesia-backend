@@ -15,7 +15,7 @@ import { isAuthenticated, getTransaction } from "../../../helper/middleWare.js";
  *
  * @returns {Array} 200 - Array of transaction objects for the authenticated user, each containing:
  *   - _id: MongoDB ObjectId of the transaction
- *   - voterId: ID of the voter (matches authenticated user)
+ *   - userId: ID of the voter (matches authenticated user)
  *   - ballotId: ID of the ballot
  *   - merkleRoot: Merkle root hash of votes in transaction
  *   - votes: Object containing vote data for each proposal
@@ -30,7 +30,7 @@ import { isAuthenticated, getTransaction } from "../../../helper/middleWare.js";
 router.get("/", isAuthenticated, async (req, res) => {
   // get all transactions for the user
   const transactions = await Transaction.find({
-    voterId: req.voterId,
+    userId: req.userId,
   }).sort({
     updatedAt: -1,
   });
@@ -57,7 +57,7 @@ router.get(
     if (req.transactionId) {
       const transaction = await Transaction.findOne({
         _id: req.transactionId,
-        voterId: req.voterId,
+        userId: req.userId,
       });
       if (!transaction) {
         return res.status(404).json({
@@ -71,7 +71,7 @@ router.get(
 
     // get all transactions for the user
     const transactions = await Transaction.find({
-      voterId: req.voterId,
+      userId: req.userId,
     }).sort({
       updatedAt: -1,
     });
