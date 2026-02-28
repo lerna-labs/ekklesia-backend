@@ -22,7 +22,7 @@ import { getVotes, getPendingVoteCount } from "../../../helper/getVotes.js";
 import { createTransaction } from "../../../helper/createTransaction.js";
 import { PublicKey } from "@emurgo/cardano-serialization-lib-nodejs";
 import { isAuthenticated, getBallot } from "../../../helper/middleWare.js";
-import { getCalidusKey } from "../../../helper/koios.js";
+import { fetchCalidusKey } from "../../../helper/koios.js";
 
 /**
  * @route GET /api/v0/dashboard
@@ -277,7 +277,7 @@ router.post(
     // check calidus key if signType = pool
     let calidusID;
     if (signType === "pool") {
-      const calidusKey = await getCalidusKey(addressBech32);
+      const calidusKey = await fetchCalidusKey(addressBech32);
       if (!calidusKey) {
         return res.status(400).json({
           status: "error",
