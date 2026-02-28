@@ -452,6 +452,56 @@ paths:
               $ref: '#/components/responses/NotFound'
             '500':
               $ref: '#/components/responses/ServerError'
+      /results/grouped:
+        get:
+          tags:
+            - Proposals
+          summary: Get voting results by voter group
+          description: Get voting results for a proposal broken down by voter group. Returns stored results when available, otherwise computes on-the-fly.
+          operationId: getProposalResultsGrouped
+          parameters:
+            - name: proposalId
+              in: path
+              required: true
+              description: The ID of the proposal
+              schema:
+                type: string
+          responses:
+            '200':
+              description: Results per voter group
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      proposalId:
+                        type: string
+                        description: The proposal ID
+                      groups:
+                        type: object
+                        additionalProperties:
+                          type: object
+                          properties:
+                            results:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  value:
+                                    type: number
+                                    description: Vote option value/id
+                                  label:
+                                    type: string
+                                  count:
+                                    type: number
+                                  votingPower:
+                                    type: number
+                            totalVotes:
+                              type: number
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
       /results:
         get:
           tags:

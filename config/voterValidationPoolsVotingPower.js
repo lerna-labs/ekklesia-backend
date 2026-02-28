@@ -65,8 +65,8 @@ export async function validateVoter(voterId, ballotId) {
         if (voterInfo.length === 0) {
             console.log("Voter not found in API: ", voterId);
             validated = false;
-            await saveVoterValidation(voterId, ballotId, validated);
-            await saveVotingPower(voterId, ballotId, 0);
+            await saveVoterValidation(voterId, ballotId, validated, "pool");
+            await saveVotingPower(voterId, ballotId, 0, "pool");
             return validated;
         }
 
@@ -74,14 +74,14 @@ export async function validateVoter(voterId, ballotId) {
         if (voterInfo[0].pool_status === "registered") {
             console.log("Voter is registered Pool: ", voterInfo[0].pool_status);
             validated = true;
-            await saveVoterValidation(voterId, ballotId, validated);
-            await saveVotingPower(voterId, ballotId, voterInfo[0].voting_power);
+            await saveVoterValidation(voterId, ballotId, validated, "pool");
+            await saveVotingPower(voterId, ballotId, voterInfo[0].voting_power, "pool");
             return validated;
         } else {
             console.log("Voter is not registered Pool: ", voterInfo[0].pool_status);
             validated = false;
-            await saveVoterValidation(voterId, ballotId, validated);
-            await saveVotingPower(voterId, ballotId, 0);
+            await saveVoterValidation(voterId, ballotId, validated, "pool");
+            await saveVotingPower(voterId, ballotId, 0, "pool");
             return validated;
         }
     } catch (error) {

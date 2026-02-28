@@ -505,7 +505,8 @@ router.put(
 );
 
 /**
- * @route POST /api/v0/dashboard/:ballotId/checkout/multisig/:transactionId?
+ * @route POST /api/v0/dashboard/:ballotId/checkout/multisig
+ * @route POST /api/v0/dashboard/:ballotId/checkout/multisig/:transactionId
  * @description Request checkout for a ballot using multisig, creating or retrieving transaction data. If transactionId is provided, retrieves existing pending transaction. Otherwise, creates new transaction and deletes any existing pending transaction for this voter/ballot. The scriptAddress must be a valid CIP129 multisig script address.
  * @access Private (requires authentication)
  *
@@ -536,17 +537,13 @@ router.put(
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  */
-router.post(
-  "/:ballotId/checkout/multisig/:transactionId?",
-  isAuthenticated,
-  getBallot,
-  async (req, res) => {
-    const voterId = req.voterId;
-    const ballot = req.ballot;
-    const ballotId = ballot._id;
-    const { transactionId } = req.params;
+const checkoutMultisigPost = async (req, res) => {
+  const voterId = req.voterId;
+  const ballot = req.ballot;
+  const ballotId = ballot._id;
+  const { transactionId } = req.params;
 
-    // check if ballot is live
+  // check if ballot is live
     if (ballot.status !== "live") {
       console.log(
         "MS: Checkout attempt (post) from " + voterId,
@@ -697,7 +694,19 @@ router.post(
     transactionResponse.voterIdHex = signerAddress;
     transactionResponse.voterId = signerAddress;
     return res.status(200).json(transactionResponse);
-  }
+};
+
+router.post(
+  "/:ballotId/checkout/multisig/:transactionId",
+  isAuthenticated,
+  getBallot,
+  checkoutMultisigPost
+);
+router.post(
+  "/:ballotId/checkout/multisig",
+  isAuthenticated,
+  getBallot,
+  checkoutMultisigPost
 );
 
 /**
