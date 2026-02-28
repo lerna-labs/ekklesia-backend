@@ -59,16 +59,7 @@ const voteSchema = new Schema(
     submittedAt: {
       type: Date,
       required: false,
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-      immutable: true,
-    },
-    updatedAt: {
-      type: Date,
-      default: Date.now,
-    },
+    }
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
@@ -81,12 +72,6 @@ voteSchema.index({ voterId: 1 });
 voteSchema.index({ proposalId: 1 });
 voteSchema.index({ ballotId: 1 });
 voteSchema.index({ proposalId: 1, voterId: 1 }, { unique: true });
-
-// Pre-save middleware to update the updatedAt field
-voteSchema.pre("save", function (next) {
-  this.updatedAt = new Date();
-  next();
-});
 
 const Vote = mongoose.model("Vote", voteSchema);
 export { Vote };
