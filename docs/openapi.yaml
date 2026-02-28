@@ -7,9 +7,9 @@ info:
     ## Authentication
     Most endpoints require authentication via JWT token. The token is obtained through the session endpoints and is sent via HTTP-only cookie or Authorization header.
     
-    ## MultiSig Support
-    The API supports both standard wallet authentication and multisig wallet authentication. Use the `/multisig` endpoints for multisig wallets.
-  version: 0.5.32
+    ## Session (unified)
+    A single set of session endpoints handles both standard and multisig authentication. For multisig, include `scriptAddress` in the request body on POST (nonce) and PUT (verify). Nonce and verify requests are rate-limited.
+  version: 0.5.33
   contact:
     name: Adam Dean, Mad Orkestra
     license: ISC
@@ -22,7 +22,7 @@ servers:
 
 tags:
   - name: Status
-    description: System status and health check endpoints
+    description: Health and status endpoints (mounted at /health at server root)
   - name: Ballots
     description: Ballot management and retrieval
   - name: Proposals
@@ -43,12 +43,17 @@ tags:
     description: Frequently asked questions
 
 paths:
-  /status:
+  /health:
+    servers:
+      - url: http://localhost:3000
+        description: Local (health at root)
+      - url: https://api.example.com
+        description: Production (health at root)
     get:
       tags:
         - Status
       summary: Get system status
-      description: Returns comprehensive system status information including server uptime, versions, database connection status, and network information
+      description: Returns comprehensive system status (uptime, versions, database, network). Mounted at root, not under /api/v0.
       operationId: getStatus
       responses:
         '200':
@@ -59,12 +64,17 @@ paths:
                 $ref: '#/components/schemas/StatusResponse'
         '500':
           $ref: '#/components/responses/ServerError'
-  /status/health:
+  /health/health:
+    servers:
+      - url: http://localhost:3000
+        description: Local (health at root)
+      - url: https://api.example.com
+        description: Production (health at root)
     get:
       tags:
         - Status
       summary: Health check
-      description: Simple health check endpoint for load balancers and monitoring tools
+      description: Simple health check for load balancers and monitoring. Always returns 200 with status healthy unless server is down.
       operationId: getHealth
       responses:
         '200':
@@ -77,12 +87,17 @@ paths:
                   status:
                     type: string
                     example: healthy
-  /status/db:
+  /health/db:
+    servers:
+      - url: http://localhost:3000
+        description: Local (health at root)
+      - url: https://api.example.com
+        description: Production (health at root)
     get:
       tags:
         - Status
       summary: Database connection status
-      description: Returns the current database connection status
+      description: Returns the current database connection status.
       operationId: getDatabaseStatus
       responses:
         '200':
@@ -685,28 +700,43 @@ paths:
       tags:
         - Session
       summary: Validate session
-      description: Validate JWT token and return voter ID
+      description: Validate JWT token and return voter ID plus user profile (name, lastLogin) when available
       operationId: getSession
       security:
         - cookieAuth: []
         - bearerAuth: []
       responses:
         '200':
-          description: The voter ID if token is valid
+          description: Voter ID and optional user profile
           content:
             application/json:
               schema:
                 type: object
+                required:
+                  - voterId
                 properties:
                   voterId:
                     type: string
+                  name:
+                    type: string
+                    nullable: true
+                    description: DRep name or handle (from User, when set)
+                  lastLogin:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: Last login timestamp (from User)
         '401':
           $ref: '#/components/responses/Unauthorized'
     post:
       tags:
         - Session
       summary: Request authentication nonce
-      description: Request authentication nonce for standard (non-script) wallet
+      description: |
+        Request nonce for signing. Single endpoint for standard and multisig.
+        - Standard: send signerAddress and signType; voterId is the signer address.
+        - Multisig: also send scriptAddress (CIP129 script address); voterId in response is the script address.
+        Rate-limited (nonce requests per minute).
       operationId: requestNonce
       requestBody:
         required: true
@@ -723,7 +753,10 @@ paths:
                   description: The address of the signer
                 signType:
                   type: string
-                  description: Type of signature (e.g., 'drep')
+                  description: Type of signature (e.g., 'drep', 'stake', 'pool')
+                scriptAddress:
+                  type: string
+                  description: For multisig only; CIP129 script address. When provided, identity is the script address.
       responses:
         '200':
           description: Nonce to sign and voter identification data
@@ -737,6 +770,7 @@ paths:
                     description: Nonce to sign (hex encoded)
                   voterId:
                     type: string
+                    description: Signer address (standard) or script address (multisig)
                   voterIdHex:
                     type: string
                   signerAddressHex:
@@ -745,6 +779,9 @@ paths:
                     type: string
                     nullable: true
                     description: Calidus ID for pool signers (only present for pool signType)
+                  scriptAddress:
+                    type: string
+                    description: Present only for multisig; CIP129 script address
         '400':
           $ref: '#/components/responses/BadRequest'
         '403':
@@ -753,7 +790,11 @@ paths:
       tags:
         - Session
       summary: Verify signature and login
-      description: Verify signature of nonce and issue JWT token for authentication
+      description: |
+        Verify signature and issue JWT. Single endpoint for standard and multisig.
+        - Standard: send signerAddress, signType, signature.
+        - Multisig: also send scriptAddress. Verifies signer is party to script.
+        On success, User lastLogin (and name for drep/stake/addr when fetched) is updated. Rate-limited.
       operationId: verifySignature
       requestBody:
         required: true
@@ -770,6 +811,9 @@ paths:
                   type: string
                 signType:
                   type: string
+                scriptAddress:
+                  type: string
+                  description: For multisig only; CIP129 script address
                 signature:
                   $ref: '#/components/schemas/Signature'
       responses:
@@ -785,6 +829,8 @@ paths:
                   expiresIn:
                     type: string
                     format: date-time
+                  voterId:
+                    type: string
         '400':
           $ref: '#/components/responses/BadRequest'
     delete:
@@ -812,96 +858,6 @@ paths:
                     example: Logged out successfully
         '401':
           $ref: '#/components/responses/Unauthorized'
-    /multisig:
-      post:
-        tags:
-          - Session
-        summary: Request authentication nonce for multisig
-        description: Request authentication nonce for multisig wallet
-        operationId: requestMultisigNonce
-        requestBody:
-          required: true
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                  - signerAddress
-                  - signType
-                  - scriptAddress
-                properties:
-                  signerAddress:
-                    type: string
-                  signType:
-                    type: string
-                  scriptAddress:
-                    type: string
-                    description: The address of the multisig script
-        responses:
-          '200':
-            description: Nonce to sign and identification data including script address
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    dataHex:
-                      type: string
-                      description: Nonce to sign (hex encoded)
-                    voterId:
-                      type: string
-                    voterIdHex:
-                      type: string
-                    signerAddressHex:
-                      type: string
-                    scriptAddress:
-                      type: string
-                      description: The CIP129 multisig script address
-          '400':
-            $ref: '#/components/responses/BadRequest'
-          '403':
-            $ref: '#/components/responses/Forbidden'
-      put:
-        tags:
-          - Session
-        summary: Verify multisig signature and login
-        description: Verify signature and script membership for multisig wallet, issue JWT token
-        operationId: verifyMultisigSignature
-        requestBody:
-          required: true
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                  - signerAddress
-                  - signType
-                  - scriptAddress
-                  - signature
-                properties:
-                  signerAddress:
-                    type: string
-                  signType:
-                    type: string
-                  scriptAddress:
-                    type: string
-                  signature:
-                    $ref: '#/components/schemas/Signature'
-        responses:
-          '200':
-            description: JWT token and expiration information
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    token:
-                      type: string
-                    expiresIn:
-                      type: string
-                      format: date-time
-          '400':
-            $ref: '#/components/responses/BadRequest'
 
   /dashboard:
     get:
@@ -988,23 +944,23 @@ paths:
                         $ref: '#/components/schemas/Vote'
         '401':
           $ref: '#/components/responses/Unauthorized'
-      /{ballotId}/checkout:
-        post:
-          tags:
-            - Dashboard
-          summary: Request checkout for a ballot
-          description: Request checkout for a ballot, creating transaction data for signing
-          operationId: requestCheckout
-          security:
-            - cookieAuth: []
-            - bearerAuth: []
-          parameters:
-            - name: ballotId
-              in: path
-              required: true
-              description: ID of the ballot to checkout
-              schema:
-                type: string
+    /{ballotId}/checkout:
+      post:
+        tags:
+          - Dashboard
+        summary: Request checkout for a ballot
+        description: Request checkout for a ballot, creating transaction data for signing
+        operationId: requestCheckout
+        security:
+          - cookieAuth: []
+          - bearerAuth: []
+        parameters:
+          - name: ballotId
+            in: path
+            required: true
+            description: ID of the ballot to checkout
+            schema:
+              type: string
         requestBody:
           required: true
           content:
@@ -1034,22 +990,22 @@ paths:
             $ref: '#/components/responses/Unauthorized'
           '404':
             $ref: '#/components/responses/NotFound'
-        put:
-          tags:
-            - Dashboard
-          summary: Submit signed transaction
-          description: Submit a signed transaction to finalize votes for a ballot
-          operationId: submitTransaction
-          security:
-            - cookieAuth: []
-            - bearerAuth: []
-          parameters:
-            - name: ballotId
-              in: path
-              required: true
-              description: ID of the ballot
-              schema:
-                type: string
+      put:
+        tags:
+          - Dashboard
+        summary: Submit signed transaction
+        description: Submit a signed transaction to finalize votes for a ballot
+        operationId: submitTransaction
+        security:
+          - cookieAuth: []
+          - bearerAuth: []
+        parameters:
+          - name: ballotId
+            in: path
+            required: true
+            description: ID of the ballot
+            schema:
+              type: string
         requestBody:
           required: true
           content:
@@ -1093,29 +1049,23 @@ paths:
             $ref: '#/components/responses/Unauthorized'
           '404':
             $ref: '#/components/responses/NotFound'
-        /multisig:
-          post:
-            tags:
-              - Dashboard
-            summary: Request checkout for multisig
-            description: Request checkout for a ballot using multisig, creating or retrieving transaction data
-            operationId: requestMultisigCheckout
-            security:
-              - cookieAuth: []
-              - bearerAuth: []
-            parameters:
-              - name: ballotId
-                in: path
-                required: true
-                description: ID of the ballot to checkout
-                schema:
-                  type: string
-              - name: transactionId
-                in: path
-                required: false
-                description: Optional ID of an existing pending transaction to retrieve
-                schema:
-                  type: string
+      /multisig:
+        post:
+          tags:
+            - Dashboard
+          summary: Request checkout for multisig (create or get transaction)
+          description: Request checkout for a ballot using multisig. Creates new transaction or returns existing one when transactionId is provided.
+          operationId: requestMultisigCheckout
+          security:
+            - cookieAuth: []
+            - bearerAuth: []
+          parameters:
+            - name: ballotId
+              in: path
+              required: true
+              description: ID of the ballot to checkout
+              schema:
+                type: string
           requestBody:
             required: true
             content:
@@ -1147,22 +1097,22 @@ paths:
               $ref: '#/components/responses/Unauthorized'
             '404':
               $ref: '#/components/responses/NotFound'
-          put:
-            tags:
-              - Dashboard
-            summary: Submit multisig signature
-            description: Submit a signature for a multisig transaction, finalizing votes if all required signatures are present
-            operationId: submitMultisigSignature
-            security:
-              - cookieAuth: []
-              - bearerAuth: []
-            parameters:
-              - name: ballotId
-                in: path
-                required: true
-                description: ID of the ballot
-                schema:
-                  type: string
+        put:
+          tags:
+            - Dashboard
+          summary: Submit multisig signature
+          description: Submit a signature for a multisig transaction, finalizing votes if all required signatures are present
+          operationId: submitMultisigSignature
+          security:
+            - cookieAuth: []
+            - bearerAuth: []
+          parameters:
+            - name: ballotId
+              in: path
+              required: true
+              description: ID of the ballot
+              schema:
+                type: string
           requestBody:
             required: true
             content:
@@ -1220,6 +1170,59 @@ paths:
               $ref: '#/components/responses/Forbidden'
             '404':
               $ref: '#/components/responses/NotFound'
+        /{transactionId}:
+          post:
+            tags:
+              - Dashboard
+            summary: Get existing multisig transaction
+            description: Request checkout for multisig with an existing transaction ID; returns the existing pending transaction data for that ballot and voter.
+            operationId: getMultisigTransaction
+            security:
+              - cookieAuth: []
+              - bearerAuth: []
+            parameters:
+              - name: ballotId
+                in: path
+                required: true
+                description: ID of the ballot
+                schema:
+                  type: string
+              - name: transactionId
+                in: path
+                required: true
+                description: ID of the existing pending transaction to retrieve
+                schema:
+                  type: string
+            requestBody:
+              required: true
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    required:
+                      - scriptAddress
+                      - signerAddress
+                      - signType
+                    properties:
+                      scriptAddress:
+                        type: string
+                      signerAddress:
+                        type: string
+                      signType:
+                        type: string
+            responses:
+              '200':
+                description: Existing transaction data for signing
+                content:
+                  application/json:
+                    schema:
+                      $ref: '#/components/schemas/TransactionResponse'
+              '400':
+                $ref: '#/components/responses/BadRequest'
+              '401':
+                $ref: '#/components/responses/Unauthorized'
+              '404':
+                $ref: '#/components/responses/NotFound'
 
   /transactions:
     get:
