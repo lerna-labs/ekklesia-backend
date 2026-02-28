@@ -520,10 +520,10 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
     // Add this lookup stage after the votes lookup and before the addFields stage
     {
       $lookup: {
-        from: "votercaches",
+        from: "usercaches",
         localField: "ballotId",
         foreignField: "ballotId",
-        as: "voterCaches",
+        as: "userCaches",
       },
     },
     // Calculate voteCount after we have the result data
@@ -563,14 +563,14 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
               },
               as: "uniqueVoterId",
               in: {
-                // Get voting power for this voter from voterCache
+                // Get voting power for this voter from userCache
                 $let: {
                   vars: {
-                    voterCache: {
+                    userCache: {
                       $arrayElemAt: [
                         {
                           $filter: {
-                            input: "$voterCaches",
+                            input: "$userCaches",
                             as: "cache",
                             cond: {
                               $and: [
@@ -584,7 +584,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
                       ]
                     }
                   },
-                  in: { $ifNull: ["$$voterCache.votingPower", 1] }
+                  in: { $ifNull: ["$$userCache.votingPower", 1] }
                 }
               }
             }
@@ -711,10 +711,10 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
           else: "$$REMOVE"
         }
       },
-      voterCaches: {
+      userCaches: {
         $cond: {
           if: { $eq: ["$voteType", "scale"] },
-          then: "$voterCaches",
+          then: "$userCaches",
           else: "$$REMOVE"
         }
       },
@@ -769,7 +769,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
         // Calculate weighted median based on voting power
         proposal.result.medianWeighted = calculateWeightedMedian(
           proposal.validVotes || [],
-          proposal.voterCaches || [],
+          proposal.userCaches || [],
           lowerBound,
           upperBound
         );
@@ -779,7 +779,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
           proposal.result.results = proposal.result.results.filter(result => result.id === "abstain");
           // Add a field for valid votes which are not abstain with count and votingpower
           // get votingpower for all votes which are not abstained from voter cache
-          const votingPowerNoAbstain = proposal.validVotes.filter(vote => vote.submittedVote[0] !== "abstain").map(vote => vote.userId).map(userId => proposal.voterCaches.find(cache => cache.userId === userId)?.votingPower).reduce((sum, power) => sum + power, 0);
+          const votingPowerNoAbstain = proposal.validVotes.filter(vote => vote.submittedVote[0] !== "abstain").map(vote => vote.userId).map(uid => proposal.userCaches.find(cache => cache.userId === uid)?.votingPower).reduce((sum, power) => sum + power, 0);
           proposal.result.results.push({
             id: "votes",
             label: "Votes",
@@ -791,7 +791,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
 
         // Clean up temporary fields used for calculation
         delete proposal.validVotes;
-        delete proposal.voterCaches;
+        delete proposal.userCaches;
       }
     }
 

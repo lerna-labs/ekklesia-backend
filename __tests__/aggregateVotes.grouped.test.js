@@ -36,7 +36,7 @@ import mongoose from "mongoose";
 import { Ballot } from "../schema/Ballot.js";
 import { Proposal } from "../schema/Proposal.js";
 import { Vote } from "../schema/Vote.js";
-import { VoterCache } from "../schema/VoterCache.js";
+import { UserCache } from "../schema/UserCache.js";
 import { Result } from "../schema/Result.js";
 import { aggregateVotes } from "../crons/10minAggregateVotes.js";
 
@@ -82,7 +82,7 @@ function makeProposal(ballotId, options = {}) {
   };
 }
 
-function makeVoterCaches(ballotId, list) {
+function makeUserCaches(ballotId, list) {
   return list.map(({ userId, voterGroup, votingPower }) => ({
     ballotId,
     userId,
@@ -115,7 +115,7 @@ runDescribe("aggregateVotes grouped results", () => {
         await Result.deleteMany({ proposalId: { $in: proposalIds } });
       }
       if (ballotIds.length > 0) {
-        await VoterCache.deleteMany({ ballotId: { $in: ballotIds } });
+        await UserCache.deleteMany({ ballotId: { $in: ballotIds } });
         await Proposal.deleteMany({ ballotId: { $in: ballotIds } });
         await Ballot.deleteMany({ _id: { $in: ballotIds } });
       }
@@ -138,7 +138,7 @@ runDescribe("aggregateVotes grouped results", () => {
       voterGroup: "pool",
       votingPower: power,
     }));
-    await VoterCache.insertMany(makeVoterCaches(ballot._id, [...drepVoters, ...poolVoters]));
+    await UserCache.insertMany(makeUserCaches(ballot._id, [...drepVoters, ...poolVoters]));
 
     const votes = [
       { userId: "voter-drep-1", submittedVote: [1], vote: [1] },
@@ -199,7 +199,7 @@ runDescribe("aggregateVotes grouped results", () => {
       voterGroup: "pool",
       votingPower: power,
     }));
-    await VoterCache.insertMany(makeVoterCaches(ballot._id, [...drepVoters, ...poolVoters]));
+    await UserCache.insertMany(makeUserCaches(ballot._id, [...drepVoters, ...poolVoters]));
 
     const votes = [
       { userId: "voter-drep-1", submittedVote: ["abstain"], vote: ["abstain"] },
@@ -259,7 +259,7 @@ runDescribe("aggregateVotes grouped results", () => {
       votingPower: power,
     }));
     const defaultVoter = { userId: "voter-default-1", voterGroup: "default", votingPower: 7 };
-    await VoterCache.insertMany(makeVoterCaches(ballot._id, [...drepVoters, ...poolVoters, defaultVoter]));
+    await UserCache.insertMany(makeUserCaches(ballot._id, [...drepVoters, ...poolVoters, defaultVoter]));
 
     const votes = [
       { userId: "voter-drep-1", submittedVote: [1], vote: [1] },

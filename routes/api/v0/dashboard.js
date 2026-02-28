@@ -6,7 +6,7 @@ const router = Router();
 import { Session } from "../../../schema/Session.js";
 import { Ballot } from "../../../schema/Ballot.js";
 import { Vote } from "../../../schema/Vote.js";
-import { VoterCache } from "../../../schema/VoterCache.js";
+import { UserCache } from "../../../schema/UserCache.js";
 import { Transaction } from "../../../schema/Transaction.js";
 import { checkVotingPower } from "../../../helper/voterValidation.js";
 
@@ -204,7 +204,7 @@ router.get("/pending", isAuthenticated, async (req, res) => {
  *   - Address validation fails
  *   - Signer address does not match authenticated userId
  *   - Pool not found or no calidus key registered (for pool signType)
- *   - Voter is not validated/allowed to vote on this ballot (not in VoterCache or validated=false)
+ *   - Voter is not validated/allowed to vote on this ballot (not in UserCache or validated=false)
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  */
@@ -288,15 +288,15 @@ router.post(
     }
 
     // check if voter is in voter cache and validated against ballot
-    const checkVoterCache = await VoterCache.findOne({
+    const checkUserCache = await UserCache.findOne({
       userId,
       ballotId,
     });
-    if (!checkVoterCache || checkVoterCache.validated === false) {
+    if (!checkUserCache || checkUserCache.validated === false) {
       console.log(
         "Voter is not allowed to vote on this ballot",
-        "VoterCache: ",
-        checkVoterCache
+        "UserCache: ",
+        checkUserCache
       );
       return res.status(400).json({
         status: "error",
@@ -637,15 +637,15 @@ const checkoutMultisigPost = async (req, res) => {
     }
 
     // check if voter is in voter cache and validated against ballot
-    const checkVoterCache = await VoterCache.findOne({
+    const checkUserCache = await UserCache.findOne({
       userId,
       ballotId,
     });
-    if (!checkVoterCache || checkVoterCache.validated === false) {
+    if (!checkUserCache || checkUserCache.validated === false) {
       console.log(
         "Voter is not allowed to vote on this ballot",
-        "VoterCache: ",
-        checkVoterCache
+        "UserCache: ",
+        checkUserCache
       );
       return res.status(400).json({
         status: "error",
@@ -804,15 +804,15 @@ router.put(
     // }
 
     // check if voter is in voter cache and validated against ballot
-    const checkVoterCache = await VoterCache.findOne({
+    const checkUserCache = await UserCache.findOne({
       userId,
       ballotId,
     });
-    if (!checkVoterCache || checkVoterCache.validated === false) {
+    if (!checkUserCache || checkUserCache.validated === false) {
       console.log(
         "Voter is not allowed to vote on this ballot",
-        "VoterCache: ",
-        checkVoterCache
+        "UserCache: ",
+        checkUserCache
       );
       return res.status(400).json({
         status: "error",

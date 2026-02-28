@@ -2,17 +2,17 @@
 
 ## Current architecture
 
-- **Voter identity**: There is no Voter collection; `userId` is a string (e.g. wallet address or DRep key) used across [Vote](schema/Vote.js), [VoterCache](schema/VoterCache.js), [Session](schema/Session.js), etc.
-- **VoterCache** ([schema/VoterCache.js](schema/VoterCache.js)): One document per `(ballotId, userId)` with `validated` and `votingPower`. Populated when a voter is validated (login or first vote); validation is delegated to ballot's `voterValidationScript` (e.g. [voterValidationDReps.js](config/voterValidationDReps.js), [voterValidationPoolsStake.js](config/voterValidationPoolsStake.js)).
-- **Results**: Proposal results are read from [Result](schema/Result.js) (cron [10minAggregateVotes.js](crons/10minAggregateVotes.js)) or computed on-the-fly in [routes/api/v0/proposals.js](routes/api/v0/proposals.js) (`GET .../results`): aggregate Votes, join VoterCache, group by `submittedVote` (see [docs/submittedVote-vs-submittedValue.md](submittedVote-vs-submittedValue.md)); cron uses `$unwind` on `submittedVote`, proposals route groups by first element.
+- **Voter identity**: There is no Voter collection; `userId` is a string (e.g. wallet address or DRep key) used across [Vote](schema/Vote.js), [UserCache](schema/UserCache.js), [Session](schema/Session.js), etc.
+- **UserCache** ([schema/UserCache.js](schema/UserCache.js)): One document per `(ballotId, userId)` with `validated` and `votingPower`. Populated when a voter is validated (login or first vote); validation is delegated to ballot's `voterValidationScript` (e.g. [voterValidationDReps.js](config/voterValidationDReps.js), [voterValidationPoolsStake.js](config/voterValidationPoolsStake.js)).
+- **Results**: Proposal results are read from [Result](schema/Result.js) (cron [10minAggregateVotes.js](crons/10minAggregateVotes.js)) or computed on-the-fly in [routes/api/v0/proposals.js](routes/api/v0/proposals.js) (`GET .../results`): aggregate Votes, join UserCache, group by `submittedVote` (see [docs/submittedVote-vs-submittedValue.md](submittedVote-vs-submittedValue.md)); cron uses `$unwind` on `submittedVote`, proposals route groups by first element.
 
 To support **results separated by voter group**, each voter must have a group for a ballot, and aggregations must group by that group as well as by vote option.
 
 ---
 
-## 1. Schema: add `voterGroup` to VoterCache
+## 1. Schema: add `voterGroup` to UserCache
 
-**File:** [schema/VoterCache.js](schema/VoterCache.js)
+**File:** [schema/UserCache.js](schema/UserCache.js)
 
 - Add optional field `voterGroup: { type: String, default: "default" }`. This stores the group for that voter on that ballot (e.g. `"drep"`, `"pool"`, `"default"`).
 - Add composite index `{ ballotId: 1, voterGroup: 1 }` for efficient aggregation by ballot and group.
@@ -54,7 +54,7 @@ Each validation script passes a stable group id when calling `saveVoterValidatio
 - **Middleware:** Use `getProposal` so invalid/missing `proposalId` returns 404.
 - **Route order:** Register this route before `GET /:proposalId/results` so `results/grouped` is matched.
 - **When `Result.resultsByGroup` exists:** Return it; map stored `id` to `value` and `label` from `proposal.voteOptions`, include `totalVotes` per group.
-- **Fallback:** On-the-fly aggregation: same pipeline as cron (Vote + VoterCache lookup, `$unwind` on `submittedVote`), add `voterGroup: { $ifNull: ["$voterData.voterGroup", "default"] }`, group by voterGroup and vote value; include abstain per group when `proposal.abstainAllowed`. Only include groups that have at least one vote.
+- **Fallback:** On-the-fly aggregation: same pipeline as cron (Vote + UserCache lookup, `$unwind` on `submittedVote`), add `voterGroup: { $ifNull: ["$voterData.voterGroup", "default"] }`, group by voterGroup and vote value; include abstain per group when `proposal.abstainAllowed`. Only include groups that have at least one vote.
 - **Response shape:** `{ proposalId, groups: { "<voterGroup>": { results: [{ value, label, count, votingPower }], totalVotes }, ... } }`.
 - **Vote field:** Use `submittedVote` only. Mirror the cron: `$unwind` on `submittedVote`, group by voterGroup and vote value.
 - **Stored vs response:** Cron stores `id`; API returns `value` and `label` from `proposal.voteOptions`.
@@ -65,7 +65,7 @@ Each validation script passes a stable group id when calling `saveVoterValidatio
 
 **Schema – [schema/Result.js](schema/Result.js):** Add optional `resultsByGroup: { type: Object }`. Structure: one key per voterGroup, each value `{ results: [{ id, label, count, votingPower }, ...], totalVotes }`.
 
-**Cron – [crons/10minAggregateVotes.js](crons/10minAggregateVotes.js):** After computing overall `results`: run a second aggregation (Vote + VoterCache lookup, `$unwind` on `submittedVote`), add `voterGroup: { $ifNull: ["$voterData.voterGroup", "default"] }`, group by voterGroup and vote value; include abstain per group when `proposal.abstainAllowed`. Build `resultsByGroup` (only groups with at least one vote). Write both `results` and `resultsByGroup` in the same `Result.updateOne`.
+**Cron – [crons/10minAggregateVotes.js](crons/10minAggregateVotes.js):** After computing overall `results`: run a second aggregation (Vote + UserCache lookup, `$unwind` on `submittedVote`), add `voterGroup: { $ifNull: ["$voterData.voterGroup", "default"] }`, group by voterGroup and vote value; include abstain per group when `proposal.abstainAllowed`. Build `resultsByGroup` (only groups with at least one vote). Write both `results` and `resultsByGroup` in the same `Result.updateOne`.
 
 **API:** If `Result.resultsByGroup` exists, return it (map stored `id` to `value`/`label`); else run on-the-fly aggregation.
 
@@ -85,20 +85,20 @@ flowchart LR
   subgraph validation [Validation]
     Script[voterValidationScript]
     Script --> saveVoter[saveVoterValidation / saveVotingPower]
-    saveVoter --> VoterCache[(VoterCache)]
+    saveVoter --> UserCache[(UserCache)]
   end
   subgraph storage [Storage]
-    VoterCache --> voterGroup[voterGroup per ballot]
+    UserCache --> voterGroup[voterGroup per ballot]
     Vote[(Vote)]
   end
   subgraph api [API]
     Req[GET .../results/grouped]
-    Req --> Agg[Aggregate Vote + VoterCache]
+    Req --> Agg[Aggregate Vote + UserCache]
     Agg --> GroupBy[Group by voterGroup + option]
     GroupBy --> Response[groups: drep, pool, ...]
   end
   Vote --> Agg
-  VoterCache --> Agg
+  UserCache --> Agg
 ```
 
 ---
@@ -107,7 +107,7 @@ flowchart LR
 
 | Area | File | Change |
 |------|------|--------|
-| Schema | schema/VoterCache.js | Add voterGroup, index (ballotId, voterGroup) |
+| Schema | schema/UserCache.js | Add voterGroup, index (ballotId, voterGroup) |
 | Helper | helper/voterValidation.js | Optional voterGroup in saveVoterValidation and saveVotingPower |
 | Config | All active config/voterValidation*.js | Pass group string when calling save functions |
 | API | routes/api/v0/proposals.js | New route GET .../results/grouped |

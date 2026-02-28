@@ -5,7 +5,7 @@ import { Transaction } from "../schema/Transaction.js";
 import { Session } from "../schema/Session.js";
 import { Comment } from "../schema/Comment.js";
 import { Result } from "../schema/Result.js";
-import { VoterCache } from "../schema/VoterCache.js";
+import { UserCache } from "../schema/UserCache.js";
 import { FAQ } from "../schema/FAQ.js";
 
 import dotenv from "dotenv";
@@ -43,7 +43,7 @@ try {
         Session.deleteMany({}),
         Comment.deleteMany({}),
         Result.deleteMany({}),
-        VoterCache.deleteMany({}),
+        UserCache.deleteMany({}),
         FAQ.deleteMany({}),
     ]);
 

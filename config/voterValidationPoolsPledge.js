@@ -4,7 +4,7 @@ import {
     saveVotingPower,
 } from "../helper/voterValidation.js";
 import { Ballot } from "../schema/Ballot.js";
-import { VoterCache } from "../schema/VoterCache.js";
+import { UserCache } from "../schema/UserCache.js";
 const API_URL = process.env.API_URL;
 const API_TOKEN = process.env.API_TOKEN;
 const validationCacheTime = 8; // hours
@@ -124,7 +124,7 @@ export async function allowedVoterCount(ballotId) {
 
     try {
         console.log("Fetching allowed voter count from Voter Cache...");
-        const voterCount = await VoterCache.find({ ballotId: ballotId, validated: true }).countDocuments();
+        const voterCount = await UserCache.find({ ballotId: ballotId, validated: true }).countDocuments();
         allowedVoterCountCache = voterCount;
         allowedVoterCountTimestamp = Date.now();
         console.log("Allowed voter count: ", allowedVoterCountCache);
@@ -153,7 +153,7 @@ export async function getTotalWeight(ballotId) {
     }
     try {
         console.log("Fetching total weight from Voter Cache...");
-        const voters = await VoterCache.aggregate([
+        const voters = await UserCache.aggregate([
             { $match: { ballotId: ballotId, validated: true } },
             { $group: { _id: null, totalWeight: { $sum: "$votingPower" } } },
         ]);

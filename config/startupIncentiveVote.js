@@ -1,4 +1,4 @@
-import { VoterCache } from "../schema/VoterCache.js";
+import { UserCache } from "../schema/UserCache.js";
 import { getPoolTotals, getAllDreps } from "../helper/koios.js";
 
 export async function startupBallot(ballotId) {
@@ -28,7 +28,7 @@ export async function startupBallot(ballotId) {
 
     // upsert voter cache for all pools in poolTotals.poolsData and set voting_power to pledge
     for (const pool of poolTotals.poolData) {
-        await VoterCache.findOneAndUpdate(
+        await UserCache.findOneAndUpdate(
             { ballotId: ballotId, userId: pool.pool_id_bech32 },
             { votingPower: pool.live_pledge, validated: true, voterGroup: "pool" },
             { upsert: true }
@@ -46,7 +46,7 @@ export async function startupBallot(ballotId) {
 
     // upsert voter cache for all dreps and set voting_power to amount
     for (const drep of dreps) {
-        await VoterCache.findOneAndUpdate(
+        await UserCache.findOneAndUpdate(
             { ballotId: ballotId, userId: drep.drep_id },
             { votingPower: drep.amount, validated: true, voterGroup: "drep" },
             { upsert: true }

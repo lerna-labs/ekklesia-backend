@@ -1,4 +1,4 @@
-import { VoterCache } from "../schema/VoterCache.js";
+import { UserCache } from "../schema/UserCache.js";
 let showConsole = false;
 
 /**
@@ -25,7 +25,7 @@ function conditionalLog(...args) {
  * @returns {Object|null} The validation record if found, null otherwise
  *
  * @description
- * Queries the VoterCache collection to determine if a voter has already
+ * Queries the UserCache collection to determine if a voter has already
  * been validated for the specified ballot. Returns the full validation
  * record if found, which includes validation status and voting power.
  */
@@ -37,7 +37,7 @@ export async function checkVoterValidation(userId, ballotId) {
     ballotId.toString()
   );
   // Check if the address is already validated
-  const existingValidation = await VoterCache.findOne({
+  const existingValidation = await UserCache.findOne({
     ballotId,
     userId,
   }).lean();
@@ -73,7 +73,7 @@ export async function checkVoterValidation(userId, ballotId) {
  * @throws {Error} If validation cannot be saved
  *
  * @description
- * Creates or updates a validation record in the VoterCache collection.
+ * Creates or updates a validation record in the UserCache collection.
  * Uses findOneAndUpdate with upsert to either create a new record or
  * update an existing one, depending on whether a record already exists.
  */
@@ -81,7 +81,7 @@ export async function saveVoterValidation(userId, ballotId, validated, voterGrou
   const update = { validated, ballotId, userId };
   if (voterGroup !== undefined) update.voterGroup = voterGroup;
   // Save the validation to the database
-  const newValidation = await VoterCache.findOneAndUpdate(
+  const newValidation = await UserCache.findOneAndUpdate(
     { ballotId, userId },
     update,
     { upsert: true, new: true }
@@ -106,7 +106,7 @@ export async function saveVoterValidation(userId, ballotId, validated, voterGrou
  * @returns {number|boolean} The voting power if found, false otherwise
  *
  * @description
- * Queries the VoterCache collection to retrieve a voter's voting power
+ * Queries the UserCache collection to retrieve a voter's voting power
  * for the specified ballot. Returns the voting power value if found,
  * or false if no record exists or voting power hasn't been set.
  */
@@ -118,7 +118,7 @@ export async function checkVotingPower(userId, ballotId) {
     ballotId.toString()
   );
   // Check if the address is already validated
-  const existingValidation = await VoterCache.findOne({
+  const existingValidation = await UserCache.findOne({
     ballotId,
     userId,
   }).lean();
@@ -166,7 +166,7 @@ export async function saveVotingPower(userId, ballotId, votingPower, voterGroup)
   const update = { votingPower };
   if (voterGroup !== undefined) update.voterGroup = voterGroup;
   // Save the validation to the database
-  const newValidation = await VoterCache.findOneAndUpdate(
+  const newValidation = await UserCache.findOneAndUpdate(
     { ballotId, userId },
     update,
     { upsert: false, new: true }

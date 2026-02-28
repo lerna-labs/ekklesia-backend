@@ -24,19 +24,19 @@ export function calculateMedian(values) {
  * Calculate the weighted median of vote values based on voting power
  * Uses cumulative weights to avoid creating large arrays
  * @param {Array} votes - Array of vote objects with submittedVote and userId
- * @param {Array} voterCaches - Array of voter cache objects with userId and votingPower
+ * @param {Array} userCaches - Array of user cache objects with userId and votingPower
  * @param {number} lowerBound - Lower bound for valid vote values
  * @param {number} upperBound - Upper bound for valid vote values
  * @returns {number|null} - The weighted median value, or null if no valid votes
  */
-export function calculateWeightedMedian(votes, voterCaches, lowerBound, upperBound) {
+export function calculateWeightedMedian(votes, userCaches, lowerBound, upperBound) {
   if (!votes || votes.length === 0) {
     return null;
   }
 
   // Create a map of userId to votingPower for quick lookup
   const votingPowerMap = new Map();
-  voterCaches.forEach((cache) => {
+  userCaches.forEach((cache) => {
     votingPowerMap.set(cache.userId.toString(), cache.votingPower || 1);
   });
 

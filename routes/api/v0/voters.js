@@ -6,7 +6,7 @@ const router = Router();
 import { Session } from "../../../schema/Session.js";
 import { Vote } from "../../../schema/Vote.js";
 import { Ballot } from "../../../schema/Ballot.js";
-import { VoterCache } from "../../../schema/VoterCache.js";
+import { UserCache } from "../../../schema/UserCache.js";
 import { validateAddress } from "../../../helper/validateAddress.js";
 import { cacheControl } from "../../../helper/cacheControl.js";
 
@@ -326,7 +326,7 @@ router.get("/types", cacheControl(300), async (req, res) => {
 
 /**
  * @route GET /api/v0/voters/:userId
- * @description Get detailed information about a specific voter including voting history across all ballots. Response is cached for 300 seconds. Voter ID is validated and converted to CIP129 format if applicable. Voter must exist in VoterCache to be found.
+ * @description Get detailed information about a specific voter including voting history across all ballots. Response is cached for 300 seconds. Voter ID is validated and converted to CIP129 format if applicable. Voter must exist in UserCache to be found.
  * @access Public
  *
  * @param {string} req.params.userId - The ID of the voter to retrieve (must start with "stake", "drep", or "pool")
@@ -353,7 +353,7 @@ router.get("/types", cacheControl(300), async (req, res) => {
  *   - Voter ID is missing
  *   - Voter ID format is invalid (doesn't start with stake, drep, or pool)
  *   - Voter ID validation fails
- * @returns {Object} 404 - Error if voter not found in VoterCache
+ * @returns {Object} 404 - Error if voter not found in UserCache
  * @returns {Object} 500 - Server error while fetching voter data
  */
 router.get("/:userId", cacheControl(300), async (req, res) => {
@@ -390,8 +390,8 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
   // use CIP129 from here on
   if (userIdValidated.cip129) userIdValidated = userIdValidated.cip129;
   // check if voter is in votercache
-  const voterCache = await VoterCache.findOne({ userId: userIdValidated });
-  if (!voterCache) {
+  const userCache = await UserCache.findOne({ userId: userIdValidated });
+  if (!userCache) {
     return res.status(404).json({
       status: "error",
       message: "Voter not found",
@@ -435,10 +435,10 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
     {
       $unwind: "$ballot",
     },
-    // Add lookup to get voting power from VoterCache
+    // Add lookup to get voting power from UserCache
     {
       $lookup: {
-        from: "votercaches",
+        from: "usercaches",
         let: { ballotId: "$_id", voter: userIdValidated },
         pipeline: [
           {

@@ -155,7 +155,7 @@ router.get("/:proposalId/results/grouped", getProposal, async (req, res) => {
     { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
     {
       $lookup: {
-        from: "votercaches",
+        from: "usercaches",
         let: { userId: "$userId", ballotId },
         pipeline: [
           { $match: { $expr: { $and: [{ $eq: ["$userId", "$$userId"] }, { $eq: ["$ballotId", "$$ballotId"] }] } } },
@@ -242,7 +242,7 @@ router.get("/:proposalId/results", getProposal, async (req, res) => {
     { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
     {
       $lookup: {
-        from: "votercaches", // collection name in MongoDB
+        from: "usercaches", // collection name in MongoDB
         let: { userId: "$userId", ballotId: ballotId },
         pipeline: [
           {
