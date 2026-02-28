@@ -1,6 +1,6 @@
 # Ekklesia Voting Backend API
 
-**Document version:** 1.0.0  
+**Document version:** 1.1.0  
 **API version:** 0.5.33  
 **Last updated:** 2026-02-26
 
@@ -348,22 +348,144 @@ Submit or update a vote on a proposal.
 
 ## 9. Comments
 
-Base path: **/api/v0/comment**
+Base path: **/api/v0/comments**
 
-### POST /api/v0/comment
+Comments support top-level posts and replies (`parentId`). They can be **live** or **withdrawnByAdmin**. Responses include `replyCount`, `likeCount`, and when authenticated `userLiked`. Author info is returned as `author` (with `type`: proposer, admin, drep, user). Comments can only be created on live proposals before the vote’s `feedbackEndDate`.
 
-Create a comment on a proposal.
+**Alternative:** `GET /api/v0/proposals/:proposalId/comments` returns a simple list of comments for that proposal (see [Proposals](#7-proposals)).
+
+---
+
+### GET /api/v0/comments
+
+Paginated top-level comments for a proposal.
+
+**Auth:** Optional (adds `userLiked` when present). Admins can filter by status.
+
+**Query parameters:**
+
+| Name       | Type   | Required | Default | Description |
+|------------|--------|----------|---------|-------------|
+| `proposal` | string | yes      | —       | Proposal ID (ObjectId) |
+| `status`   | string | no       | —       | `live` \| `withdrawn` \| `withdrawnByAdmin` (admins only) |
+| `sort`     | string | no       | date    | `date` \| `replyCount` \| `likeCount` |
+| `direction`| string | no       | desc    | `asc` \| `desc` |
+| `userType` | string | no       | —       | Filter by author type: comma-separated `proposer`, `admin`, `drep` |
+| `page`     | integer| no       | 1       | Page number |
+| `limit`    | integer| no       | 10      | Page size (1–100) |
+
+**Response `200`:**
+
+- `data`: array of [CommentResponse](#commentresponse) objects
+- `meta`: `{ page, limit, total, totalPages, hasNextPage, hasPreviousPage }`
+
+**Responses:** `400`, `404`, `500`.
+
+---
+
+### POST /api/v0/comments
+
+Create a comment (or reply) on a live proposal.
 
 **Auth:** Required.
 
 **Body (JSON):**
 
-| Field       | Type   | Required | Description           |
-|------------|--------|----------|-----------------------|
-| `proposalId` | string | yes    | Proposal ID           |
-| `comment`  | string | yes      | Content (max 1000 chars) |
+| Field       | Type   | Required | Description |
+|------------|--------|----------|-------------|
+| `proposalId` | string | yes    | Proposal ID |
+| `content`  | string | yes      | Comment content (max 2000 chars) |
+| `parentId` | string | no       | Parent comment ID for replies |
 
-**Response `200`:** [Comment](#comment).
+**Response `201`:** [Comment](#comment) (raw document with `proposalId`, `parentId`, `userId`, `content`, `status`, `createdAt`, `updatedAt`).
+
+**Responses:** `400`, `401`, `404`, `500`.
+
+---
+
+### GET /api/v0/comments/:commentId
+
+Get a single comment by ID. Public users see only live comments; author sees own in any status; admins can filter by status.
+
+**Auth:** Optional.
+
+**Path:** `commentId` — comment ObjectId.
+
+**Query:** `status` (optional; admins only).
+
+**Response `200`:** [CommentResponse](#commentresponse) (includes `author`, `replyCount`, `likeCount`, `userLiked`, and `withdrawalDetails` when applicable).
+
+**Responses:** `400`, `404`, `500`.
+
+---
+
+### PUT /api/v0/comments/:commentId
+
+Update comment content. **Author only;** allowed only within **15 minutes** of creation.
+
+**Auth:** Required.
+
+**Path:** `commentId` — comment ObjectId.
+
+**Body (JSON):** `content` (string, required, max 2000).
+
+**Response `200`:** [Comment](#comment) (updated document).
+
+**Responses:** `400`, `401`, `403`, `404`, `500`.
+
+---
+
+### GET /api/v0/comments/:commentId/replies
+
+Paginated replies to a comment. Parent must exist and be live. Sorted by `createdAt` ascending.
+
+**Auth:** Optional.
+
+**Path:** `commentId` — parent comment ObjectId.
+
+**Query:** `status`, `page` (default 1), `limit` (default 10, max 100).
+
+**Response `200`:**
+
+- `data`: array of [CommentResponse](#commentresponse)
+- `meta`: `{ page, limit, total, totalPages, hasNextPage, hasPreviousPage }`
+
+**Responses:** `400`, `404`, `500`.
+
+---
+
+### POST /api/v0/comments/:commentId/like
+
+Toggle like on a comment. **Live comments only;** before the vote’s `feedbackEndDate`.
+
+**Auth:** Required.
+
+**Path:** `commentId` — comment ObjectId.
+
+**Response `201`** (like added): `{ "status": "success", "message": "Comment liked.", "liked": true, "likeCount": number }`
+
+**Response `200`** (like removed): `{ "status": "success", "message": "Like removed.", "liked": false, "likeCount": number }`
+
+**Responses:** `400`, `401`, `404`, `500`.
+
+---
+
+### PUT /api/v0/comments/:commentId/withdraw
+
+Withdraw a live comment (vote **admin** only). Allowed until the vote’s `feedbackEndDate`.
+
+**Auth:** Required (must be in proposal’s vote admins).
+
+**Path:** `commentId` — comment ObjectId.
+
+**Body (JSON):**
+
+| Field     | Type   | Required | Description |
+|----------|--------|----------|-------------|
+| `category` | string | yes    | One of: `Inappropriate content`, `Spam`, `Policy violation`, `Duplicate`, `Other` |
+| `comment`  | string | no     | Optional reason note |
+
+**Response `200`:** [Comment](#comment) with `status: "withdrawnByAdmin"` and `withdrawalDetails`.
 
 **Responses:** `400`, `401`, `403`, `404`, `500`.
 
@@ -682,7 +804,15 @@ List live FAQs with optional search and filters.
 
 ### Comment
 
-`_id`, `proposalId`, `userId`, `content`, `createdAt`, `updatedAt`.
+`_id`, `proposalId`, `parentId` (null for top-level), `userId`, `content` (max 2000), `status` (live \| withdrawnByAdmin), `withdrawalDetails` (optional; category, userId, comment, date), `createdAt`, `updatedAt`.
+
+### CommentResponse
+
+As returned by list/get: `_id`, `parentId`, `content`, `createdAt`, `updatedAt`, `replyCount`, `likeCount`, `userLiked`, `author` (object with _id, name, type: proposer \| admin \| drep \| user), and optionally `withdrawalDetails`.
+
+### CommentLike
+
+`_id`, `commentId`, `userId`. One like per user per comment (unique on commentId + userId). Used for like counts and toggle.
 
 ### Transaction
 
@@ -711,5 +841,6 @@ Opaque object; structure depends on sign type (drep, stake, pool). Used in sessi
 | Version | Date       | Changes |
 |---------|------------|--------|
 | 1.0.0   | 2026-02-26 | Initial comprehensive API doc: all endpoints, rate limits, params, return objects; versioning and TOC. |
+| 1.1.0   | 2026-02-26 | Comments: new /comments routes (list, create, get, update, replies, like, withdraw); Comment and CommentLike schemas; CommentResponse shape. |
 
 For API version history, see [openapi.yaml](./openapi.yaml) `info.version`.

@@ -650,12 +650,98 @@ paths:
           '500':
             $ref: '#/components/responses/ServerError'
 
-  /comment:
+  /comments:
+    get:
+      tags:
+        - Comments
+      summary: List top-level comments for a proposal
+      description: |
+        Paginated top-level comments for a proposal. Query parameter `proposal` (proposalId) is required.
+        Public users see only live comments. Admins can filter by status (live, withdrawn, withdrawnByAdmin).
+        Response includes author, replyCount, likeCount, userLiked (when authenticated).
+      operationId: listComments
+      parameters:
+        - name: proposal
+          in: query
+          required: true
+          description: Proposal ID (ObjectId)
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by status (admins only; live, withdrawn, withdrawnByAdmin)
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Sort field
+          schema:
+            type: string
+            enum: [date, replyCount, likeCount]
+            default: date
+        - name: direction
+          in: query
+          description: Sort direction
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: userType
+          in: query
+          description: Filter by author type (comma-separated; proposer, admin, drep)
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Paginated comments with meta
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommentResponse'
+                  meta:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      totalPages:
+                        type: integer
+                      hasNextPage:
+                        type: boolean
+                      hasPreviousPage:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
     post:
       tags:
         - Comments
       summary: Create a comment
-      description: Creates a new comment on a specific proposal
+      description: Create a comment on a live proposal. Auth required. Optional parentId for replies. Before vote feedbackEndDate.
       operationId: createComment
       security:
         - cookieAuth: []
@@ -668,18 +754,21 @@ paths:
               type: object
               required:
                 - proposalId
-                - comment
+                - content
               properties:
                 proposalId:
                   type: string
-                  description: ID of the proposal to comment on
-                comment:
+                  description: Proposal ID (ObjectId)
+                content:
                   type: string
-                  description: Comment content (max 1000 characters)
-                  maxLength: 1000
+                  description: Comment content (max 2000 characters)
+                  maxLength: 2000
+                parentId:
+                  type: string
+                  description: Optional; parent comment ID for replies
       responses:
-        '200':
-          description: The saved comment object
+        '201':
+          description: Created comment
           content:
             application/json:
               schema:
@@ -688,12 +777,257 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/ServerError'
+    /{commentId}:
+      get:
+        tags:
+          - Comments
+        summary: Get a single comment
+        description: Get comment by ID. Public sees live only; author sees own in any status; admin can filter by status.
+        operationId: getComment
+        parameters:
+          - name: commentId
+            in: path
+            required: true
+            schema:
+              type: string
+          - name: status
+            in: query
+            description: Status filter (admins only)
+            schema:
+              type: string
+        responses:
+          '200':
+            description: Comment with author, replyCount, likeCount, userLiked
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/CommentResponse'
+          '400':
+            $ref: '#/components/responses/BadRequest'
+          '404':
+            $ref: '#/components/responses/NotFound'
+          '500':
+            $ref: '#/components/responses/ServerError'
+      put:
+        tags:
+          - Comments
+        summary: Update comment content
+        description: Author only; within 15 minutes of creation.
+        operationId: updateComment
+        security:
+          - cookieAuth: []
+          - bearerAuth: []
+        parameters:
+          - name: commentId
+            in: path
+            required: true
+            schema:
+              type: string
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - content
+                properties:
+                  content:
+                    type: string
+                    maxLength: 2000
+        responses:
+          '200':
+            description: Updated comment
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Comment'
+          '400':
+            $ref: '#/components/responses/BadRequest'
+          '401':
+            $ref: '#/components/responses/Unauthorized'
+          '403':
+            $ref: '#/components/responses/Forbidden'
+          '404':
+            $ref: '#/components/responses/NotFound'
+          '500':
+            $ref: '#/components/responses/ServerError'
+      /replies:
+        get:
+          tags:
+            - Comments
+          summary: List replies to a comment
+          description: Paginated replies. Parent must exist and be live. Sorted by createdAt asc.
+          operationId: listCommentReplies
+          parameters:
+            - name: commentId
+              in: path
+              required: true
+              schema:
+                type: string
+            - name: status
+              in: query
+              schema:
+                type: string
+            - name: page
+              in: query
+              schema:
+                type: integer
+                minimum: 1
+                default: 1
+            - name: limit
+              in: query
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 100
+                default: 10
+          responses:
+            '200':
+              description: Paginated replies with meta
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CommentResponse'
+                      meta:
+                        type: object
+                        properties:
+                          page:
+                            type: integer
+                          limit:
+                            type: integer
+                          total:
+                            type: integer
+                          totalPages:
+                            type: integer
+                          hasNextPage:
+                            type: boolean
+                          hasPreviousPage:
+                            type: boolean
+            '400':
+              $ref: '#/components/responses/BadRequest'
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
+      /like:
+        post:
+          tags:
+            - Comments
+          summary: Toggle like on a comment
+          description: Toggle like. 201 when like added, 200 when removed. Live comment only; before vote feedbackEndDate.
+          operationId: toggleCommentLike
+          security:
+            - cookieAuth: []
+            - bearerAuth: []
+          parameters:
+            - name: commentId
+              in: path
+              required: true
+              schema:
+                type: string
+          responses:
+            '200':
+              description: Like removed
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: success
+                      message:
+                        type: string
+                        example: Like removed.
+                      liked:
+                        type: boolean
+                        example: false
+                      likeCount:
+                        type: integer
+            '201':
+              description: Like added
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: success
+                      message:
+                        type: string
+                        example: Comment liked.
+                      liked:
+                        type: boolean
+                        example: true
+                      likeCount:
+                        type: integer
+            '400':
+              $ref: '#/components/responses/BadRequest'
+            '401':
+              $ref: '#/components/responses/Unauthorized'
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
+      /withdraw:
+        put:
+          tags:
+            - Comments
+          summary: Withdraw a comment (admin)
+          description: Vote admin withdraws a live comment. Body category required. Until feedbackEndDate.
+          operationId: withdrawComment
+          security:
+            - cookieAuth: []
+            - bearerAuth: []
+          parameters:
+            - name: commentId
+              in: path
+              required: true
+              schema:
+                type: string
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required:
+                    - category
+                  properties:
+                    category:
+                      type: string
+                      enum: [Inappropriate content, Spam, Policy violation, Duplicate, Other]
+                    comment:
+                      type: string
+                      description: Optional reason note
+          responses:
+            '200':
+              description: Withdrawn comment
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/Comment'
+            '400':
+              $ref: '#/components/responses/BadRequest'
+            '401':
+              $ref: '#/components/responses/Unauthorized'
+            '403':
+              $ref: '#/components/responses/Forbidden'
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
 
   /session:
     get:
@@ -1820,9 +2154,8 @@ components:
     Comment:
       type: object
       description: |
-        Represents a comment made by a voter on a proposal. Comments allow voters to provide feedback,
-        ask questions, or discuss proposals. Comments are public and visible to all users viewing the proposal.
-        Each comment is associated with a specific proposal and the voter who created it.
+        Comment on a proposal. Can be top-level (parentId null) or a reply (parentId set).
+        Status is live or withdrawnByAdmin; withdrawalDetails set when withdrawn by admin.
       properties:
         _id:
           type: string
@@ -1830,20 +2163,106 @@ components:
         proposalId:
           type: string
           description: ID of the proposal this comment belongs to
+        parentId:
+          type: string
+          nullable: true
+          description: ID of parent comment for replies, or null for top-level
         userId:
           type: string
-          description: ID of the voter who made the comment
+          description: ID of the user who created the comment
         content:
           type: string
-          description: The content of the comment (max 1000 characters, sanitized for security)
+          maxLength: 2000
+          description: Comment content
+        status:
+          type: string
+          enum: [live, withdrawnByAdmin]
+          description: Comment visibility status
+        withdrawalDetails:
+          type: object
+          nullable: true
+          description: Set when status is withdrawnByAdmin (admin only)
+          properties:
+            category:
+              type: string
+              enum: [Inappropriate content, Spam, Policy violation, Duplicate, Other]
+            userId:
+              type: string
+              description: Admin who withdrew
+            comment:
+              type: string
+              description: Optional reason
+            date:
+              type: string
+              format: date-time
         createdAt:
           type: string
           format: date-time
-          description: ISO 8601 timestamp when the comment was created
         updatedAt:
           type: string
           format: date-time
-          description: ISO 8601 timestamp when the comment was last updated
+
+    CommentResponse:
+      type: object
+      description: Comment as returned by list/get endpoints (includes author, replyCount, likeCount, userLiked)
+      properties:
+        _id:
+          type: string
+        parentId:
+          type: string
+          nullable: true
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        replyCount:
+          type: integer
+          description: Number of replies (respecting visibility)
+        likeCount:
+          type: integer
+          description: Number of likes
+        userLiked:
+          type: boolean
+          description: Whether the authenticated user has liked this comment
+        author:
+          type: object
+          nullable: true
+          description: User info and type (proposer, admin, drep, user)
+          properties:
+            _id:
+              type: string
+            name:
+              type: string
+              nullable: true
+            type:
+              type: string
+              enum: [proposer, admin, drep, user]
+        withdrawalDetails:
+          type: object
+          description: Present only for author or admin when comment was withdrawn
+
+    CommentLike:
+      type: object
+      description: A like on a comment (one per user per comment; unique on commentId + userId)
+      properties:
+        _id:
+          type: string
+        commentId:
+          type: string
+          description: Comment that was liked
+        userId:
+          type: string
+          description: User who liked
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
     FAQ:
       type: object
