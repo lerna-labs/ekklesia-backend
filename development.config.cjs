@@ -6,7 +6,7 @@ module.exports = {
       name: "ekklesia-backend-development",
       script: path.resolve(__dirname, "server.js"),
       watch: true,
-      ignore_watch: ["node_modules", "logs", "backup", "scripts", "public", "preprod-logs", "mainnet-logs", ".git", ".DS_Store"],
+      ignore_watch: ["node_modules", "logs", "backup", "scripts", "public", ".git", ".DS_Store"],
       watch_options: {
         followSymlinks: false,
         usePolling: true,
