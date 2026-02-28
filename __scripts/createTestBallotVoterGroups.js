@@ -89,7 +89,7 @@ async function main() {
     await ballot.save();
     console.log("Ballot created:", ballot._id.toString(), ballot.title);
 
-    // 2. Create one proposal (Yes / No / Abstain)
+    // 2. Create one proposal (Yes / No; abstainAllowed so voters may submit "abstain" without it being in voteOptions)
     const proposal = new Proposal({
         ballotId: ballot._id,
         title: "Test proposal: single choice",
@@ -100,7 +100,6 @@ async function main() {
         voteOptions: [
             { id: OPTION_YES, cost: 1, label: "Yes" },
             { id: OPTION_NO, cost: 1, label: "No" },
-            { id: OPTION_ABSTAIN, cost: 1, label: "Abstain" },
         ],
     });
     await proposal.save();
@@ -163,31 +162,36 @@ async function main() {
             const key = String(r.id);
             const prev = byOption.get(key);
             const vp = Number(r.votingPower || 0);
-            if (!prev) byOption.set(key, { id: r.id, label: r.label, votingPower: vp });
-            else prev.votingPower += vp;
+            const count = Number(r.count || 0);
+            if (!prev) byOption.set(key, { id: r.id, label: r.label, votingPower: vp, count });
+            else {
+                prev.votingPower += vp;
+                prev.count += count;
+            }
         }
         const results = [...byOption.values()];
         const totalLovelace = results.reduce((sum, r) => sum + r.votingPower, 0);
+        const totalVoters = results.reduce((sum, r) => sum + r.count, 0);
 
         console.log("\n--- Results (frontend display) ---");
         console.log("\nTotal ADA per voting option:");
         for (const r of results) {
             const pct = totalLovelace > 0 ? ((r.votingPower / totalLovelace) * 100).toFixed(1) : "0";
-            console.log(`  ${r.label}: ${lovelaceToAda(r.votingPower)} ADA (${pct}%)`);
+            console.log(`  ${r.label}: ${lovelaceToAda(r.votingPower)} ADA (${pct}%) — ${r.count} voter(s)`);
         }
-        console.log(`  Total: ${lovelaceToAda(totalLovelace)} ADA`);
+        console.log(`  Total: ${lovelaceToAda(totalLovelace)} ADA — ${totalVoters} voter(s)`);
 
         if (resultDoc.resultsByGroup && Object.keys(resultDoc.resultsByGroup).length > 0) {
             console.log("\nBy voter group:");
             for (const [groupName, groupData] of Object.entries(resultDoc.resultsByGroup)) {
                 const groupTotal = groupData.results?.reduce((s, r) => s + Number(r.votingPower || 0), 0) ?? 0;
+                const groupVoters = groupData.results?.reduce((s, r) => s + Number(r.count || 0), 0) ?? 0;
                 console.log(`  ${groupName}:`);
                 for (const r of groupData.results || []) {
-                    const ada = Number(r.votingPower || 0) / LOVELACE_PER_ADA;
                     const pct = groupTotal > 0 ? ((Number(r.votingPower || 0) / groupTotal) * 100).toFixed(1) : "0";
-                    console.log(`    ${r.label}: ${lovelaceToAda(r.votingPower)} ADA (${pct}%)`);
+                    console.log(`    ${r.label}: ${lovelaceToAda(r.votingPower)} ADA (${pct}%) — ${r.count ?? 0} voter(s)`);
                 }
-                console.log(`    Total: ${lovelaceToAda(groupTotal)} ADA`);
+                console.log(`    Total: ${lovelaceToAda(groupTotal)} ADA — ${groupVoters} voter(s)`);
             }
         }
         console.log("--------------------------------\n");
