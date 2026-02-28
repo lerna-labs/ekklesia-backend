@@ -1,13 +1,19 @@
 /**
- * @fileoverview Helper functions for interacting with the Koios API.
- * Provides utilities for fetching DRep names and Cardano handles.
+ * Helper functions for interacting with the Koios API and related services.
+ * Provides utilities for DReps (names, validation, listing), stake pools (totals, Calidus keys),
+ * Cardano handles (Handle.me and Koios fallback), and script information.
  *
+ * @fileoverview Koios API and Handle.me integration
  * @module helper/koios
  */
 
+/** @type {string} Koios API base URL (e.g. https://api.koios.rest). */
 const API_URL = process.env.API_URL;
+
+/** @type {string} Bearer token for Koios API authentication. */
 const API_TOKEN = process.env.API_TOKEN;
 
+// Fail fast if Koios is not configured (required by all exported API helpers).
 if (!API_URL) {
     console.error("API_URL is not set in the environment variables.");
     throw new Error("API URL is not set!");
@@ -50,13 +56,7 @@ if (!API_TOKEN) {
  *
  * @param {string} drepId - The DRep ID (e.g., "drep1y22hlaj8wuyygpnjy5cf96tg9tgvjrz39kxvqgv898uj9scfc55t7")
  *
- * @returns {Promise<string|undefined|null>} Returns:
- *   - The DRep name string from dRepName["@value"] if available
- *   - The givenName string as fallback if dRepName is not available
- *   - undefined if neither name field is found in metadata
- *   - null if no DRep is found or if an error occurs during the initial API call
- *
- * @throws {Error} Logs errors to console but does not throw - returns null or undefined on error
+ * @returns {Promise<string|undefined|null>} DRep name from dRepName["@value"], or givenName; undefined if no name in metadata; null if DRep not found or on error. Does not throw.
  *
  * @example
  * const name = await fetchDrepName("drep1y22hlaj8wuyygpnjy5cf96tg9tgvjrz39kxvqgv898uj9scfc55t7");
@@ -127,10 +127,14 @@ export async function fetchDrepName(drepId) {
 }
 
 /**
- * Validates that a DRep ID is registered with the Koios API.
+ * Validates that a DRep ID is registered with the Koios API (drep_info, registered=eq.true).
  *
- * @param {string} drepId - The DRep ID (e.g. CIP129 Bech32 "drep1...")
- * @returns {Promise<boolean>} True if the DRep is registered (drep_info returns at least one result), false otherwise or on error.
+ * @param {string} drepId - DRep ID in CIP129 Bech32 format (e.g. "drep1...")
+ * @returns {Promise<boolean>} True if registered and found, false otherwise or on error
+ *
+ * @example
+ * const ok = await validateDrep("drep1...");
+ * if (ok) { console.log("DRep is registered"); }
  */
 export async function validateDrep(drepId) {
     try {
@@ -264,10 +268,14 @@ async function fetchHandleKoios(address) {
 
 /**
  * Fetches the Cardano handle for a given address.
- * Tries Handle.me API first, falls back to Koios if Handle.me is unavailable.
+ * Tries Handle.me first; on failure (e.g. network), falls back to Koios asset lookup.
  *
- * @param {string} address - The Cardano address (stake address or payment address)
- * @returns {Promise<string|null>} The handle name if found, null otherwise
+ * @param {string} address - Cardano address (stake or payment, e.g. "stake1...", "addr1...")
+ * @returns {Promise<string|null>} Handle name if found, null otherwise
+ *
+ * @example
+ * const handle = await fetchHandle("stake1...");
+ * console.log(handle ?? "No handle");
  */
 export async function fetchHandle(address) {
     try {
@@ -280,14 +288,11 @@ export async function fetchHandle(address) {
 
 /**
  * Fetches script information from the Koios API for a given script hash.
- * 
- * This function validates the script hash format, makes an authenticated request
- * to the Koios API's script_info endpoint, and returns the script data if found.
- * 
- * @param {string} scriptHash - The hexadecimal script hash to look up
- * @returns {Promise<Object|false>} The script data object if found, false otherwise
- * @throws {Error} If API_URL or API_TOKEN are not set, or if scriptHash is invalid
- * 
+ * Uses the script_info endpoint; does not throw on invalid hash or API errors.
+ *
+ * @param {string} scriptHash - Hexadecimal script hash to look up
+ * @returns {Promise<Object|false>} Script data object if found, false on error or not found
+ *
  * @example
  * const scriptData = await getScript("abc123...");
  * if (scriptData) {
@@ -338,10 +343,14 @@ export async function getScript(scriptHash) {
  */
 
 /**
- * Fetches the latest Calidus key for a given stake pool from the Koios API.
+ * Fetches the latest Calidus key for a stake pool from the Koios API (pool_calidus_keys).
  *
- * @param {string} poolBech32 - The pool ID in bech32 format (e.g., "pool1...")
- * @returns {Promise<CalidusKey|null>} The Calidus key record if found, null otherwise or on error
+ * @param {string} poolBech32 - Pool ID in bech32 format (e.g. "pool1...")
+ * @returns {Promise<CalidusKey|null>} Calidus key record if found, null otherwise or on error
+ *
+ * @example
+ * const key = await fetchCalidusKey("pool1...");
+ * if (key) { console.log(key.calidus_pub_key); }
  */
 export async function fetchCalidusKey(poolBech32) {
     try {
@@ -366,10 +375,36 @@ export async function fetchCalidusKey(poolBech32) {
 }
 
 /**
+ * @typedef {Object} PoolInfoRow
+ * @property {string} pool_id_bech32 - Pool ID in bech32 format
+ * @property {string|number} [pledge] - Declared pledge (lovelace)
+ * @property {string|number} [live_pledge] - Current active pledge (lovelace)
+ * @property {string|number} [voting_power] - Voting power (lovelace)
+ * @property {string|number} [active_stake] - Active stake (lovelace)
+ */
+
+/**
+ * @typedef {Object} FetchPoolTotalsResult
+ * @property {PoolInfoRow[]} poolData - All registered pool records from pool_info
+ * @property {string} totalLivePledge - Sum of live_pledge (lovelace as string)
+ * @property {string} totalPledge - Sum of pledge (lovelace as string)
+ * @property {string} totalVotingPower - Sum of voting_power (lovelace as string)
+ * @property {string} totalActiveStake - Sum of active_stake (lovelace as string)
+ */
+
+/**
  * Fetches all registered pools from the Koios API and calculates aggregate totals.
- * Paginated requests to pool_list and pool_info; returns poolData and totals (BigInt as string).
+ * Uses paginated pool_list then pool_info; totals are computed with BigInt and returned as strings.
  *
- * @returns {Promise<{ poolData: Object[], totalLivePledge: string, totalPledge: string, totalVotingPower: string, totalActiveStake: string }|{ error: string }>}
+ * @returns {Promise<FetchPoolTotalsResult|{ error: string }>} Totals and pool array, or error object on failure
+ *
+ * @example
+ * const result = await fetchPoolTotals();
+ * if (result.error) {
+ *   console.error(result.error);
+ * } else {
+ *   console.log("Pools:", result.poolData.length, "Total live pledge:", result.totalLivePledge);
+ * }
  */
 export async function fetchPoolTotals() {
     let poolData = [];
@@ -484,9 +519,17 @@ export async function fetchPoolTotals() {
 
 /**
  * Fetches all registered DReps from the Koios API with pagination.
- * Uses drep_list for IDs then drep_info for drep_id, registered, amount per batch.
+ * Uses drep_list for IDs then drep_info for drep_id, registered, and amount per batch.
  *
- * @returns {Promise<DrepInfo[]|{ error: string }>} Array of DRep info objects, or error object on failure
+ * @returns {Promise<Array<{ drep_id: string, registered: boolean, amount: string }>|{ error: string }>} Array of DRep info objects, or error object on failure
+ *
+ * @example
+ * const dreps = await fetchAllDReps();
+ * if (!Array.isArray(dreps)) {
+ *   console.error(dreps.error);
+ * } else {
+ *   console.log("DReps:", dreps.length);
+ * }
  */
 export async function fetchAllDReps() {
     let page = 1;
