@@ -44,6 +44,11 @@ const voterCacheSchema = new Schema(
       type: Number,
       default: 0,
     },
+    name: { // drep name, handle or pool name
+      type: String,
+      default: "",
+      required: false
+    },
     voterGroup: {
       type: String,
       default: "default",
