@@ -1,17 +1,282 @@
 /**
- * Koios API Helper Module
- * 
- * This module provides utility functions for interacting with the Koios API,
- * a Cardano blockchain data provider. It handles fetching script information
- * and pool calidus keys for voting purposes.
+ * @fileoverview Helper functions for interacting with the Koios API.
+ * Provides utilities for fetching DRep names and Cardano handles.
+ *
+ * @module helper/koios
  */
 
-import { ScriptHash } from "@emurgo/cardano-serialization-lib-nodejs";
-
-// Koios API configuration from environment variables
 const API_URL = process.env.API_URL;
 const API_TOKEN = process.env.API_TOKEN;
 
+if (!API_URL) {
+    console.error("API_URL is not set in the environment variables.");
+    throw new Error("API URL is not set!");
+}
+
+if (!API_TOKEN) {
+    console.error("API_TOKEN is not set in the environment variables.");
+    throw new Error("API Token is not set!");
+}
+
+/**
+ * @typedef {Object} DrepInfo
+ * @property {string} drep_id - DRep ID in bech32 format
+ * @property {string} hex - DRep ID in hex format
+ * @property {boolean} has_script - Whether the DRep is script-based
+ * @property {boolean} registered - Whether the DRep is currently registered
+ * @property {string} deposit - DRep deposit amount (lovelace as string)
+ * @property {boolean} active - Whether the DRep is currently active
+ * @property {number} expires_epoch_no - Epoch number when the DRep registration expires
+ * @property {string} amount - Delegated voting power (lovelace as string)
+ * @property {string|null} meta_url - URL to the DRep's CIP-119 metadata JSON
+ * @property {string|null} meta_hash - Hash of the metadata file
+ */
+
+/**
+ * @typedef {Object} DrepMetadata
+ * @property {Object} body - Metadata body
+ * @property {Object} [body.dRepName] - DRep name object
+ * @property {string} [body.dRepName.@value] - DRep display name
+ * @property {string} [body.givenName] - Fallback given name
+ */
+
+/**
+ * Fetches the DRep name for a given DRep ID from the Koios API.
+ *
+ * @description
+ * This function queries the Koios API to get DRep information, then fetches the metadata
+ * URL to retrieve the DRep's name. It attempts to return the name from the dRepName field's
+ * @value property, falling back to givenName if dRepName is not available.
+ *
+ * @param {string} drepId - The DRep ID (e.g., "drep1y22hlaj8wuyygpnjy5cf96tg9tgvjrz39kxvqgv898uj9scfc55t7")
+ *
+ * @returns {Promise<string|undefined|null>} Returns:
+ *   - The DRep name string from dRepName["@value"] if available
+ *   - The givenName string as fallback if dRepName is not available
+ *   - undefined if neither name field is found in metadata
+ *   - null if no DRep is found or if an error occurs during the initial API call
+ *
+ * @throws {Error} Logs errors to console but does not throw - returns null or undefined on error
+ *
+ * @example
+ * const name = await fetchDrepName("drep1y22hlaj8wuyygpnjy5cf96tg9tgvjrz39kxvqgv898uj9scfc55t7");
+ * console.log(name); // "Maureen"
+ */
+export async function fetchDrepName(drepId) {
+    try {
+        const response = await fetch(`${API_URL}/drep_info?registered=eq.true`,
+            {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${API_TOKEN}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    "_drep_ids": [drepId],
+                }),
+            }
+        );
+        const /** @type {DrepInfo[]} */ data = await response.json();
+
+        if (data.length === 0) {
+            console.log("No DRep found");
+            return null;
+        }
+
+        // check if drep meta url is present
+        if (!data[0].meta_url) {
+            console.log("No DRep metadata URL found");
+            return undefined;
+        }
+
+        // fetch drep metadata
+        try {
+            console.log("Fetching DRep metadata:", data[0].meta_url);
+            const drepMetadataResponse = await fetch(data[0].meta_url,
+                {
+                    method: "GET",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+            const /** @type {DrepMetadata} */ drepMetadata = await drepMetadataResponse.json();
+
+            // Return the @value property from dRepName if it exists
+            if (drepMetadata.body?.dRepName?.["@value"]) {
+                return drepMetadata.body.dRepName["@value"];
+            }
+            // Fallback to givenName if dRepName doesn't have @value
+            else if (drepMetadata.body?.givenName) {
+                return drepMetadata.body.givenName;
+            }
+            // Return undefined if neither is available
+            else {
+                console.log("No DRep name found");
+                return undefined;
+            }
+        } catch (error) {
+            console.error("Error fetching DRep metadata:", error);
+            return undefined;
+        }
+
+    } catch (error) {
+        console.error("Error fetching DRep name:", error);
+        return null;
+    }
+}
+
+/**
+ * Validates that a DRep ID is registered with the Koios API.
+ *
+ * @param {string} drepId - The DRep ID (e.g. CIP129 Bech32 "drep1...")
+ * @returns {Promise<boolean>} True if the DRep is registered (drep_info returns at least one result), false otherwise or on error.
+ */
+export async function validateDrep(drepId) {
+    try {
+        const response = await fetch(`${API_URL}/drep_info?registered=eq.true`,
+            {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${API_TOKEN}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    "_drep_ids": [drepId],
+                }),
+            }
+        );
+        const data = await response.json();
+        if (data.length === 0) {
+            console.log("No DRep found");
+            return false;
+        }
+        return true;
+    } catch (error) {
+        console.error("Error validating DRep:", error);
+        return false;
+    }
+}
+
+/**
+ * @typedef {Object} HandleHolder
+ * @property {number} total_handles
+ * @property {string} address
+ * @property {"wallet"|"script"|"enterprise"|"other"} type
+ * @property {string} known_owner_name
+ * @property {string} default_handle
+ * @property {boolean} manually_set
+ * @property {string[]} [handles]
+ */
+
+/**
+ * Fetches the Cardano handle for a given address from the Handle.me API.
+ * Throws on network errors or unexpected status codes so the caller can fall back.
+ *
+ * @param {string} address - The Cardano address (stake, payment, enterprise, or script address)
+ * @returns {Promise<string|null>} The default handle name if found, null if address has no handle
+ * @throws {Error} If the API is unreachable or returns an unexpected status
+ */
+async function fetchHandleMe(address) {
+    const baseUrl = process.env.NETWORK_NAME === "mainnet"
+        ? "https://api.handle.me"
+        : "https://preprod.api.handle.me";
+    const response = await fetch(`${baseUrl}/holders/${address}`);
+    if (response.status === 200 || response.status === 202) {
+        const /** @type {HandleHolder} */ data = await response.json();
+        return data.default_handle || null;
+    }
+    if (response.status === 404) {
+        return null;
+    }
+    throw new Error(`Handle.me returned unexpected status ${response.status}`);
+}
+
+/**
+ * Fetches the Cardano handle (asset name) for a given address from the Koios API.
+ *
+ * @deprecated Use fetchHandleMe instead. Retained as fallback in case the Handle.me
+ * preprod API is no longer operational.
+ * @param {string} address - The Cardano address (stake address or payment address)
+ * @returns {Promise<string|null>} The handle name if found, null otherwise
+ */
+async function fetchHandleKoios(address) {
+    const handlePolicyId = "f0ff48bbb7bbe9d59a40f1ce90e9e9d0ff5002ec48f232b49ca0fb9a"
+    let endpoint;
+    let body;
+    if (address.startsWith("stake")) {
+        endpoint = 'account_assets';
+        body = {
+            "_stake_addresses": [address],
+        };
+    }
+    if (address.startsWith("addr")) {
+        endpoint = 'address_assets';
+        body = {
+            "_addresses": [address],
+        };
+    }
+    if (!endpoint) {
+        console.error("Invalid address");
+        return null;
+    }
+    try {
+        const response = await fetch(`${API_URL}/${endpoint}?policy_id=eq.${handlePolicyId}`,
+            {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${API_TOKEN}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(body),
+            }
+        );
+        const data = await response.json();
+        if (data.length === 0) {
+            console.log("No handle found");
+            return null;
+        }
+        try {
+            const getHandleMetadataResponse = await fetch(`${API_URL}/asset_info`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${API_TOKEN}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        "_asset_list": [[data[0].policy_id, data[0].asset_name]],
+                    }),
+                }
+            );
+            const getHandleMetadata = await getHandleMetadataResponse.json();
+            return getHandleMetadata[0].asset_name_ascii;
+        } catch (error) {
+            console.error("Error fetching handle metadata:", error);
+            return null;
+        }
+
+    } catch (error) {
+        console.error("Error fetching endpoint:", error);
+        return null;
+    }
+}
+
+/**
+ * Fetches the Cardano handle for a given address.
+ * Tries Handle.me API first, falls back to Koios if Handle.me is unavailable.
+ *
+ * @param {string} address - The Cardano address (stake address or payment address)
+ * @returns {Promise<string|null>} The handle name if found, null otherwise
+ */
+export async function fetchHandle(address) {
+    try {
+        return await fetchHandleMe(address);
+    } catch (error) {
+        console.error("Handle.me unavailable, falling back to Koios:", error.message);
+        return fetchHandleKoios(address);
+    }
+}
 
 /**
  * Fetches script information from the Koios API for a given script hash.
@@ -30,305 +295,72 @@ const API_TOKEN = process.env.API_TOKEN;
  * }
  */
 export async function getScript(scriptHash) {
-  const API_URL = process.env.API_URL;
-  const API_TOKEN = process.env.API_TOKEN;
+    try {
+        // Make an authenticated POST request to Koios script_info endpoint
+        const scripts = await fetch(API_URL + "/script_info", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Prefer: "count=exact", // Request exact count in response headers
+                authorization: `Bearer ${API_TOKEN}`,
+            },
+            body: JSON.stringify({ _script_hashes: [scriptHash] }),
+        });
 
-  // Validate that API configuration is set
-  if (!API_URL) {
-    console.error("API_URL is not set in the environment variables.");
-    throw new Error("API URL is not set!");
-  }
+        const script_data = await scripts.json();
+        // TODO: Cache the fetched/returned script data so we can save on calls to Koios in the future
 
-  if (!API_TOKEN) {
-    console.error("API_TOKEN is not set in the environment variables.");
-    throw new Error("API Token is not set!");
-  }
-
-  // Validate and parse the script hash format
-  let script_hash;
-  try {
-    script_hash = ScriptHash.from_hex(scriptHash);
-  } catch (error) {
-    console.error(`Not a valid script hash: ${script_hash}`);
-    throw new Error("Not a valid script hash");
-  }
-
-  try {
-    // Make authenticated POST request to Koios script_info endpoint
-    const scripts = await fetch(API_URL + "/script_info", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Prefer: "count=exact", // Request exact count in response headers
-        authorization: `Bearer ${API_TOKEN}`,
-      },
-      body: JSON.stringify({ _script_hashes: [scriptHash] }),
-    });
-
-    const script_data = await scripts.json();
-    // TODO: Cache the fetched/returned script data so we can save on calls to Koios in the future
-
-    // Return the first script if any results were found
-    if (script_data.length > 0) {
-      return script_data[0];
+        // Return the first script if any results were found
+        if (script_data.length > 0) {
+            return script_data[0];
+        }
+        return false;
+    } catch (error) {
+        // Log error but don't throw - return false to indicate failure
+        console.log("Error fetching script hash:", scriptHash);
+        console.error(error);
     }
-    return false;
-  } catch (error) {
-    // Log error but don't throw - return false to indicate failure
-    console.log("Error fetching script hash:", scriptHash);
-    console.error(error);
-  }
 
-  return false;
+    return false;
 }
 
 /**
- * Fetches calidus keys for a Cardano stake pool.
- * 
- * This function retrieves calidus keys (authentication keys) for a pool identified
- * by its Bech32-encoded pool ID. These keys are used for pool authentication and
- * voting purposes. Note: This will return calidus keys for retired pools which
- * can be used to login to the system and vote, but pool votes will have a voting
- * power of 0.
- * 
- * @param {string} poolIdBech32 - The Bech32-encoded pool ID (e.g., "pool1...")
- * @returns {Promise<Object|false>} The pool calidus keys object if found, false otherwise
- * 
- * @example
- * const calidusKeys = await getCalidusKey("pool1abc123...");
- * if (calidusKeys) {
- *   console.log("Calidus keys found:", calidusKeys);
- * }
+ * @typedef {Object} CalidusKey
+ * @property {string} pool_id_bech32 - Pool ID in bech32 format
+ * @property {string} pool_status - Pool registration status ("registered", "retired", "unregistered")
+ * @property {number} calidus_nonce - Calidus certificate nonce
+ * @property {string} calidus_pub_key - Calidus public key (hex)
+ * @property {string} calidus_id_bech32 - Calidus ID in bech32 format
+ * @property {string} tx_hash - Transaction hash of the certificate (hex)
+ * @property {number} epoch_no - Epoch number of the certificate
+ * @property {number} block_height - Block height of the certificate
+ * @property {number} block_time - Block time as Unix timestamp
  */
-export async function getCalidusKey(poolIdBech32) {
-  try {
-    // Query Koios API for pool calidus keys using pool ID filter
-    const requestPoolCalidusKeys = await fetch(`${API_URL}/pool_calidus_keys?pool_id_bech32=eq.${poolIdBech32}`, {
-      headers: {
-        "Content-Type": "application/json",
-        authorization: `Bearer ${API_TOKEN}`,
-      },
-    })
-    const poolCalidusKeysBody = await requestPoolCalidusKeys.json();
-
-    // Return the first result if any keys were found
-    if (poolCalidusKeysBody.length > 0) {
-      return poolCalidusKeysBody[0];
-    } else {
-      return false;
-    }
-  } catch (error) {
-    // Log error and return false to indicate failure
-    console.error("Error fetching pool calidus keys:", error);
-    return false;
-  }
-}
-
 
 /**
- * Fetches all registered pools from the Koios API and calculates aggregate totals.
- * 
- * This function performs paginated requests to retrieve all registered pools,
- * fetches detailed pool information, and calculates totals for:
- * - live_pledge: Current active pledge amount
- * - pledge: Declared pledge amount
- * - voting_power: Total voting power
- * - active_stake: Current active stake
- * 
- * @returns {Promise<Object>} An object containing:
- *   - poolsData: Array of all pool data objects
- *   - totalLivePledge: Sum of all live_pledge values (as string)
- *   - totalVotingPower: Sum of all voting_power values (as string)
- *   - totalActiveStake: Sum of all active_stake values (as string)
- *   - error: Error message if the operation fails
- * 
- * @example
- * const result = await getPoolTotals();
- * if (result.error) {
- *   console.error(result.error);
- * } else {
- *   console.log(`Total pools: ${result.poolsData.length}`);
- *   console.log(`Total live pledge: ${result.totalLivePledge}`);
- * }
+ * Fetches the latest Calidus key for a given stake pool from the Koios API.
+ *
+ * @param {string} poolBech32 - The pool ID in bech32 format (e.g., "pool1...")
+ * @returns {Promise<CalidusKey|null>} The Calidus key record if found, null otherwise or on error
  */
-export async function getPoolTotals() {
-  let poolData = [];
-  console.log("Fetching pool totals...");
-
-  // Pagination setup: fetch pools in batches of 50
-  let page = 1;
-  const limit = 75;
-  let offset = (page - 1) * limit;
-  let totalCount = 0;
-
-  // Step 1: Get total count of registered pools from API
-  // This is used to determine how many pages we need to fetch
-  try {
-    const requestTotalCount = await fetch(`${process.env.API_URL}/pool_list?pool_status=eq.registered&select=pool_status,pool_id_bech32&limit=1`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        authorization: `Bearer ${process.env.API_TOKEN}`,
-        prefer: "count=exact", // Request exact count in response headers
-      },
-    });
-    // Extract total count from Content-Range header (format: "0-0/1234")
-    totalCount = requestTotalCount.headers.get("content-range").split("/")[1];
-    console.log(`Total pools: ${totalCount}`);
-  } catch (error) {
-    console.error(`Error fetching total count of pools: ${error.message}`);
-    return { error: `Error fetching total count of pools: ${error.message}` };
-  }
-
-  // Step 2: Fetch all pools in paginated batches
-  // Loop through pages until we've fetched all pools
-  while (offset < totalCount) {
+export async function fetchCalidusKey(poolBech32) {
     try {
-      console.log(`Fetching Pool page ${page}/${Math.ceil(totalCount / limit)}`);
-
-      // First, get the list of pool IDs for this page
-      const requestPoolList = await fetch(`${process.env.API_URL}/pool_list?pool_status=eq.registered&select=pool_id_bech32,pool_status&offset=${offset}&limit=${limit}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          authorization: `Bearer ${process.env.API_TOKEN}`,
-          prefer: "count=exact",
-        },
-      });
-      const pools = await requestPoolList.json();
-
-      // Then, fetch detailed information for all pools in this batch
-      // Using POST to send array of pool IDs in the request body
-      const requestPoolData = await fetch(`${process.env.API_URL}/pool_info?select=pool_id_bech32,pledge,live_pledge,voting_power,active_stake`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          authorization: `Bearer ${process.env.API_TOKEN}`,
-        },
-        body: JSON.stringify({
-          _pool_bech32_ids: pools.map(pool => pool.pool_id_bech32),
-        }),
-      });
-
-      const poolDataJSON = await requestPoolData.json();
-      poolData.push(...poolDataJSON);
-
-      // Move to next page
-      page++;
-      offset = (page - 1) * limit;
+        const response = await fetch(
+            `${API_URL}/pool_calidus_keys?pool_id_bech32=eq.${poolBech32}`,
+            {
+                headers: {
+                    "Content-Type": "application/json",
+                    authorization: `Bearer ${API_TOKEN}`,
+                },
+            }
+        );
+        const data = await response.json();
+        if (data.length === 0) {
+            return null;
+        }
+        return data[0];
     } catch (error) {
-      console.error(`Error fetching pool data: ${error.message}`);
-      return { error: `Error fetching pool data: ${error.message}` };
+        console.error("Error fetching Calidus key:", error);
+        return null;
     }
-  }
-
-  console.log(`Fetched ${poolData.length} pools`);
-
-  // Step 3: Calculate aggregate totals using BigInt for large number precision
-  // Convert all values to BigInt to handle large Cardano lovelace amounts correctly
-
-  // Sum all live_pledge values (current active pledge)
-  const totalLivePledge = poolData.reduce((acc, pool) => {
-    const livePledge = typeof pool.live_pledge === 'string' ? BigInt(pool.live_pledge) : BigInt(pool.live_pledge || 0);
-    return acc + livePledge;
-  }, BigInt(0));
-
-  // Sum all pledge values (declared pledge amount)
-  const totalPledge = poolData.reduce((acc, pool) => {
-    const pledge = typeof pool.pledge === 'string' ? BigInt(pool.pledge) : BigInt(pool.pledge || 0);
-    return acc + pledge;
-  }, BigInt(0));
-
-  // Sum all voting_power values
-  const totalVotingPower = poolData.reduce((acc, pool) => {
-    const votingPower = typeof pool.voting_power === 'string' ? BigInt(pool.voting_power) : BigInt(pool.voting_power || 0);
-    return acc + votingPower;
-  }, BigInt(0));
-
-  // Sum all active_stake values
-  const totalActiveStake = poolData.reduce((acc, pool) => {
-    const activeStake = typeof pool.active_stake === 'string' ? BigInt(pool.active_stake) : BigInt(pool.active_stake || 0);
-    return acc + activeStake;
-  }, BigInt(0));
-
-  // Log totals for debugging/monitoring
-  console.log(`Total live pledge: ${totalLivePledge.toString()}`);
-  console.log(`Total pledge: ${totalPledge.toString()}`);
-  console.log(`Total voting power: ${totalVotingPower.toString()}`);
-  console.log(`Total active stake: ${totalActiveStake.toString()}`);
-
-  // Return results as strings (BigInt values converted to strings for JSON compatibility)
-  return {
-    poolData: poolData,
-    totalLivePledge: totalLivePledge.toString(),
-    totalVotingPower: totalVotingPower.toString(),
-    totalActiveStake: totalActiveStake.toString()
-  };
-}
-
-
-export async function getAllDreps() {
-  // Pagination setup: fetch dreps in batches of 50
-  let page = 1;
-  const limit = 50;
-  let offset = (page - 1) * limit;
-  let totalCount = 0;
-  let dreps = [];
-  console.log("Fetching all dreps...");
-
-  try {
-    const requestTotalCount = await fetch(`${process.env.API_URL}/drep_list?registered=eq.true&select=drep_id,registered&limit=1`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        authorization: `Bearer ${process.env.API_TOKEN}`,
-        prefer: "count=exact", // Request exact count in response headers
-      },
-    });
-    // Extract total count from Content-Range header (format: "0-0/1234")
-    totalCount = requestTotalCount.headers.get("content-range").split("/")[1];
-    console.log(`Total dreps: ${totalCount}`);
-  } catch (error) {
-    console.error(`Error fetching total count of dreps: ${error.message}`);
-    return { error: `Error fetching total count of dreps: ${error.message}` };
-  }
-
-  while (offset < totalCount) {
-    try {
-      console.log(`Fetching DRep page ${page}/${Math.ceil(totalCount / limit)}`);
-      const requestDreps = await fetch(`${process.env.API_URL}/drep_list?registered=eq.true&select=drep_id,registered&offset=${offset}&limit=${limit}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          authorization: `Bearer ${process.env.API_TOKEN}`,
-          prefer: "count=exact",
-        },
-      });
-      const drepsJSON = await requestDreps.json();
-
-      // get drep info for batch
-      const requestDrepInfo = await fetch(`${process.env.API_URL}/drep_info?select=drep_id,registered,amount`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          authorization: `Bearer ${process.env.API_TOKEN}`,
-        },
-        body: JSON.stringify({
-          _drep_ids: drepsJSON.map(drep => drep.drep_id),
-        }),
-      });
-      const drepInfoJSON = await requestDrepInfo.json();
-      dreps.push(...drepInfoJSON);
-
-      page++;
-      offset = (page - 1) * limit;
-    } catch (error) {
-      console.error(`Error fetching dreps: ${error.message}`);
-      return { error: `Error fetching dreps: ${error.message}` };
-    }
-  }
-
-  console.log(`Fetched ${dreps.length} dreps`);
-  return dreps;
-
 }

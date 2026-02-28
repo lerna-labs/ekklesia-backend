@@ -117,18 +117,12 @@ export function validateAddress(signerAddress, signType) {
                     isScript = false;
                     break;
             }
-//            console.log({
-//                ...parts,
-//                cip129_prefix,
-//                cip105_prefix,
-//                isScript
-//            });
+
             return {
                 cip105: bech32.encode(cip105_prefix, bech32.toWords(Buffer.from(parts.keyHash, "hex")), 256),
                 cip129: bech32.encode("drep", bech32.toWords(Buffer.from(cip129_prefix + parts.keyHash, "hex")), 256),
                 isScript: isScript,
             };
-            break;
         case "pool":
             // TODO: Add some basic sanity checking like string length, etc here
             const key_hash = Ed25519KeyHash.from_hex(words_hex);
@@ -215,6 +209,8 @@ export function getAddressType(bech32Address) {
             case "drep_script":
                 hashType = "script";
                 keyPrefix = "23";
+                type = "drep";
+                break;
             case "drep":
                 switch (keyPrefix) {
                     case "22":
@@ -241,10 +237,11 @@ export function getAddressType(bech32Address) {
                 type = "stake";
                 break;
         }
+        // Ensure no dangling whitespace that could cause downstream issues...
         return {
-            type,
-            keyHash,
-            hashType,
+            type: type.trim(),
+            keyHash: keyHash.trim(),
+            hashType: hashType.trim(),
         };
     } catch (error) {
         return {
