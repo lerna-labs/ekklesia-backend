@@ -37,18 +37,18 @@ dotenv.config({ path: envPath });
 
 const TITLE_PREFIX = "Test ballot with votes ";
 
-// 10 users: 5 DReps, 5 pools; voting power in lovelace (1 ADA = 1e6 lovelace)
+// 10 users: 5 DReps, 5 pools; voting power in lovelace (1 ADA = 1e6 lovelace), half of previous scale
 const TEST_USERS = [
-    { userId: "test-drep-1", voterGroup: "drep", votingPower: 100_000_000 * LOVELACE_PER_ADA },   // 100M ADA
-    { userId: "test-drep-2", voterGroup: "drep", votingPower: 80_000_000 * LOVELACE_PER_ADA },    // 80M ADA
-    { userId: "test-drep-3", voterGroup: "drep", votingPower: 50_000_000 * LOVELACE_PER_ADA },    // 50M ADA
-    { userId: "test-drep-4", voterGroup: "drep", votingPower: 30_000_000 * LOVELACE_PER_ADA },     // 30M ADA
-    { userId: "test-drep-5", voterGroup: "drep", votingPower: 10_000_000 * LOVELACE_PER_ADA },    // 10M ADA
-    { userId: "test-pool-1", voterGroup: "pool", votingPower: 90_000_000 * LOVELACE_PER_ADA },    // 90M ADA
-    { userId: "test-pool-2", voterGroup: "pool", votingPower: 70_000_000 * LOVELACE_PER_ADA },    // 70M ADA
-    { userId: "test-pool-3", voterGroup: "pool", votingPower: 40_000_000 * LOVELACE_PER_ADA },    // 40M ADA
-    { userId: "test-pool-4", voterGroup: "pool", votingPower: 20_000_000 * LOVELACE_PER_ADA },    // 20M ADA
-    { userId: "test-pool-5", voterGroup: "pool", votingPower: 5_000_000 * LOVELACE_PER_ADA },     // 5M ADA
+    { userId: "test-drep-1", voterGroup: "DReps", votingPower: 50_000_000 * LOVELACE_PER_ADA },   // 50M ADA
+    { userId: "test-drep-2", voterGroup: "DReps", votingPower: 40_000_000 * LOVELACE_PER_ADA },   // 40M ADA
+    { userId: "test-drep-3", voterGroup: "DReps", votingPower: 25_000_000 * LOVELACE_PER_ADA },   // 25M ADA
+    { userId: "test-drep-4", voterGroup: "DReps", votingPower: 15_000_000 * LOVELACE_PER_ADA },   // 15M ADA
+    { userId: "test-drep-5", voterGroup: "DReps", votingPower: 5_000_000 * LOVELACE_PER_ADA },     // 5M ADA
+    { userId: "test-pool-1", voterGroup: "SPOs", votingPower: 45_000_000 * LOVELACE_PER_ADA },   // 45M ADA
+    { userId: "test-pool-2", voterGroup: "SPOs", votingPower: 35_000_000 * LOVELACE_PER_ADA },   // 35M ADA
+    { userId: "test-pool-3", voterGroup: "SPOs", votingPower: 20_000_000 * LOVELACE_PER_ADA },   // 20M ADA
+    { userId: "test-pool-4", voterGroup: "SPOs", votingPower: 10_000_000 * LOVELACE_PER_ADA },   // 10M ADA
+    { userId: "test-pool-5", voterGroup: "SPOs", votingPower: 2_500_000 * LOVELACE_PER_ADA },      // 2.5M ADA
 ];
 
 // Vote option IDs: 1 = Yes, 2 = No, "abstain" = Abstain
