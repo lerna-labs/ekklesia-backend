@@ -15,6 +15,9 @@ import validator from "validator";
  * @access Public
  *
  * @param {Object} req.query
+ * @param {string} [req.query.search] - Search term for FAQ title or content
+ * @param {string} [req.query.tags] - Filter by tags (comma-separated, e.g., 'voter,proposer')
+ * @param {string} [req.query.featured] - Filter by featured status ('true' or 'false')
  * @param {string} [req.query.search] - Search term for FAQ title or content (1-100 characters, sanitized, case-insensitive regex match)
  * @param {string} [req.query.tags] - Filter by tags (comma-separated, e.g., 'voter,proposer'). FAQs must have at least one matching tag.
  * @param {string} [req.query.featured] - Filter by featured status: 'true' or 'false' (case-insensitive)
@@ -32,7 +35,7 @@ import validator from "validator";
  *   - Featured parameter is not 'true' or 'false'
  * @returns {Object} 500 - Server error while fetching FAQs
  */
-router.get("/", async (req, res) => {
+router.get("/", cacheControl(300), async (req, res) => {
   const { search, tags, featured } = req.query;
   let matchStage = {
     is_live: true, // Only return live FAQs
