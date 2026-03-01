@@ -113,10 +113,10 @@ export async function aggregateVotes() {
       };
     });
 
-    // add abstain votes if allowed on proposal
-    if (proposal.abstainAllowed) {
+    // add abstain to overall results when allowed (aggregation _id may be string "abstain" from $group by submittedVote)
+    if (proposal.abstainAllowed !== false) {
       const matchingAbstainResult = voteAggregation.find(
-        (result) => result._id == "abstain"
+        (result) => String(result._id) === "abstain"
       );
 
       resultsWithLabels.push({
