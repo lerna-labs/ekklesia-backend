@@ -9,11 +9,11 @@ import {
  * @param {String} address - The address to validate
  * @returns {Promise<Boolean>} - Always returns true
  */
-export async function validateVoter(voterId, ballotId) {
+export async function validateVoter(userId, ballotId) {
   let validated = false;
 
   // Check if the address is already validated
-  const existingValidation = await checkVoterValidation(voterId, ballotId);
+  const existingValidation = await checkVoterValidation(userId, ballotId);
   if (existingValidation !== null) {
     return existingValidation;
   }
@@ -23,7 +23,7 @@ export async function validateVoter(voterId, ballotId) {
   validated = true;
 
   // Save the validation to the database
-  await saveVoterValidation(voterId, ballotId, validated);
+  await saveVoterValidation(userId, ballotId, validated, "default");
 
   // return the validation status
   return validated;

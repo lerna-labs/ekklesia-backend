@@ -1,5 +1,5 @@
 import { Vote } from "../schema/Vote.js";
-import { VoterCache } from "../schema/VoterCache.js";
+import { UserCache } from "../schema/UserCache.js";
 import { Proposal } from "../schema/Proposal.js";
 import { Result } from "../schema/Result.js";
 
@@ -44,14 +44,14 @@ export async function aggregateVotes() {
       { $match: { proposalId } },
       {
         $lookup: {
-          from: "votercaches", // collection name in MongoDB
-          let: { voterId: "$voterId", ballotId: proposal.ballotId },
+          from: "usercaches", // collection name in MongoDB
+          let: { userId: "$userId", ballotId: proposal.ballotId },
           pipeline: [
             {
               $match: {
                 $expr: {
                   $and: [
-                    { $eq: ["$voterId", "$$voterId"] },
+                    { $eq: ["$userId", "$$userId"] },
                     { $eq: ["$ballotId", "$$ballotId"] },
                   ],
                 },
@@ -98,6 +98,7 @@ export async function aggregateVotes() {
       JSON.stringify(voteAggregation, null, 2)
     );
 
+    // restructure results with labels
     const resultsWithLabels = proposal.voteOptions.map((option) => {
       // Find if there's a matching result from the aggregation
       const matchingResult = voteAggregation.find(
@@ -112,10 +113,101 @@ export async function aggregateVotes() {
       };
     });
 
-    // upsert the result into the database
+    // add abstain votes if allowed on proposal
+    if (proposal.abstainAllowed) {
+      const matchingAbstainResult = voteAggregation.find(
+        (result) => result._id == "abstain"
+      );
+
+      resultsWithLabels.push({
+        id: "abstain",
+        label: "Abstain",
+        count: matchingAbstainResult ? matchingAbstainResult.count : 0,
+        votingPower: matchingAbstainResult ? matchingAbstainResult.votingPower : 0,
+      });
+    }
+
+    // By-group aggregation: same pipeline + voterGroup, group by voterGroup and vote value
+    const byGroupAggregation = await Vote.aggregate([
+      { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
+      {
+        $lookup: {
+          from: "usercaches",
+          let: { userId: "$userId", ballotId: proposal.ballotId },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$userId", "$$userId"] },
+                    { $eq: ["$ballotId", "$$ballotId"] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "voterData",
+        },
+      },
+      {
+        $addFields: {
+          votingPower: {
+            $ifNull: [{ $arrayElemAt: ["$voterData.votingPower", 0] }, 1],
+          },
+          voterGroup: {
+            $ifNull: [{ $arrayElemAt: ["$voterData.voterGroup", 0] }, "default"],
+          },
+        },
+      },
+      { $unwind: { path: "$submittedVote", preserveNullAndEmptyArrays: false } },
+      {
+        $group: {
+          _id: { voterGroup: "$voterGroup", voteValue: "$submittedVote" },
+          count: { $sum: 1 },
+          votingPower: { $sum: "$votingPower" },
+        },
+      },
+    ]);
+
+    // Build resultsByGroup: { "<voterGroup>": { results: [{ id, label, count, votingPower }], totalVotes } }
+    const resultsByGroup = {};
+    for (const row of byGroupAggregation) {
+      const groupKey = row._id.voterGroup;
+      if (!resultsByGroup[groupKey]) {
+        resultsByGroup[groupKey] = { results: [], totalVotes: 0 };
+      }
+      const option = proposal.voteOptions.find((o) => o.id == row._id.voteValue);
+      const label = option ? option.label : (row._id.voteValue === "abstain" ? "Abstain" : String(row._id.voteValue));
+      resultsByGroup[groupKey].results.push({
+        id: row._id.voteValue,
+        label,
+        count: row.count,
+        votingPower: row.votingPower,
+      });
+      resultsByGroup[groupKey].totalVotes += row.count;
+    }
+    if (proposal.abstainAllowed) {
+      for (const groupKey of Object.keys(resultsByGroup)) {
+        const hasAbstain = resultsByGroup[groupKey].results.some((r) => r.id === "abstain");
+        if (!hasAbstain) {
+          const abstainRow = byGroupAggregation.find(
+            (r) => r._id.voterGroup === groupKey && r._id.voteValue === "abstain"
+          );
+          resultsByGroup[groupKey].results.push({
+            id: "abstain",
+            label: "Abstain",
+            count: abstainRow ? abstainRow.count : 0,
+            votingPower: abstainRow ? abstainRow.votingPower : 0,
+          });
+          if (abstainRow) resultsByGroup[groupKey].totalVotes += abstainRow.count;
+        }
+      }
+    }
+
+    // upsert the result into the database (results + resultsByGroup)
     await Result.updateOne(
       { proposalId },
-      { results: resultsWithLabels },
+      { results: resultsWithLabels, resultsByGroup },
       { upsert: true }
     );
 

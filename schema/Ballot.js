@@ -8,23 +8,25 @@ const { Schema } = mongoose;
  * @typedef {Object} Ballot
  * @property {String} title - Title of the ballot
  * @property {String} description - Description of the ballot
+ * @property {String} ipfsHash - IPFS hash of the ballot metadata (optional, null if not stored on IPFS)
  * @property {String} voterType - Type of voters eligible for this ballot (e.g., 'stake', 'drep', 'pool')
  * @property {String} voterDescription - Human-readable description of eligible voters
+ * @property {Boolean} voteWeighted - Whether the voting is weighted (default: false) - needed for UI displays mainly
  * @property {Date} votePeriodStart - Start date and time of the voting period
+ * @property {Boolean} voteFilters - Whether filtering options are enabled for this ballot (default: false)
  * @property {Date} votePeriodEnd - End date and time of the voting period
- * @property {Boolean} voteFilters - Whether filtering options are enabled for this ballot
  * @property {String} voteAuthorityId - ID of the voting authority managing this ballot
  * @property {String} voteAuthorityAddress - Blockchain address of the voting authority
  * @property {Date} proposalPeriodStart - Start date and time for submitting proposals
  * @property {Date} proposalPeriodEnd - End date and time for submitting proposals
  * @property {String} resultTxHash - Token for the result transaction (null if not finalized)
  * @property {String} voterValidationScript - Script used to validate voters (default: voterValidationAlwaysTrue.js)
- * @property {Boolean} voteWeighted - Whether the voting is weighted (default: false) - needed for UI displays mainly
  * @property {String} rollupScript - Script used to calculate voting results (default: rollupBallot.js)
  * @property {String} startupScript - Script used to start the ballot (default: startupBallot.js)
+ * @property {Date} startupAt - Timestamp when the ballot was started (optional, null if not started)
+ * @property {String} status - Current ballot status: "upcoming", "live", or "closed" (default: "upcoming")
  * @property {Date} createdAt - Timestamp when the ballot was created (immutable)
  * @property {Date} updatedAt - Timestamp when the ballot was last updated
- * @property {String} status - Virtual property indicating ballot status ("live", "closed", or "upcoming")
  */
 const ballotSchema = new Schema(
   {
@@ -113,15 +115,6 @@ const ballotSchema = new Schema(
       default: "upcoming",
       required: true,
     },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-      immutable: true,
-    },
-    updatedAt: {
-      type: Date,
-      default: Date.now,
-    },
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
@@ -146,12 +139,6 @@ const ballotSchema = new Schema(
 // Indexes for faster queries
 ballotSchema.index({ title: 1 });
 ballotSchema.index({ voterType: 1 });
-
-// Pre-save middleware to update the updatedAt field
-ballotSchema.pre("save", function (next) {
-  this.updatedAt = new Date();
-  next();
-});
 
 const Ballot = mongoose.model("Ballot", ballotSchema);
 export { Ballot };

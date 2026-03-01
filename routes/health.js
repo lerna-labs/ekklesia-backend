@@ -7,6 +7,7 @@ import { isDatabaseConnected } from "../helper/dbManager.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import fs from "fs/promises";
+import { hydraGetStatus } from "../helper/hydra.js";
 
 // Get application version from package.json
 const __filename = fileURLToPath(import.meta.url);
@@ -15,9 +16,21 @@ const packageServerPath = join(__dirname, "../package.json");
 const versionFrontendPath = join(__dirname, "../public/version.json");
 
 /**
- * @route   GET /api/v0/status
- * @desc    System status endpoint with comprehensive status information
- * @access  Public
+ * @route GET /api/v0/status
+ * @description Get comprehensive system status information including server health, database connection status, network information, and runtime metrics
+ * @access Public
+ *
+ * @returns {Object} 200 - System status object containing:
+ *   - status: Overall system status (e.g., "operational")
+ *   - message: Human-readable status message
+ *   - timestamp: ISO 8601 timestamp when status was generated
+ *   - environment: Current deployment environment (e.g., "development", "production")
+ *   - network: Name of the blockchain network (e.g., "mainnet", "preprod")
+ *   - networkId: Numeric identifier for the blockchain network
+ *   - server: Object with uptime, version, nodeVersion, and memoryUsage
+ *   - frontend: Version of the frontend application (if available)
+ *   - database: Object with connection status and message
+ * @returns {Object} 500 - Server error
  */
 router.get("/", async (req, res) => {
   const currentTime = new Date();
@@ -54,18 +67,7 @@ router.get("/", async (req, res) => {
   };
 
   // Check Hydra Status
-  let hydraStatus = "unknown";
-  // try {
-  //   const response = await fetch(`${process.env.HYDRA_URL}/health`, {
-  //     headers: {
-  //       "x-api-key": `${process.env.HYDRA_TOKEN}`,
-  //     },
-  //   });
-  //   const data = await response.json();
-  //   hydraStatus = data.status || "unknown";
-  // } catch (error) {
-  //   console.error(`Failed to check Hydra status: ${error.message}`);
-  // }
+  let hydraStatus = await hydraGetStatus();
 
   return res.json({
     status: "operational",
@@ -104,9 +106,11 @@ router.get("/", async (req, res) => {
 });
 
 /**
- * @route   GET /api/v0/status/health
- * @desc    Simple health check for load balancers and monitoring tools
- * @access  Public
+ * @route GET /api/v0/status/health
+ * @description Simple health check endpoint for load balancers and monitoring tools. Always returns 200 OK unless the server is completely down.
+ * @access Public
+ *
+ * @returns {Object} 200 - Health status object with status: "healthy"
  */
 router.get("/health", (req, res) => {
   // This endpoint always returns 200 OK unless the server is completely down
@@ -115,9 +119,13 @@ router.get("/health", (req, res) => {
 });
 
 /**
- * @route   GET /api/v0/status/db
- * @desc    Database connection status endpoint
- * @access  Public
+ * @route GET /api/v0/status/db
+ * @description Get database connection status and health information
+ * @access Public
+ *
+ * @returns {Object} 200 - Database status object containing:
+ *   - status: "connected" or "disconnected"
+ *   - message: Human-readable message about database connection status
  */
 router.get("/db", (req, res) => {
   res.json({

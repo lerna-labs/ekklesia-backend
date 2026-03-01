@@ -11,22 +11,37 @@ import { isAuthenticated, getProposal } from "../../../helper/middleWare.js";
 
 /**
  * @route POST /api/v0/vote/:proposalId
- * @description Submit or update a vote on a specific proposal
+ * @description Submit or update a vote on a specific proposal. Creates a new vote or updates an existing one. Votes can be changed before submission via transaction. For budget vote type, validates that total cost doesn't exceed voterBudget. For scale vote type, validates that vote is within the allowed range with correct increment.
  * @access Private (requires authentication)
  *
- * @param {string} req.params.proposalId - ID of the proposal to vote on
+ * @param {string} req.params.proposalId - MongoDB ObjectId of the proposal to vote on
  * @param {Object} req.body
- * @param {number} req.body.vote - The vote value (must be one of the allowed values for the proposal)
+ * @param {Array<number|string>} req.body.vote - Array of vote option IDs (numbers) or "abstain" string. Must be one of the allowed values for the proposal. Duplicates are automatically removed. If abstainAllowed is true and "abstain" is included, no other votes are allowed.
  *
- * @returns {Object} 200 - The saved vote object with indication if vote was changed
- * @returns {Object} 400 - Error if ballot is not live, vote value is missing or not allowed
+ * @returns {Object} 200 - The saved vote object containing:
+ *   - _id: MongoDB ObjectId of the vote
+ *   - userId: ID of the voter
+ *   - ballotId: ID of the ballot
+ *   - proposalId: ID of the proposal
+ *   - vote: Array of current vote option IDs
+ *   - submittedVote: Array of submitted vote option IDs (null if not yet submitted)
+ *   - submittedAt: ISO 8601 timestamp when vote was submitted (null if not yet submitted)
+ *   - changes: Boolean indicating if vote was changed (true if updatedAt > submittedAt or submittedAt is null)
+ *   - createdAt: ISO 8601 timestamp when vote was created
+ *   - updatedAt: ISO 8601 timestamp when vote was last updated
+ * @returns {Object} 400 - Error if:
+ *   - Vote data is missing, not an array, or empty
+ *   - Ballot status is not "live"
+ *   - Vote value(s) are not allowed for this proposal
+ *   - Abstain is combined with other votes (when abstainAllowed is true)
+ *   - Total cost exceeds voterBudget (for budget vote type)
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
- * @returns {Object} 403 - Error if voter not registered for ballot
+ * @returns {Object} 403 - Error if voter is not registered/validated for the ballot
  * @returns {Object} 404 - Error if proposal or ballot not found
- * @returns {Object} 500 - Error if vote cannot be saved
+ * @returns {Object} 500 - Error if vote cannot be saved to database
  */
 router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
-  const { proposal, voterId, proposalId } = req;
+  const { proposal, userId, proposalId } = req;
 
   // Get ballot data
   const ballot = await Ballot.findOne({ _id: proposal.ballotId });
@@ -49,7 +64,7 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
     "../../../config/" + ballot.voterValidationScript
   );
   // validate voter
-  const isValidVoter = await validateVoter(voterId, ballot._id);
+  const isValidVoter = await validateVoter(userId, ballot._id);
   // return error if voter is not valid
   if (!isValidVoter) {
     return res.status(403).json({
@@ -71,8 +86,28 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   // Remove duplicate votes
   const uniqueVotes = [...new Set(vote)];
 
+  // Invalidate vote submission if abstainAllowed and abstain as well as other votes are present
+  if (proposal.abstainAllowed && uniqueVotes.includes("abstain") && uniqueVotes.length > 1) {
+    return res.status(400).json({
+      status: "error",
+      message: "Invalid vote - Abstain does not allow other votes",
+    });
+  }
+
   // Get allowed option IDs from proposal.voteOptions
-  const allowedOptionIds = proposal.voteOptions.map((option) => option.id);
+  let allowedOptionIds = proposal.voteOptions.map((option) => option.id);
+
+  // allowed values for scale votes
+  if (proposal.voteType === "scale") {
+    const lowerBound = proposal.voteOptions[0].id;
+    const upperBound = proposal.voteOptions[proposal.voteOptions.length - 1].id;
+    allowedOptionIds = Array.from({ length: (upperBound - lowerBound) / proposal.voteIncrement + 1 }, (_, i) => lowerBound + i * proposal.voteIncrement);
+  }
+
+  // Add abstain if proposal.abstainAllowed = true
+  if (proposal.abstainAllowed) {
+    allowedOptionIds.push("abstain");
+  }
 
   // Check if all values in the vote array are present in the allowed option IDs
   const invalidVotes = uniqueVotes.filter(voteId => !allowedOptionIds.includes(voteId));
@@ -100,13 +135,13 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   const voteData = {
     ballotId: proposal.ballotId,
     proposalId,
-    voterId,
+    userId,
     vote: uniqueVotes,
   };
 
   // save the vote to the database and return the saved vote
   const saveVote = await Vote.findOneAndUpdate(
-    { proposalId: req.params.proposalId, voterId: voterId },
+    { proposalId: req.params.proposalId, userId: userId },
     voteData,
     { new: true, upsert: true }
   );

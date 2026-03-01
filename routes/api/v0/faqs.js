@@ -11,17 +11,29 @@ import validator from "validator";
 
 /**
  * @route GET /api/v0/faqs
- * @description Get all live FAQs with search and filtering capabilities
+ * @description Get all live FAQs (is_live=true) with search and filtering capabilities. Results are sorted by featured status (featured first), then by creation date. Only FAQs with is_live=true are returned.
  * @access Public
  *
  * @param {Object} req.query
  * @param {string} [req.query.search] - Search term for FAQ title or content
  * @param {string} [req.query.tags] - Filter by tags (comma-separated, e.g., 'voter,proposer')
  * @param {string} [req.query.featured] - Filter by featured status ('true' or 'false')
+ * @param {string} [req.query.search] - Search term for FAQ title or content (1-100 characters, sanitized, case-insensitive regex match)
+ * @param {string} [req.query.tags] - Filter by tags (comma-separated, e.g., 'voter,proposer'). FAQs must have at least one matching tag.
+ * @param {string} [req.query.featured] - Filter by featured status: 'true' or 'false' (case-insensitive)
  *
- * @returns {Array} 200 - List of live FAQs matching the search and filter criteria
- * @returns {Object} 400 - Error if query parameters are invalid
- * @returns {Object} 500 - Server error
+ * @returns {Array} 200 - Array of FAQ objects matching the search and filter criteria, each containing:
+ *   - _id: MongoDB ObjectId of the FAQ
+ *   - title: Title/question text of the FAQ
+ *   - content: Answer content of the FAQ
+ *   - tags: Array of tag strings
+ *   Note: is_live, createdAt, updatedAt, and featured fields are excluded from response
+ * @returns {Object} 400 - Error if:
+ *   - Search term is not between 1 and 100 characters
+ *   - Search contains invalid characters ($, {, })
+ *   - Tags parameter is empty after parsing
+ *   - Featured parameter is not 'true' or 'false'
+ * @returns {Object} 500 - Server error while fetching FAQs
  */
 router.get("/", cacheControl(300), async (req, res) => {
   const { search, tags, featured } = req.query;
@@ -63,7 +75,7 @@ router.get("/", cacheControl(300), async (req, res) => {
   // Validate and add tags filter if provided
   if (tags) {
     const tagsList = tags.split(",").map((tag) => tag.trim()).filter(Boolean);
-    
+
     if (tagsList.length === 0) {
       return res.status(400).json({
         status: "error",
@@ -87,8 +99,10 @@ router.get("/", cacheControl(300), async (req, res) => {
   }
 
   try {
-    // Fetch FAQs from the database
-    const faqs = await FAQ.find(matchStage).sort({ createdAt: -1 });
+    // Fetch FAQs from the database, excluding is_live from the response
+    const faqs = await FAQ.find(matchStage)
+      .select("-is_live -createdAt -updatedAt -featured")
+      .sort({ featured: -1 });
 
     // Return the list of FAQs
     return res.status(200).json(faqs);

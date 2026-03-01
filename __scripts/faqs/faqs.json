@@ -1,0 +1,74 @@
+[
+  {
+    "title": "How do I vote?",
+    "content": "To vote, you need to connect your CIP95 compatible wallet. If you have a Ledger or Keystone hardware wallet, please make sure to use it with a compatible browser extension like Eternl, Yoroi or Lace.\n\nOnce connected, you can browse live ballots you are eligable to vote on and save your vote.\n\n**All votes need to be signed and submitted. If you see a red alert at the top of the page saying \"Pending Votes\" you still need to sign and submit your votes to be included in the results.**\n\nYou can change your vote as often as you want to as long as a ballot is live.",
+    "tags": ["Voting"],
+    "featured": true
+  },
+  {
+    "title": "I am logged in but still can't vote",
+    "content": "Make sure you are logged in with a wallet that is eligable to vote. Eligable voter groups might vary from ballot to ballot.",
+    "tags": ["Voting"],
+    "featured": false
+  },
+  {
+    "title": "How did my DRep or SPO vote?",
+    "content": "You can check how your DRep or SPO voted in the [Voter Directory](/voter-directory) by entering your DRep's or SPO's ID or browse other DReps or SPOS voting history. The Voter Directory is public and votes may change until a ballot is closed and results are finalized.",
+    "tags": ["Voting", "Results"],
+    "featured": false
+  },
+  {
+    "title": "I voted but my vote doesn't seem to be included in the results",
+    "content": "For performance reasons results (if there are new votes) are rolled up every 10 minutes. If you just submitted and signed your votes, it might take a few minutes until your vote is included in the results.\n\nAlways make sure you have signed and submitted your votes and no votes are still marked as pending on your dashboard.",
+    "tags": ["Voting", "Results"],
+    "featured": false
+  },
+  {
+    "title": "Final results deviate slightly from the last preliminary results, why?",
+    "content": "On final rollup we re-validate voting power and check for invalid votes (different wallets voting with the same asset twice for example) which might lead to slight deviations from the last published preliminary results.",
+    "tags": ["Voting", "Results"],
+    "featured": false
+  },
+  {
+    "title": "How do I verify my vote has been included correctly in the final results?",
+    "content": "We will provide a verification tool shortly.",
+    "tags": ["Voting", "Results"],
+    "featured": false
+  },
+  {
+    "title": "Where do I go if I have problems or questions",
+    "content": "All polls on this page are run by [Intersect](https://intersectmbo.org). Please refer to their official comms channels on [X](https://x.com/IntersectMBO), [Telegram](https://t.me/IntersectCBC) or [Discord](https://discord.com/channels/1136727663583698984/1243451569492725760) for any questions or issues you might have with a vote.",
+    "tags": ["General"],
+    "featured": true
+  },
+  {
+    "title": "Which wallets are supported?",
+    "content": "As of today, the following CIP95 compatible wallets are supported for voting on Ekklesia:\n\n**Browser Extensions:** [Eternl](https://eternl.io/), [Yoroi](https://yoroi-wallet.com/), [Lace](https://www.lace.io/), [Vespr](https://vespr.xyz/)\n\n**Hardware Wallets:** [Ledger](https://www.ledger.com/), [Keystone](https://keyst.one/)\n\n**Mobile Wallets:** [Eternl](https://eternl.io/), [Yoroi](https://yoroi-wallet.com/), [Vespr](https://vespr.xyz/)\n\nYou can also vote using the [CardanoSigner](https://github.com/gitmachtl/cardano-signer) - most MultiSigs are supported.",
+    "tags": ["General", "Voting"],
+    "featured": true
+  },
+  {
+    "title": "Which data provider is used by Ekklesia?",
+    "content": "Ekklesia is currently using community run [Koios](https://koios.rest/) as its main data provider for live voting power, asset holdings and other on chain data. During the still ongoing development we run occasional checks against DB-Sync data to ensure accuracy.",
+    "tags": ["General", "APIs"],
+    "featured": false
+  },
+  {
+    "title": "Can I fetch Ekklesia Data via API?",
+    "content": "While we appreciate the interest and are all for quick integrations into other tools and platforms, we are still developing the overall architecture and data models for Ekklesia. There are no future-proof endpoints available at this time, implement everything at your own risk - endpoints might even be different from instance to instance right now.\n\nIf you're eager to implement live results, please note this: Results are rolled up every 10 minutes and endpoints are cached. Spamming endpoints may result in temporary blacklisting your IPs.\n\nWe will provide proper API endpoints and documentation in the future.",
+    "tags": ["General", "APIs"],
+    "featured": false
+  },
+  {
+    "title": "What is Ekklesia?",
+    "content": "Ekklesia is a voting tool for verifiable and transparent on-chain voting on Cardano developed by [Adam Dean](https://x.com/adamkdean) & [Mad Orkestra](https://bsky.app/profile/madorkestra.com), initially funded by [IOG](https://x.com/InputOutputHK) and just received further funding from [Project Catalyst Fund14](https://projectcatalyst.io/).\n\nEkklesia is able to accommodate votes for all kind of voter groups from DReps, SPOs, token or NFT holders or simply just everyone with a Cardano wallet. It supports MultiSigs as well as CLI based authentication using the CardanoSigner.\n\nAs of today Ekklesia is still under development. You will be able to track all further development on our [Project Catalyst Profile](https://projectcatalyst.io/funds/14/cardano-use-cases-concepts/ekklesia-high-frequency-voting-on-cardano-with-hydra).",
+    "tags": ["General"],
+    "featured": false
+  },
+  {
+    "title": "What are Calidus Keys?",
+    "content": "The Calidus Pool-Key is used to identify/authorize pool ownership for public/private services without the need to go thru a VRF-Secret-Key signing process. This was only possible on the CLI and SPOs don’t like to touch there secret keys that often.\n\nThe Calidus Pool-Key can be used on the cli AND with eternl directly in the Browser for Identification/Login/Authorization/etc.\n\nFor more information, please refer to the [Cardano Forum](https://forum.cardano.org/t/new-calidus-pool-key-for-spos-and-services-interacting-with-pools/143812).\n\nTo learn how to create and register your own Calidus Pool-Key, please refer to this [Calidus Tutorial](https://ecp.gitbook.io/how-to-guides-for-coincashew-method-cardano-spos/maintenance-and-daily-operations/how-to-guides-for-spos-using-coincashew-method/register-calidus-key).",
+    "tags": ["Voting", "SPOs"],
+    "featured": false
+  }
+]

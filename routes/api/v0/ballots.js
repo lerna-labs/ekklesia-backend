@@ -9,27 +9,35 @@ import { Vote } from "../../../schema/Vote.js";
 
 // helper
 import { verifyToken } from "../../../helper/verifyToken.js";
-import { cacheControl } from "../../../helper/cacheControl.js";
 import validator from "validator";
 import mongoose from "mongoose";
 import { getBallot } from "../../../helper/middleWare.js";
 import { checkVotingPower } from "../../../helper/voterValidation.js";
+import { calculateSimpleMedian, calculateWeightedMedian } from "../../../helper/calculateMedians.js";
 
 /**
  * @route GET /api/v0/ballots
- * @description Get all ballots with pagination, filtering and search capabilities
+ * @description Get all ballots with pagination, filtering and search capabilities. Results are sorted by votePeriodEnd (newest first). Each ballot includes a singleProposal field if it has exactly one proposal (for faster frontend navigation).
  * @access Public
  *
  * @param {Object} req.query
- * @param {string} [req.query.voterType] - Filter by voter type
- * @param {string} [req.query.status] - Filter by status ('live', 'closed', or 'upcoming')
- * @param {string} [req.query.search] - Search term for ballot title or ID
- * @param {number} [req.query.page=1] - Page number for pagination
- * @param {number} [req.query.limit=10] - Number of items per page (max 100)
+ * @param {string} [req.query.voterType] - Filter by voter type (case-insensitive regex match, must be alphanumeric)
+ * @param {string} [req.query.status] - Filter by status: 'live', 'closed', or 'upcoming' (case-insensitive)
+ * @param {string} [req.query.search] - Search term for ballot title or MongoDB ObjectId (1-100 characters, sanitized, case-insensitive regex match)
+ * @param {number} [req.query.page=1] - Page number for pagination (minimum: 1)
+ * @param {number} [req.query.limit=10] - Number of items per page (minimum: 1, maximum: 100)
  *
- * @returns {Object} 200 - List of ballots with pagination metadata
- * @returns {Object} 400 - Error if query parameters are invalid
- * @returns {Object} 500 - Server error
+ * @returns {Object} 200 - Response object containing:
+ *   - data: Array of ballot objects (excludes internal fields like voterValidationScript, rollupScript, etc.)
+ *   - pagination: Object with total, page, limit, totalPages
+ * @returns {Object} 400 - Error if:
+ *   - Search term is not between 1 and 100 characters
+ *   - Search contains invalid characters ($, {, })
+ *   - voterType format is invalid (not alphanumeric)
+ *   - status parameter is invalid (not 'live', 'closed', or 'upcoming')
+ *   - page parameter is invalid (not a positive integer)
+ *   - limit parameter is invalid (not between 1 and 100)
+ * @returns {Object} 500 - Server error while fetching ballots
  */
 router.get("/", async (req, res) => {
   const { voterType, status, search, page = 1, limit = 10 } = req.query;
@@ -126,40 +134,16 @@ router.get("/", async (req, res) => {
   }
 
   try {
-    // Current date for status calculations
-    const now = new Date();
-
     // Create base aggregation pipeline for filtering
     const filterPipeline = [
       // Initial match stage for voterType and search
       { $match: matchStage },
-
-      // Add computed status field
-      {
-        $addFields: {
-          status: {
-            $cond: {
-              if: { $gt: ["$votePeriodEnd", now] },
-              then: {
-                $cond: {
-                  if: { $lte: ["$votePeriodStart", now] },
-                  then: "live",
-                  else: "upcoming",
-                },
-              },
-              else: "closed",
-            },
-          },
-        },
-      },
-
       // Apply status filter if provided
       ...(status ? [{ $match: { status: status.toLowerCase() } }] : []),
     ];
 
     // Count total documents matching the filter (for pagination metadata)
     const countPipeline = [...filterPipeline, { $count: "total" }];
-
     const totalResults = await Ballot.aggregate(countPipeline);
     const total = totalResults.length > 0 ? totalResults[0].total : 0;
 
@@ -170,13 +154,33 @@ router.get("/", async (req, res) => {
     // Create data retrieval pipeline with pagination
     const dataPipeline = [
       ...filterPipeline,
+      // Lookup proposals for each ballot
+      {
+        $lookup: {
+          from: "proposals",
+          localField: "_id",
+          foreignField: "ballotId",
+          as: "proposals",
+        },
+      },
+      // Add singleProposal field if ballot has exactly one proposal - this allows for faster navigation on the frontend
+      {
+        $addFields: {
+          singleProposal: {
+            $cond: {
+              if: { $eq: [{ $size: "$proposals" }, 1] },
+              then: { $arrayElemAt: ["$proposals._id", 0] },
+              else: null,
+            },
+          },
+        },
+      },
       // Sort by voting period end date
       { $sort: { votePeriodEnd: -1 } },
       // Apply pagination
       { $skip: skip },
       { $limit: limitNum },
       // Exclude fields we don't want to return
-      // !! needs checking
       {
         $project: {
           id: 0,
@@ -184,7 +188,12 @@ router.get("/", async (req, res) => {
           rollupScript: 0,
           voteAuthorityId: 0,
           voteAuthorityAddress: 0,
-          resultBeaconToken: 0,
+          proposalPeriodStart: 0,
+          proposalPeriodEnd: 0,
+          startupScript: 0,
+          startupAt: 0,
+          resultTxHash: 0,
+          proposals: 0, // Remove proposals array from output
         },
       },
     ];
@@ -226,11 +235,11 @@ router.get("/", async (req, res) => {
 
 /**
  * @route GET /api/v0/ballots/voterTypes
- * @description Get all unique voter types from all ballots
+ * @description Get all unique voter types from all ballots in the system. Useful for filtering or displaying voter type options.
  * @access Public
  *
- * @returns {Array} 200 - Array of unique voter types
- * @returns {Object} 500 - Server error
+ * @returns {Array<string>} 200 - Array of unique voter type strings (e.g., ["stake", "drep", "pool"])
+ * @returns {Object} 500 - Server error while fetching voter types
  */
 router.get("/voterTypes", async (req, res) => {
   try {
@@ -251,12 +260,17 @@ router.get("/voterTypes", async (req, res) => {
 
 /**
  * @route GET /api/v0/ballots/:ballotId
- * @description Get a specific ballot by ID with voter validation if token is present
- * @access Public
+ * @description Get a specific ballot by ID with voter validation and voting power if authentication token is present
+ * @access Public (enhanced with voter-specific data if authenticated)
  *
- * @param {string} req.params.ballotId - The ID of the ballot to retrieve
+ * @param {string} req.params.ballotId - The MongoDB ObjectId of the ballot to retrieve
  *
- * @returns {Object} 200 - The ballot object with additional voter-specific data if authenticated
+ * @returns {Object} 200 - The ballot object with additional fields:
+ *   - All standard ballot fields (title, description, voterType, votePeriodStart, etc.)
+ *   - voterValidated: Boolean indicating if authenticated voter is valid for this ballot (only if authenticated)
+ *   - votingPower: Number representing authenticated voter's voting power (only if authenticated and validated)
+ *   - totalAllowedVoterCount: Number of voters eligible to vote in this ballot
+ *   - totalVotingPower: Total voting power across all eligible voters
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  * @returns {Object} 500 - Server error (handled by getBallot middleware)
  */
@@ -269,12 +283,12 @@ router.get("/:ballotId", getBallot, async (req, res) => {
   const { validateVoter, allowedVoterCount, getTotalWeight } = await import(
     "../../../config/" + ballot.voterValidationScript
   );
-  if (voterToken.voterId) {
+  if (voterToken.userId) {
     // check if voter is valid voter
-    ballot.voterValidated = await validateVoter(voterToken.voterId, ballot._id);
+    ballot.voterValidated = await validateVoter(voterToken.userId, ballot._id);
     // get voting power
     if (ballot.voterValidated) {
-      ballot.votingPower = await checkVotingPower(voterToken.voterId, ballot._id);
+      ballot.votingPower = await checkVotingPower(voterToken.userId, ballot._id);
     }
   }
 
@@ -293,23 +307,25 @@ router.get("/:ballotId", getBallot, async (req, res) => {
 
 /**
  * @route GET /api/v0/ballots/:ballotId/proposals
- * @description Get all proposals for a specific ballot with filtering, sorting and pagination
+ * @description Get all proposals for a specific ballot with filtering, sorting and pagination. Enhanced with voter-specific data (voterVote, hasVoted) if authenticated.
  * @access Public (enhanced with voter-specific data if authenticated)
  *
  * @param {string} req.params.ballotId - The ID of the ballot to get proposals for
  * @param {Object} req.query
- * @param {number} [req.query.page=1] - Page number for pagination
- * @param {number} [req.query.limit=10] - Number of items per page (max 100)
- * @param {string} [req.query.committee] - Filter by committee
- * @param {string} [req.query.roadmap] - Filter by roadmap
- * @param {string} [req.query.type] - Filter by proposal type
- * @param {string} [req.query.search] - Search term for proposal title or ID
- * @param {string} [req.query.sort] - Sort field ('cost', 'title', 'commentCount', 'voteCount')
- * @param {string} [req.query.direction='desc'] - Sort direction ('asc' or 'desc')
- * @param {string} [req.query.hasVoted] - Filter by whether authenticated user has voted ('true'/'false')
- * @param {string} [req.query.thresholdReached] - Filter by threshold status ('true'/'false')
+ * @param {number} [req.query.page=1] - Page number for pagination (minimum: 1)
+ * @param {number} [req.query.limit=10] - Number of items per page (minimum: 1, maximum: 100)
+ * @param {string} [req.query.search] - Search term for proposal title or ID (1-100 characters, sanitized)
+ * @param {string} [req.query.sort] - Sort field: 'title', 'commentCount', or 'voteCount' (default: '_id')
+ * @param {string} [req.query.direction='desc'] - Sort direction: 'asc' or 'desc'
+ * @param {string} [req.query.hasVoted] - Filter by whether authenticated user has voted: 'true' or 'false' (only works when authenticated)
+ * @param {string} [req.query.tags] - Filter by tags (comma-separated, e.g., 'tag1,tag2')
+ * @param {string} [req.query.categories] - Filter by categories (comma-separated, e.g., 'cat1,cat2')
  *
- * @returns {Object} 200 - List of proposals with pagination, sorting and filter metadata
+ * @returns {Object} 200 - Response object containing:
+ *   - data: Array of proposal objects with computed fields (commentCount, voteCount, votingPower)
+ *   - pagination: Object with total, page, limit, totalPages
+ *   - sort: Object with field and direction
+ *   - filters: Object with applied filter values
  * @returns {Object} 400 - Error if query parameters are invalid
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  * @returns {Object} 500 - Server error
@@ -317,7 +333,7 @@ router.get("/:ballotId", getBallot, async (req, res) => {
 router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
   const ballot = req.ballot.toObject();
   const voterToken = verifyToken(req);
-  const voterId = voterToken.voterId || false;
+  const userId = voterToken.userId || false;
 
   // Extract and validate pagination parameters
   const {
@@ -361,7 +377,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
   const sortDirection = direction.toLowerCase() === "asc" ? 1 : -1;
 
   // Determine sort field and validate
-  let sortField = { _id: -1 }; // Default sort by ID, newest first
+  let sortField = { _id: 1 }; // Default sort by ID, newest first
 
   if (sort) {
     // Validate sort parameter
@@ -504,10 +520,10 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
     // Add this lookup stage after the votes lookup and before the addFields stage
     {
       $lookup: {
-        from: "votercaches",
+        from: "usercaches",
         localField: "ballotId",
         foreignField: "ballotId",
-        as: "voterCaches",
+        as: "userCaches",
       },
     },
     // Calculate voteCount after we have the result data
@@ -540,25 +556,25 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
                         }
                       },
                       as: "vote",
-                      in: "$$vote.voterId"
+                      in: "$$vote.userId"
                     }
                   }
                 ]
               },
               as: "uniqueVoterId",
               in: {
-                // Get voting power for this voter from voterCache
+                // Get voting power for this voter from userCache
                 $let: {
                   vars: {
-                    voterCache: {
+                    userCache: {
                       $arrayElemAt: [
                         {
                           $filter: {
-                            input: "$voterCaches",
+                            input: "$userCaches",
                             as: "cache",
                             cond: {
                               $and: [
-                                { $eq: ["$$cache.voterId", "$$uniqueVoterId"] },
+                                { $eq: ["$$cache.userId", "$$uniqueVoterId"] },
                                 { $eq: ["$$cache.ballotId", "$ballotId"] }
                               ]
                             }
@@ -568,7 +584,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
                       ]
                     }
                   },
-                  in: { $ifNull: ["$$voterCache.votingPower", 1] }
+                  in: { $ifNull: ["$$userCache.votingPower", 1] }
                 }
               }
             }
@@ -578,8 +594,8 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
     },
   ];
 
-  // Add voter-specific fields only if voterId is present
-  if (voterId) {
+  // Add voter-specific fields only if userId is present
+  if (userId) {
     // Add a field to indicate if the voter has voted on this proposal
     aggregationPipeline.push({
       $addFields: {
@@ -589,7 +605,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
               $filter: {
                 input: "$allVotes",
                 as: "vote",
-                cond: { $eq: ["$$vote.voterId", voterId] },
+                cond: { $eq: ["$$vote.userId", userId] },
               },
             },
             0,
@@ -604,7 +620,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
                   as: "vote",
                   cond: {
                     $and: [
-                      { $eq: ["$$vote.voterId", voterId] },
+                      { $eq: ["$$vote.userId", userId] },
                       { $ne: ["$$vote.submittedAt", null] },
                     ],
                   },
@@ -659,6 +675,8 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       voteType: 1,
       voterBudget: 1,
       voteOptions: 1,
+      voteIncrement: 1,
+      abstainAllowed: 1,
       commentCount: 1,
       voteCount: {
         $size: {
@@ -667,7 +685,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
               $map: {
                 input: "$validVotes",
                 as: "vote",
-                in: "$$vote.voterId"
+                in: "$$vote.userId"
               }
             }
           ]
@@ -676,8 +694,32 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       votingPower: 1,
       result: 1,
       updatedAt: 1,
+      // Include vote data for scale voteType proposals to calculate medians
+      validVotes: {
+        $cond: {
+          if: { $eq: ["$voteType", "scale"] },
+          then: {
+            $map: {
+              input: "$validVotes",
+              as: "vote",
+              in: {
+                submittedVote: "$$vote.submittedVote",
+                userId: "$$vote.userId"
+              }
+            }
+          },
+          else: "$$REMOVE"
+        }
+      },
+      userCaches: {
+        $cond: {
+          if: { $eq: ["$voteType", "scale"] },
+          then: "$userCaches",
+          else: "$$REMOVE"
+        }
+      },
       // Only include user-specific fields when a user is logged in
-      ...(voterId && {
+      ...(userId && {
         voterVote: "$userVote.vote",
         hasVoted: 1,
       }),
@@ -705,6 +747,53 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
 
     // Fetch the proposals from the database
     const proposals = await Proposal.aggregate(aggregationPipeline);
+
+    // Calculate medians for scale voteType proposals
+    for (const proposal of proposals) {
+      if (proposal.voteType === "scale" && proposal.voteOptions && proposal.voteOptions.length > 0) {
+        const lowerBound = proposal.voteOptions[0].id;
+        const upperBound = proposal.voteOptions[proposal.voteOptions.length - 1].id;
+
+        // Ensure result object exists
+        if (!proposal.result) {
+          proposal.result = {};
+        }
+
+        // Calculate simple median based on submitted votes
+        proposal.result.median = calculateSimpleMedian(
+          proposal.validVotes || [],
+          lowerBound,
+          upperBound
+        );
+
+        // Calculate weighted median based on voting power
+        proposal.result.medianWeighted = calculateWeightedMedian(
+          proposal.validVotes || [],
+          proposal.userCaches || [],
+          lowerBound,
+          upperBound
+        );
+
+        // clean up results to not expose all single votes, only keep abstain
+        if (proposal.result.results) {
+          proposal.result.results = proposal.result.results.filter(result => result.id === "abstain");
+          // Add a field for valid votes which are not abstain with count and votingpower
+          // get votingpower for all votes which are not abstained from voter cache
+          const votingPowerNoAbstain = proposal.validVotes.filter(vote => vote.submittedVote[0] !== "abstain").map(vote => vote.userId).map(uid => proposal.userCaches.find(cache => cache.userId === uid)?.votingPower).reduce((sum, power) => sum + power, 0);
+          proposal.result.results.push({
+            id: "votes",
+            label: "Votes",
+            count: proposal.validVotes.filter(vote => vote.submittedVote[0] !== "abstain").length,
+            votingPower: votingPowerNoAbstain
+          });
+        }
+
+
+        // Clean up temporary fields used for calculation
+        delete proposal.validVotes;
+        delete proposal.userCaches;
+      }
+    }
 
     // Return proposals with pagination metadata and updated filters
     return res.status(200).json({

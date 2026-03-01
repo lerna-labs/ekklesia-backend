@@ -1,24 +1,20 @@
-import { bech32 } from "bech32";
-import { default as cbor } from "cbor";
+import {bech32} from "bech32";
+import {default as cbor} from "cbor";
 import pkg from "blakejs";
-const { blake2bHex } = pkg;
+
+const {blake2bHex} = pkg;
 
 import {
     PublicKey,
     Ed25519Signature,
 } from "@emurgo/cardano-serialization-lib-nodejs";
-import { extractParts, getAddressType } from "./validateAddress.js";
-import { getScript } from "./koios.js";
-
-// Koios API configuration from environment variables
-const API_URL = process.env.API_URL;
-const API_TOKEN = process.env.API_TOKEN;
+import {getAddressType} from "./validateAddress.js";
+import {getScript, fetchCalidusKey} from "./koios.js";
 
 export async function verifySignature(
     payload,
     address,
     signature,
-    script_body
 ) {
     if (!payload) {
         return {
@@ -32,7 +28,7 @@ export async function verifySignature(
         };
     }
 
-    // check if signature is a json object
+    // check if the signature is a JSON object
     if (typeof signature !== "object") {
         return {
             error: "Signature is not a valid JSON object",
@@ -40,165 +36,33 @@ export async function verifySignature(
     }
 
     let verification_key, signed_payload_hex, ed_sig;
-    let public_key_hex, ed_signature_hex;
 
     try {
-        // Sometimes a witness that looks like a regular Ed25519 signature may actually be cbor-encoded, discover that
-        // here and convert to cose-structure if so.
-        cbor.decode(signature.key);
-        cbor.decode(signature.signature);
-        signature.COSE_Sign1_hex = signature.signature;
-        signature.COSE_Key_hex = signature.key;
-    } catch (e) {
-        // fail silently, it's probably a regular ed25519 witness in this case...
-    }
-
-    if (signature.COSE_Sign1_hex) {
-        if (!regExpHex.test(signature.COSE_Sign1_hex)) {
-            return {
-                error: "COSE Signature is invalid",
-            };
-        }
-
-        if (!regExpHex.test(signature.COSE_Key_hex)) {
-            return {
-                error: "COSE Key is invalid",
-            };
-        }
-
-        try {
-            const cose_key_structure = cbor.decode(
-                Buffer.from(signature.COSE_Key_hex, "hex")
-            );
-            const error = validate_cose_key(cose_key_structure);
-            if (error) {
-                return error;
-            }
-
-            const pub_key_buffer = cose_key_structure.get(-2);
-            public_key_hex = pub_key_buffer.toString("hex");
-        } catch (error) {
-            return {
-                error: "COSE Key is invalid",
-            };
-        }
-
-        try {
-            const cose_sign1_structure = cbor.decode(
-                Buffer.from(signature.COSE_Sign1_hex, "hex")
-            );
-
-            const error = validate_cose_sign1(cose_sign1_structure);
-            if (error) {
-                return error;
-            }
-
-            let unprotectedHeader = cose_sign1_structure[1];
-            if (
-                !(unprotectedHeader instanceof Map) &&
-                typeof unprotectedHeader === "object"
-            ) {
-                unprotectedHeader = new Map(Object.entries(unprotectedHeader));
-            }
-
-            if (!(unprotectedHeader instanceof Map)) {
-                return {
-                    error: "Unprotected header is not a map",
-                };
-            }
-
-            const isHashed = unprotectedHeader.get("hashed");
-            if (isHashed) {
-                payload = getHash(payload, 28);
-            }
-
-            signed_payload_hex = make_cose1_sig_structure(
-                payload,
-                cose_sign1_structure
-            );
-
-            ed_signature_hex = cose_sign1_structure[3].toString("hex");
-        } catch (error) {
-            return {
-                error: "COSE Signature is invalid",
-            };
-        }
-    } else {
-        if (regExpHex.test(payload)) {
-            signed_payload_hex = payload;
-        } else {
-            signed_payload_hex = Buffer.from(payload).toString("hex");
-        }
-
-        // Do regular key shit here...
-        if (!regExpHex.test(signature.signature)) {
-            // The signature is not hex, maybe it's CBOR?
-            try {
-                signature.signature = Buffer.from(
-                    bech32.fromWords(bech32.decode(signature.signature, 128).words)
-                ).toString("hex");
-            } catch (error) {
-                return {
-                    error: "Signature is invalid",
-                };
-            }
-        }
-
-        ed_signature_hex = signature.signature;
-        public_key_hex = signature.publicKey || signature.key;
-    }
-
-    try {
-        verification_key = PublicKey.from_hex(public_key_hex);
+        signature = standardize_signature(signature);
+        ({verification_key, ed_sig, signed_payload_hex} =
+            get_key_signature_and_payload(signature, payload));
     } catch (error) {
         return {
-            error: "Invalid signature key",
-        };
-    }
-
-    try {
-        ed_sig = Ed25519Signature.from_hex(ed_signature_hex);
-    } catch (error) {
-        return {
-            error: "Invalid signature",
+            error: error.message,
         };
     }
 
     const type_details = getAddressType(address);
 
-    // Checking that the provided address matches the signing key used
-    const { words } = bech32.decode(address, 1000); // <-- edit by Martin
-    const body_hex = Buffer.from(bech32.fromWords(words)).toString("hex");
-    let keyHash;
-    if (body_hex.length > 56) {
-        // This is a type of key that has a prefix/header byte
-        const [, keyBody] = extractParts(body_hex);
-        keyHash = keyBody;
-    } else {
-        keyHash = body_hex;
-    }
+    let keyHash = type_details.keyHash;
     const SignatureKeyHash = verification_key.hash();
 
     switch (type_details.type) {
         case "pool":
             // In the case of a stake pool, we need to look up their Calidus key!
-            // const latest_calidus = await fetch(`https://sentinel.veriglyph.io/certificates/latest?scope=pool&id=${keyHash}`);
+            const calidus_key = await fetchCalidusKey(address);
 
-            const latest_calidus = await fetch(`${API_URL}/pool_calidus_keys?pool_id_bech32=eq.${address}`,
-                {
-                    headers: {
-                        "Content-Type": "application/json",
-                        authorization: `Bearer ${API_TOKEN}`,
-                    },
-                }
-            );
-            const latest_calidus_body = await latest_calidus.json();
-            const calidus_key = latest_calidus_body[0];
+            // removed the pool registration check - this is done in the voter
+            // validation scripts this also enables retired pools to still log
+            // in and see their former votes
 
-            // removed the pool registration check - this is done in the voter validation scripts
-            // this also enables retired pools to still login and see their former votes
             // if (calidus_key !== undefined && calidus_key.pool_status === 'registered') {
-            if (calidus_key !== undefined) {
+            if (calidus_key != null) {
                 keyHash = PublicKey.from_hex(calidus_key.calidus_pub_key).hash().to_hex();
             }
             break;
@@ -235,7 +99,7 @@ export async function isPartyToScript(
         };
     }
 
-    // check if signature is a json object
+    // check if the signature is a JSON object
     if (typeof signature !== "object") {
         return {
             error: "Signature is not a valid JSON object",
@@ -250,7 +114,7 @@ export async function isPartyToScript(
     }
 
     if (!script_body) {
-        script_body = await getScript(address_type.keyHash);
+        script_body = await getScript(address_type.keyHash.trim());
     }
 
     if (script_body.type !== "timelock") {
@@ -263,7 +127,7 @@ export async function isPartyToScript(
 
     signature = standardize_signature(signature);
 
-    const { verification_key, ed_sig, signed_payload_hex } =
+    const {verification_key, ed_sig, signed_payload_hex} =
         get_key_signature_and_payload(signature, payload);
 
     const SignatureKeyHash = verification_key.hash();
@@ -279,46 +143,47 @@ export async function isPartyToScript(
     }
 }
 
+
+/**
+ * Validates that a list of signatures satisfies the script's required signers.
+ * Uses isPartyToScript per signature and tracks unique signers via getScriptCriteria.signers.
+ *
+ * @param {string} payload - Hex-encoded payload (e.g. merkle root) that was signed
+ * @param {string} address - Script address (bech32)
+ * @param {Object[]} signatures - Array of signature objects (e.g. transaction.multiSig)
+ * @param {Object} [script_body] - Optional script body; fetched via getScript if omitted
+ * @returns {Promise<boolean>} True if script satisfied, false otherwise or on error
+ */
 export async function validateScriptSignatures(
     payload,
     address,
     signatures,
     script_body
 ) {
-    if (!payload) {
-        return {
-            error: "Payload is missing",
-        };
+    if (!payload || !address || !Array.isArray(signatures)) {
+        return false;
     }
-
-    if (!address) {
-        return {
-            error: "Signer address is not provided",
-        };
-    }
-
-    if (!Array.isArray(signatures)) {
-        return {
-            error: "Signatures must be an array",
-        };
-    }
-
     const address_type = getAddressType(address);
-
+    if (address_type.hashType !== "script") {
+        return false;
+    }
     if (!script_body) {
-        script_body = await getScript(address_type.keyHash);
+        try {
+            script_body = await getScript(address_type.keyHash.trim());
+        } catch (e) {
+            return false;
+        }
     }
-
-    if (script_body.type !== "timelock") {
-        return {
-            error: "Only native scripts are supported",
-        };
+    if (!script_body || script_body.type !== "timelock") {
+        return false;
     }
-
     const script_criteria = getScriptCriteria(script_body.value);
-
     for (let signature of signatures) {
-        signature = standardize_signature(signature);
+        try {
+            signature = standardize_signature(signature);
+        } catch (e) {
+            continue;
+        }
         const is_signature_in_script = await isPartyToScript(
             payload,
             address,
@@ -332,21 +197,18 @@ export async function validateScriptSignatures(
             );
             const SignatureKeyHash = verification_key.hash().to_hex();
             if (script_criteria.signers.includes(SignatureKeyHash)) {
-                // Double signer... do not count it
-                continue;
+                continue; // double signer, do not count
             }
-
             script_criteria.signers.push(SignatureKeyHash);
             script_criteria.signed++;
         }
     }
-
     return script_criteria.signed >= script_criteria.required;
 }
 
 export function getScriptCriteria(
     script_contents,
-    carry = { keys: [], signers: [], signed: 0, required: 1, count: 0 }
+    carry = {keys: [], signers: [], signed: 0, required: 1, count: 0}
 ) {
     script_contents.scripts.forEach((script) => {
         switch (script.type) {
@@ -489,7 +351,8 @@ function make_cose1_sig_structure(payload, cose_sign1_structure) {
         Buffer.from(payload, "hex"),
     ];
 
-    return cbor.encode(sig_structure).toString("hex");
+    const encoded = /** @type {Buffer} */ (cbor.encode(sig_structure));
+    return encoded.toString("hex");
 }
 
 function standardize_signature(signature) {
@@ -539,7 +402,7 @@ function get_cose_public_key(signature) {
         throw new Error(error.error);
     }
 
-    const pub_key_buffer = cose_key_structure.get(-2);
+    const pub_key_buffer = /** @type {Buffer} */ (cose_key_structure.get(-2));
     return pub_key_buffer.toString("hex");
 }
 
@@ -580,46 +443,42 @@ function parse_cose_signature(signature, payload) {
 
     const signature_hex = cose_sign1_structure[3].toString("hex");
 
-    return { payload_hex, signature_hex };
+    return {payload_hex, signature_hex};
 }
 
 function get_key_signature_and_payload(signature, payload) {
     let public_key_hex, ed_signature_hex, signed_payload_hex;
     let verification_key, ed_sig;
 
-    try {
-        if (signature.COSE_Sign1_hex) {
-            public_key_hex = get_cose_public_key(signature);
-            const { payload_hex, signature_hex } = parse_cose_signature(
-                signature,
-                payload
-            );
-            signed_payload_hex = payload_hex;
-            ed_signature_hex = signature_hex;
+    if (signature.COSE_Sign1_hex) {
+        public_key_hex = get_cose_public_key(signature);
+        const {payload_hex, signature_hex} = parse_cose_signature(
+            signature,
+            payload
+        );
+        signed_payload_hex = payload_hex;
+        ed_signature_hex = signature_hex;
+    } else {
+        if (regExpHex.test(payload)) {
+            signed_payload_hex = payload;
         } else {
-            if (regExpHex.test(payload)) {
-                signed_payload_hex = payload;
-            } else {
-                signed_payload_hex = Buffer.from(payload).toString("hex");
-            }
-
-            ed_signature_hex = signature.signature;
-            public_key_hex = signature.publicKey || signature.key;
+            signed_payload_hex = Buffer.from(payload).toString("hex");
         }
 
-        try {
-            verification_key = PublicKey.from_hex(public_key_hex);
-        } catch (error) {
-            throw new Error("Invalid signature key");
-        }
+        ed_signature_hex = signature.signature;
+        public_key_hex = signature.publicKey || signature.key;
+    }
 
-        try {
-            ed_sig = Ed25519Signature.from_hex(ed_signature_hex);
-        } catch (error) {
-            throw new Error("Invalid signature");
-        }
+    try {
+        verification_key = PublicKey.from_hex(public_key_hex);
     } catch (error) {
-        throw new Error(error.error);
+        throw new Error("Invalid signature key");
+    }
+
+    try {
+        ed_sig = Ed25519Signature.from_hex(ed_signature_hex);
+    } catch (error) {
+        throw new Error("Invalid signature");
     }
 
     return {

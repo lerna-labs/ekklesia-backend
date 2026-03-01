@@ -4,90 +4,199 @@ const router = Router();
 
 // schema import
 import { Session } from "../../../schema/Session.js";
+import { User } from "../../../schema/User.js";
 
 // helper
 import jwt from "jsonwebtoken";
 import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration.js";
-import fs from "fs";
-import path from "path";
 import { generateNonce } from "@meshsdk/core";
 import {
   verifySignature,
   isPartyToScript,
 } from "../../../helper/verifySignature.js";
 import { validateAddress } from "../../../helper/validateAddress.js";
-import { getCalidusKey } from "../../../helper/koios.js";
+import {
+  fetchCalidusKey,
+  fetchDrepName,
+  fetchHandle,
+} from "../../../helper/koios.js";
+import { hydraVoterPing } from "../../../helper/hydra.js";
+import {
+  nonceRequestLimiter,
+  sessionVerificationLimiter,
+} from "../../../helper/rateLimiters.js";
 
-// enable dayjs duration plugin
 dayjs.extend(duration);
 
 // middleware
 import { isAuthenticated } from "../../../helper/middleWare.js";
 import { validateSessionRequest } from "../../../helper/middleWare.js";
 
-// !! REMOVE ALLOWLIST - should be in voterValidationScript
-// allowList
-// const SYSTEM_ALLOWLIST = process.env.SYSTEM_ALLOWLIST;
-// let allowList = [];
-// if (SYSTEM_ALLOWLIST == 1) {
-//   // load allowList json from config directory
-//   const allowListPath = path.join(process.cwd(), "config", "allowList.json");
-//   allowList = JSON.parse(fs.readFileSync(allowListPath, "utf8"));
-//   // check if the allowList is empty
-//   if (Object.keys(allowList).length === 0) {
-//     console.error("Allowlist is empty");
-//   } else {
-//     console.log("Allowlist enabled:", allowList.length, "entries");
-//   }
-// }
+// JWT config at module load
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET must be configured");
+}
+let JWT_MAX_AGE = process.env.JWT_MAX_AGE || "1d";
+if (!JWT_MAX_AGE.match(/^\d+[smhd]$/) && !JWT_MAX_AGE.match(/^\d+$/)) {
+  console.warn(`Invalid JWT_MAX_AGE format: ${JWT_MAX_AGE}, defaulting to 1d`);
+  JWT_MAX_AGE = "1d";
+}
+
+const NONCE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const AUTH_ERROR_MESSAGE =
+  "Authentication failed. Please request a new nonce and try again.";
+
+function computeExpiryDate(expiresIn) {
+  if (typeof expiresIn === "string") {
+    if (expiresIn.endsWith("d")) {
+      return dayjs().add(parseInt(expiresIn.slice(0, -1), 10), "day").toDate();
+    }
+    if (expiresIn.endsWith("h")) {
+      return dayjs().add(parseInt(expiresIn.slice(0, -1), 10), "hour").toDate();
+    }
+    if (expiresIn.endsWith("m")) {
+      return dayjs()
+        .add(parseInt(expiresIn.slice(0, -1), 10), "minute")
+        .toDate();
+    }
+    if (expiresIn.endsWith("s")) {
+      return dayjs()
+        .add(parseInt(expiresIn.slice(0, -1), 10), "second")
+        .toDate();
+    }
+    return dayjs().add(parseInt(expiresIn, 10), "second").toDate();
+  }
+  return dayjs().add(1, "hour").toDate();
+}
+
+function setAuthCookie(res, token, expiryDate) {
+  res.cookie("token", token, {
+    expires: expiryDate,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+    path: "/",
+  });
+}
+
+async function consumeNonce(userId, nonceExpiryTime) {
+  const nonceData = await Session.findOneAndUpdate(
+    {
+      userId,
+      nonce: { $ne: null },
+      createdAt: { $gte: nonceExpiryTime },
+    },
+    { $set: { nonce: null } },
+    { sort: { createdAt: -1 }, returnDocument: "before" }
+  );
+  return nonceData;
+}
+
+async function clearNoncesForUser(userId) {
+  await Session.updateMany(
+    { userId, nonce: { $ne: null } },
+    { $set: { nonce: null } }
+  );
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+  await Session.deleteMany({
+    userId,
+    nonce: null,
+    createdAt: { $lt: thirtyMinutesAgo },
+  });
+}
+
+function validateScriptAddress(scriptAddress) {
+  if (!scriptAddress || typeof scriptAddress !== "string") {
+    return { error: "MultiSig address not provided" };
+  }
+  const trimmed = scriptAddress.trim();
+  const validated = validateAddress(trimmed, "drep");
+  if (validated.error) return { error: validated.error };
+  if (!validated.isScript)
+    return { error: "Given address is not a script address" };
+  if (!validated.cip129)
+    return { error: "Script address is not a CIP129 address" };
+  return { validatedScriptAddress: validated.cip129 };
+}
 
 /**
  * @route GET /api/v0/session
- * @description Validate JWT token and return voter ID
+ * @description Validate JWT and return userId plus User name/lastLogin when present.
  * @access Private (requires authentication)
- *
- * @returns {Object} 200 - The voter ID if token is valid
- * @returns {Object} 401 - Unauthorized if token is invalid or missing (handled by isAuthenticated middleware)
  */
 router.get("/", isAuthenticated, async (req, res) => {
-  const { voterId } = req;
-
-  return res.status(200).json({
-    voterId: voterId,
-  });
+  const { userId } = req;
+  let name;
+  let lastLogin;
+  try {
+    const userDoc = await User.findById(userId).select("name lastLogin").lean();
+    if (userDoc) {
+      if (userDoc.name != null) name = userDoc.name;
+      if (userDoc.lastLogin != null) lastLogin = userDoc.lastLogin;
+    }
+  } catch (err) {
+    console.error("Error fetching user for session GET:", err);
+  }
+  const payload = { userId };
+  if (name !== undefined) payload.name = name;
+  if (lastLogin !== undefined) payload.lastLogin = lastLogin;
+  return res.status(200).json(payload);
 });
 
 /**
  * @route POST /api/v0/session
- * @description Request authentication nonce for standard (non-script) wallet
+ * @description Request nonce. Standard wallet: signer address as identity. Multisig: include scriptAddress in body; script address is identity.
  * @access Public
- *
- * @param {Object} req.body
- * @param {string} req.body.signerAddress - The address of the signer (validated by middleware)
- * @param {string} req.body.signType - Type of signature ('drep', etc.) (validated by middleware)
- *
- * @returns {Object} 200 - Nonce to sign and voter identification data
- * @returns {Object} 400 - Error if address is a script address or invalid
- * @returns {Object} 403 - Error if address is not in allowlist (when enabled)
  */
-router.post("/", validateSessionRequest, async (req, res) => {
-  // Get validated address from middleware
+router.post("/", nonceRequestLimiter, validateSessionRequest, async (req, res) => {
   const { addressBech32, isScript } = req;
+  const scriptAddressBody = req.body?.scriptAddress;
 
-  // error for script address
+  if (scriptAddressBody) {
+    const scriptValidation = validateScriptAddress(scriptAddressBody);
+    if (scriptValidation.error) {
+      return res.status(400).json({
+        status: "error",
+        message: scriptValidation.error,
+      });
+    }
+    const { validatedScriptAddress } = scriptValidation;
+    console.log("Login request (multisig)", addressBech32, validatedScriptAddress);
+
+    const nonce = generateNonce("Sign in! ");
+    try {
+      const login = new Session({
+        userId: validatedScriptAddress,
+        nonce,
+      });
+      await login.save();
+    } catch (error) {
+      console.error("Error saving session to database:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to create authentication session. Please try again.",
+      });
+    }
+    return res.status(200).json({
+      dataHex: nonce,
+      userId: validatedScriptAddress,
+      userIdHex: req.signerAddress,
+      signerAddressHex: req.signerAddress,
+      scriptAddress: validatedScriptAddress,
+    });
+  }
+
   if (isScript) {
-    console.error("Script address not allowed");
     return res.status(400).json({
       status: "error",
       message: "Script address not allowed. Please use the multisig route.",
     });
   }
 
-  // check for calidus key if signType = pool
   let calidusID;
   if (req.signType === "pool") {
-    const calidusKey = await getCalidusKey(addressBech32);
+    const calidusKey = await fetchCalidusKey(addressBech32);
     if (!calidusKey) {
       return res.status(400).json({
         status: "error",
@@ -98,87 +207,154 @@ router.post("/", validateSessionRequest, async (req, res) => {
   }
 
   console.log("Login request", addressBech32);
-
-  // !!! can be removed, not used anymore
-  // // Check if the address is in the allowlist
-  // if (SYSTEM_ALLOWLIST !== "0") {
-  //   if (!allowList.includes(addressBech32)) {
-  //     console.error("VoterId not in snapshot", addressBech32);
-  //     return res.status(403).json({
-  //       status: "error",
-  //       message: "DRep-ID/Address not in snapshot",
-  //     });
-  //   }
-  // }
-
-  // create nonce
   const nonce = generateNonce("Sign in! ");
-
-  // Store nonce in the database
-  const login = new Session({
-    voterId: addressBech32,
-    nonce,
-  });
-  await login.save();
-
-  // return nonce and voterId
+  try {
+    const login = new Session({ userId: addressBech32, nonce });
+    await login.save();
+  } catch (error) {
+    console.error("Error saving session to database:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to create authentication session. Please try again.",
+    });
+  }
   const response = {
     dataHex: nonce,
-    voterId: addressBech32,
-    voterIdHex: req.signerAddress,
+    userId: addressBech32,
+    userIdHex: req.signerAddress,
     signerAddressHex: req.signerAddress,
   };
-
-  // Only include calidusID if present
-  if (calidusID) {
-    response.calidusID = calidusID;
-  }
-
+  if (calidusID) response.calidusID = calidusID;
   return res.status(200).json(response);
 });
 
 /**
  * @route PUT /api/v0/session
- * @description Verify signature of nonce and issue JWT token for authentication
+ * @description Verify signature and issue JWT. Multisig: include scriptAddress in body. Upserts User lastLogin on success.
  * @access Public
- *
- * @param {Object} req.body
- * @param {string} req.body.signerAddress - The address of the signer (validated by middleware)
- * @param {string} req.body.signType - Type of signature ('drep', etc.) (validated by middleware)
- * @param {Object} req.body.signature - Signature object containing the signed nonce
- *
- * @returns {Object} 200 - JWT token and expiration information, also sets HTTP-only cookie
- * @returns {Object} 400 - Error if signature verification fails or nonce not found
  */
-router.put("/", validateSessionRequest, async (req, res) => {
-  // Get signer address and signature from request body (already validated by middleware)
+router.put("/", sessionVerificationLimiter, validateSessionRequest, async (req, res) => {
   const { signerAddress, signType, addressBech32, isScript } = req;
-  const { signature } = req.body;
+  const { signature, scriptAddress: scriptAddressBody } = req.body;
+  const nonceExpiryTime = new Date(Date.now() - NONCE_TTL_MS);
+
+  if (scriptAddressBody) {
+    const scriptValidation = validateScriptAddress(scriptAddressBody);
+    if (scriptValidation.error) {
+      return res.status(400).json({
+        status: "error",
+        message: scriptValidation.error,
+      });
+    }
+    const { validatedScriptAddress } = scriptValidation;
+
+    if (!signature || typeof signature !== "object") {
+      return res
+        .status(400)
+        .json({ status: "error", message: AUTH_ERROR_MESSAGE });
+    }
+
+    let nonceData;
+    try {
+      nonceData = await consumeNonce(validatedScriptAddress, nonceExpiryTime);
+    } catch (error) {
+      console.error("Error consuming nonce:", error);
+      return res
+        .status(500)
+        .json({ status: "error", message: AUTH_ERROR_MESSAGE });
+    }
+    if (!nonceData) {
+      return res
+        .status(400)
+        .json({ status: "error", message: AUTH_ERROR_MESSAGE });
+    }
+
+    const isParty = await isPartyToScript(
+      nonceData.nonce,
+      validatedScriptAddress,
+      signature
+    );
+    if (!isParty || isParty.error) {
+      console.error(
+        "MS: isPartyToScript failed",
+        signerAddress,
+        validatedScriptAddress
+      );
+      return res.status(400).json({
+        status: "error",
+        message: "Address does not belong to the MultiSig",
+      });
+    }
+
+    let token;
+    try {
+      token = jwt.sign(
+        { userId: validatedScriptAddress, signType, multiSig: true },
+        process.env.JWT_SECRET,
+        { expiresIn: JWT_MAX_AGE }
+      );
+    } catch (error) {
+      console.error("Error creating JWT token:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to create authentication token. Please try again.",
+      });
+    }
+
+    const expiryDate = computeExpiryDate(JWT_MAX_AGE);
+    try {
+      await clearNoncesForUser(validatedScriptAddress);
+    } catch (error) {
+      console.error("Error clearing nonces:", error);
+    }
+    try {
+      await User.findOneAndUpdate(
+        { _id: validatedScriptAddress },
+        { $set: { lastLogin: new Date() } },
+        { upsert: true }
+      );
+    } catch (error) {
+      console.error("Error upserting User lastLogin:", error);
+    }
+    setAuthCookie(res, token, expiryDate);
+    hydraVoterPing(validatedScriptAddress);
+    console.log("MS: Login successful:", signerAddress, validatedScriptAddress);
+    return res.status(200).json({
+      token,
+      expiresIn: expiryDate,
+      userId: validatedScriptAddress,
+    });
+  }
 
   if (isScript) {
-    console.error("Script address not allowed");
     return res.status(400).json({
       status: "error",
-      message: "Script address not allowed. Please use the multisig route.",
+      message:
+        "For script addresses include scriptAddress in the request body.",
     });
   }
 
-  // get nonce from db
-  const nonceData = await Session.findOne({
-    voterId: addressBech32,
-  }).sort({ createdAt: -1 });
+  if (!signature || typeof signature !== "object") {
+    return res
+      .status(400)
+      .json({ status: "error", message: AUTH_ERROR_MESSAGE });
+  }
+
+  let nonceData;
+  try {
+    nonceData = await consumeNonce(addressBech32, nonceExpiryTime);
+  } catch (error) {
+    console.error("Error consuming nonce:", error);
+    return res
+      .status(500)
+      .json({ status: "error", message: AUTH_ERROR_MESSAGE });
+  }
   if (!nonceData) {
-    return res.status(400).json({
-      status: "error",
-      message: "Nonce not found",
-    });
+    return res
+      .status(400)
+      .json({ status: "error", message: AUTH_ERROR_MESSAGE });
   }
 
-  // console.log("Nonce data", nonceData.nonce);
-  // console.log("signerAddress", signerAddress);
-  // console.log("signature", signature);
-
-  // verify signature
   let signatureVerification;
   try {
     signatureVerification = await verifySignature(
@@ -188,414 +364,87 @@ router.put("/", validateSessionRequest, async (req, res) => {
     );
   } catch (error) {
     console.error("Signature verification error", error);
-    return res.status(400).json({
-      status: "error",
-      message: "Signature verification error",
-    });
+    return res
+      .status(400)
+      .json({ status: "error", message: AUTH_ERROR_MESSAGE });
   }
-  // console.log("Signature verification result", signatureVerification);
-  if (signatureVerification.error || !signatureVerification) {
-    console.error(
-      "Signature verification failed",
-      signerAddress,
-      signatureVerification
+  if (signatureVerification?.error || !signatureVerification) {
+    return res
+      .status(400)
+      .json({ status: "error", message: AUTH_ERROR_MESSAGE });
+  }
+
+  let token;
+  try {
+    token = jwt.sign(
+      { userId: addressBech32, signType },
+      process.env.JWT_SECRET,
+      { expiresIn: JWT_MAX_AGE }
     );
-    return res.status(400).json({
+  } catch (error) {
+    console.error("Error creating JWT token:", error);
+    return res.status(500).json({
       status: "error",
-      message: signatureVerification.error,
+      message: "Failed to create authentication token. Please try again.",
     });
   }
 
-  // create jwt token
-  const token = jwt.sign(
-    { voterId: addressBech32, signType },
-    process.env.JWT_SECRET,
-    {
-      expiresIn: process.env.JWT_MAX_AGE,
-    }
-  );
-
-  // !! CHECK IF STILL NEEDD
-  // Calculate the actual expiration date for the frontend
-  const expiresIn = process.env.JWT_MAX_AGE;
-  let expiryDate;
-
-  // Parse the expiration format (support formats like "1d", "3600s", or seconds as number)
-  if (typeof expiresIn === "string") {
-    if (expiresIn.endsWith("d")) {
-      expiryDate = dayjs()
-        .add(parseInt(expiresIn.slice(0, -1)), "day")
-        .toDate();
-    } else if (expiresIn.endsWith("h")) {
-      expiryDate = dayjs()
-        .add(parseInt(expiresIn.slice(0, -1)), "hour")
-        .toDate();
-    } else if (expiresIn.endsWith("m")) {
-      expiryDate = dayjs()
-        .add(parseInt(expiresIn.slice(0, -1)), "minute")
-        .toDate();
-    } else if (expiresIn.endsWith("s")) {
-      expiryDate = dayjs()
-        .add(parseInt(expiresIn.slice(0, -1)), "second")
-        .toDate();
-    } else {
-      // Assume seconds if just a number
-      expiryDate = dayjs().add(parseInt(expiresIn), "second").toDate();
-    }
-  } else {
-    // Default to 1 hour if undefined or not a string
-    expiryDate = dayjs().add(1, "hour").toDate();
+  const expiryDate = computeExpiryDate(JWT_MAX_AGE);
+  try {
+    await clearNoncesForUser(addressBech32);
+  } catch (error) {
+    console.error("Error clearing nonces:", error);
   }
 
-  // Delete all nonces from the database for address, but leave the login record
-  await Session.updateMany(
-    { voterId: signerAddress },
-    {
-      $set: {
-        nonce: null,
-      },
+  let userName;
+  try {
+    if (req.signType === "drep") {
+      userName = await fetchDrepName(addressBech32);
+    } else if (req.signType === "stake" || req.signType === "addr") {
+      userName = await fetchHandle(addressBech32);
     }
-  );
+  } catch (error) {
+    console.error("Error fetching user name:", error);
+  }
 
-  // Log the successful login
+  try {
+    const update = { lastLogin: new Date() };
+    if (userName != null) update.name = userName;
+    await User.findOneAndUpdate(
+      { _id: addressBech32 },
+      { $set: update },
+      { upsert: true }
+    );
+  } catch (error) {
+    console.error("Error upserting User lastLogin:", error);
+  }
+  setAuthCookie(res, token, expiryDate);
+  hydraVoterPing(addressBech32);
   console.log("Login successful:", signerAddress);
-
-  // Ping Hydra (non-blocking)
-  console.log("Pinging Hydra for voterId:", signerAddress);
-  fetch(`${process.env.HYDRA_URL}/register`, {
-    method: "POST",
-    headers: {
-      "x-api-key": `${process.env.HYDRA_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      voterId: signerAddress
-    }),
-  })
-    .then(response => response.json())
-    .then(data => console.log("Hydra response:", data))
-    .catch(error => console.error("Failed to ping Hydra:", error));
-
-  // Set the cookie on the response
-  res.cookie("token", token, {
-    expires: expiryDate,
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // Only use secure in production
-    sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax", // More permissive in development
-    path: "/",
-  });
-
-  // Return the response with token data
   return res.status(200).json({
     token,
     expiresIn: expiryDate,
+    userId: addressBech32,
   });
 });
 
 /**
  * @route DELETE /api/v0/session
- * @description Logout by clearing authentication cookie
+ * @description Logout by clearing the authentication cookie.
  * @access Private (requires authentication)
- *
- * @returns {Object} 200 - Success message confirming logout
- * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  */
 router.delete("/", isAuthenticated, async (req, res) => {
-  const { voterId } = req;
-
-  // Clear the cookie with matching options from when it was set
+  const { userId } = req;
   res.clearCookie("token", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
     path: "/",
   });
-
-  console.log("Logout success", voterId);
-
+  console.log("Logout success", userId);
   return res.status(200).json({
     status: "success",
     message: "Logged out successfully",
-  });
-});
-
-/**
- * @route POST /api/v0/session/multisig
- * @description Request authentication nonce for multisig wallet
- * @access Public
- *
- * @param {Object} req.body
- * @param {string} req.body.signerAddress - The address of the signer (validated by middleware)
- * @param {string} req.body.signType - Type of signature ('drep', etc.) (validated by middleware)
- * @param {string} req.body.scriptAddress - The address of the multisig script
- *
- * @returns {Object} 200 - Nonce to sign and identification data including script address
- * @returns {Object} 400 - Error if script address is invalid or not a CIP129 address
- * @returns {Object} 403 - Error if address is not in allowlist (when enabled)
- */
-router.post("/multisig", validateSessionRequest, async (req, res) => {
-  // Get validated address from middleware
-  const { addressBech32 } = req;
-
-  console.log("MS: Login request from", addressBech32, req.body.scriptAddress);
-
-  if (!req.body.scriptAddress) {
-    console.error("MS: Script address not provided");
-    return res.status(400).json({
-      status: "error",
-      message: "MultiSig address not provided",
-    });
-  }
-
-  // validate script address
-  let validatedScriptAddress = await validateAddress(
-    req.body.scriptAddress.trim(),
-    "drep"
-  );
-  console.log("MS: Script address validation", validatedScriptAddress);
-  if (validatedScriptAddress.error) {
-    console.error(
-      "MS: Script address validation error",
-      validatedScriptAddress
-    );
-    return res.status(400).json({
-      status: "error",
-      message: validatedScriptAddress.error,
-    });
-  }
-
-  // check if validatedScriptAddress is a script address
-  if (!validatedScriptAddress.isScript) {
-    console.error(
-      "MS: Given address is not a script address",
-      validatedScriptAddress
-    );
-    return res.status(400).json({
-      status: "error",
-      message: "Given address is not a script address",
-    });
-  }
-
-  // check if script address is cip129
-  if (req.body.scriptAddress.trim() !== validatedScriptAddress.cip129) {
-    console.error("MS: Script address is not a CIP129 address");
-    return res.status(400).json({
-      status: "error",
-      message: "Script address is not a CIP129 address",
-    });
-  }
-
-  // account for drep 105/129 addresses
-  if (!validatedScriptAddress.cip129) {
-    console.error("MS: Script address is not a CIP129 address");
-    return res.status(400).json({
-      status: "error",
-      message: "Script address is not a CIP129 address",
-    });
-  }
-
-  // use CIP129 from here on out
-  validatedScriptAddress = validatedScriptAddress.cip129;
-
-  // Check if the address is in the allowlist
-  if (SYSTEM_ALLOWLIST !== "0") {
-    if (!allowList.includes(addressBech32)) {
-      console.error("MS: VoterId not in snapshot", addressBech32);
-      return res.status(403).json({
-        status: "error",
-        message: "Address not in snapshot",
-      });
-    }
-  }
-
-  // create nonce
-  const nonce = generateNonce("Sign in! ");
-
-  // Store nonce in the database
-  const login = new Session({
-    voterId: validatedScriptAddress,
-    nonce,
-  });
-  await login.save();
-
-  // return nonce and voterId
-  return res.status(200).json({
-    dataHex: nonce,
-    voterId: addressBech32,
-    voterIdHex: req.signerAddress,
-    signerAddressHex: req.body.signerAddress,
-    scriptAddress: validatedScriptAddress,
-  });
-});
-
-/**
- * @route PUT /api/v0/session/multisig
- * @description Verify signature and script membership for multisig wallet, issue JWT token
- * @access Public
- *
- * @param {Object} req.body
- * @param {string} req.body.signerAddress - The address of the signer (validated by middleware)
- * @param {string} req.body.signType - Type of signature ('drep', etc.) (validated by middleware)
- * @param {string} req.body.scriptAddress - The address of the multisig script
- * @param {Object} req.body.signature - Signature object containing the signed nonce
- *
- * @returns {Object} 200 - JWT token and expiration information, also sets HTTP-only cookie
- * @returns {Object} 400 - Error if signature verification fails, signer not party to script, or nonce not found
- */
-router.put("/multisig", validateSessionRequest, async (req, res) => {
-  // Get signer address and signature from request body (already validated by middleware)
-  const { signerAddress, signType, addressBech32 } = req;
-  const { signature } = req.body;
-
-  console.log(
-    "MS: Login request from",
-    signerAddress,
-    req.body.scriptAddress?.trim()
-  );
-
-  // validate script address
-  let validatedScriptAddress = await validateAddress(
-    req.body.scriptAddress.trim(),
-    "drep"
-  );
-  if (!validatedScriptAddress || validatedScriptAddress.error) {
-    console.error(
-      "MS: Script address validation error",
-      validatedScriptAddress
-    );
-    return res.status(400).json({
-      status: "error",
-      message: validatedScriptAddress.error || "Invalid script address",
-    });
-  }
-
-  // check if validatedScriptAddress is a script address
-  if (!validatedScriptAddress.isScript) {
-    console.error(
-      "MS: Given address is not a script address",
-      validatedScriptAddress
-    );
-    return res.status(400).json({
-      status: "error",
-      message: "Given address is not a script address",
-    });
-  }
-
-  // account for drep 105/129 addresses
-  if (!validatedScriptAddress.cip129) {
-    console.error("MS: Script address is not a CIP129 address");
-    return res.status(400).json({
-      status: "error",
-      message: "Script address is not a CIP129 address",
-    });
-  }
-
-  // use CIP129 from here on out
-  validatedScriptAddress = validatedScriptAddress.cip129;
-
-  // get nonce from db
-  const nonceData = await Session.findOne({
-    voterId: validatedScriptAddress,
-  }).sort({ createdAt: -1 });
-  if (!nonceData) {
-    console.error("MS: Nonce not found for address", validatedScriptAddress);
-    return res.status(400).json({
-      status: "error",
-      message: "Nonce not found",
-    });
-  }
-
-  // console.log("Nonce data", nonceData.nonce);
-  // console.log("signerAddress", signerAddress);
-  // console.log("scriptAddress", req.body.scriptAddress);
-  // console.log("signature", signature);
-
-  // check if party to script and verify signature
-  const isParty = await isPartyToScript(
-    nonceData.nonce,
-    validatedScriptAddress,
-    signature
-  );
-  if (!isParty || isParty.error) {
-    console.error(
-      "MS: isPartyToScript verification failed",
-      signerAddress,
-      validatedScriptAddress,
-      isParty
-    );
-    return res.status(400).json({
-      status: "error",
-      message: "Address does not belong to the MultiSig",
-    });
-  }
-
-  // create jwt token
-  const token = jwt.sign(
-    { voterId: validatedScriptAddress, signType, multiSig: true },
-    process.env.JWT_SECRET,
-    {
-      expiresIn: process.env.JWT_MAX_AGE,
-    }
-  );
-
-  // !! CHECK IF STILL NEEDD
-  // Calculate the actual expiration date for the frontend
-  const expiresIn = process.env.JWT_MAX_AGE;
-  let expiryDate;
-
-  // Parse the expiration format (support formats like "1d", "3600s", or seconds as number)
-  if (typeof expiresIn === "string") {
-    if (expiresIn.endsWith("d")) {
-      expiryDate = dayjs()
-        .add(parseInt(expiresIn.slice(0, -1)), "day")
-        .toDate();
-    } else if (expiresIn.endsWith("h")) {
-      expiryDate = dayjs()
-        .add(parseInt(expiresIn.slice(0, -1)), "hour")
-        .toDate();
-    } else if (expiresIn.endsWith("m")) {
-      expiryDate = dayjs()
-        .add(parseInt(expiresIn.slice(0, -1)), "minute")
-        .toDate();
-    } else if (expiresIn.endsWith("s")) {
-      expiryDate = dayjs()
-        .add(parseInt(expiresIn.slice(0, -1)), "second")
-        .toDate();
-    } else {
-      // Assume seconds if just a number
-      expiryDate = dayjs().add(parseInt(expiresIn), "second").toDate();
-    }
-  } else {
-    // Default to 1 hour if undefined or not a string
-    expiryDate = dayjs().add(1, "hour").toDate();
-  }
-
-  // Delete all nonces from the database for address, but leave the login record
-  await Session.updateMany(
-    { voterId: validatedScriptAddress },
-    {
-      $set: {
-        nonce: null,
-      },
-    }
-  );
-
-  // Log the successful login
-  console.log("MS: Login successful:", signerAddress, validatedScriptAddress);
-
-  // Set the cookie on the response
-  res.cookie("token", token, {
-    expires: expiryDate,
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // Only use secure in production
-    sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax", // More permissive in development
-    path: "/",
-  });
-
-  // Return the response with token data
-  return res.status(200).json({
-    token,
-    expiresIn: expiryDate,
   });
 });
 

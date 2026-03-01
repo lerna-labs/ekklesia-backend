@@ -60,10 +60,12 @@ export async function rollupBallot($results, $weight, $epoch_no) {
         const proposal_voters = [];
 
         for (const vote of proposal.votes) {
-            const id_parts = getAddressType(vote.voterId);
+            const id_parts = getAddressType(vote.userId);
             const voter_key_id = id_parts.keyHash;
 
-            if (vote.submittedVote === undefined && vote.submittedValue === undefined) {
+            // Prefer submittedVote (schema field); accept legacy submittedValue for backward compatibility
+            const submitted = vote.submittedVote ?? vote.submittedValue;
+            if (submitted === undefined || submitted === null) {
                 console.error("The vote does not have a submitted value!");
                 throw new Error("Vote does not have a submitted value!");
             }
@@ -74,18 +76,17 @@ export async function rollupBallot($results, $weight, $epoch_no) {
             }
 
             let vote_value;
+            const submittedArr = Array.isArray(submitted) ? submitted : [submitted];
 
             switch (proposal.voteType) {
                 case 'default':
-                    vote_value = Array.isArray(vote.submittedVote)
-                        ? vote.submittedVote[0].toString()
-                        : vote.submittedVote.toString();
+                    vote_value = submittedArr[0].toString();
                     break;
                 default:
-                    // Convert submitted Vote array to a string representation for use as object key
-                    vote_value = Array.isArray(vote.submittedValue)
-                        ? JSON.stringify(vote.submittedValue)
-                        : vote.submittedValue.toString();
+                    // Convert submitted vote array to a string representation for use as object key
+                    vote_value = submittedArr.length > 1
+                        ? JSON.stringify(submittedArr)
+                        : submittedArr[0].toString();
                     break;
             }
 

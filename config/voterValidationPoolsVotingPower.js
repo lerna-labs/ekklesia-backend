@@ -15,22 +15,22 @@ const validationCacheTime = 8; // hours
  * @throws {Error} If the API request fails.
  * @returns {boolean} True if the address is registered, false otherwise.
  */
-export async function validateVoter(voterId, ballotId) {
+export async function validateVoter(userId, ballotId) {
     let validated = false;
     let ballot = await Ballot.findOne({ _id: ballotId });
 
     // Check if the address is already validated
-    const existingValidation = await checkVoterValidation(voterId, ballotId);
+    const existingValidation = await checkVoterValidation(userId, ballotId);
 
     // check if the validation is older than 8 hours
     if (
         existingValidation?.updatedAt >
         Date.now() - 1000 * 60 * 60 * validationCacheTime
     ) {
-        // console.log("Using cached validation", voterId);
+        // console.log("Using cached validation", userId);
         return existingValidation.validated;
     } else {
-        console.log("No existing validation found", voterId);
+        console.log("No existing validation found", userId);
     }
 
     if (ballot.status !== "live") {
@@ -44,7 +44,7 @@ export async function validateVoter(voterId, ballotId) {
     }
 
     try {
-        console.log("Fetching voter data from API...", voterId);
+        console.log("Fetching voter data from API...", userId);
         const voterData = await fetch(API_URL + "/pool_info", {
             method: "POST",
             headers: {
@@ -52,7 +52,7 @@ export async function validateVoter(voterId, ballotId) {
                 authorization: `Bearer ${API_TOKEN}`,
             },
             body: JSON.stringify({
-                _pool_bech32_ids: [voterId],
+                _pool_bech32_ids: [userId],
             }),
         });
         if (!voterData.ok) {
@@ -63,10 +63,10 @@ export async function validateVoter(voterId, ballotId) {
 
         // check if result is empty
         if (voterInfo.length === 0) {
-            console.log("Voter not found in API: ", voterId);
+            console.log("Voter not found in API: ", userId);
             validated = false;
-            await saveVoterValidation(voterId, ballotId, validated);
-            await saveVotingPower(voterId, ballotId, 0);
+            await saveVoterValidation(userId, ballotId, validated, "pool");
+            await saveVotingPower(userId, ballotId, 0, "pool");
             return validated;
         }
 
@@ -74,14 +74,14 @@ export async function validateVoter(voterId, ballotId) {
         if (voterInfo[0].pool_status === "registered") {
             console.log("Voter is registered Pool: ", voterInfo[0].pool_status);
             validated = true;
-            await saveVoterValidation(voterId, ballotId, validated);
-            await saveVotingPower(voterId, ballotId, voterInfo[0].voting_power);
+            await saveVoterValidation(userId, ballotId, validated, "pool");
+            await saveVotingPower(userId, ballotId, voterInfo[0].voting_power, "pool");
             return validated;
         } else {
             console.log("Voter is not registered Pool: ", voterInfo[0].pool_status);
             validated = false;
-            await saveVoterValidation(voterId, ballotId, validated);
-            await saveVotingPower(voterId, ballotId, 0);
+            await saveVoterValidation(userId, ballotId, validated, "pool");
+            await saveVotingPower(userId, ballotId, 0, "pool");
             return validated;
         }
     } catch (error) {

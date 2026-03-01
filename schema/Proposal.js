@@ -7,21 +7,29 @@ const { Schema } = mongoose;
  *
  * @typedef {Object} Proposal
  * @property {ObjectId} ballotId - The ID of the ballot this proposal belongs to (references Ballot)
+ * @property {String} ipfsHash - IPFS hash of the proposal metadata (optional, null if not stored on IPFS)
  * @property {String} title - The title of the proposal
- * @property {Object} data - Additional data related to the proposal (optional)
- * @property {Array} voteOptions - Available voting options for this proposal
- *                                 Default: [{id: 1, value: 1, label: "Yes"},
- *                                          {id: 2, value: -1, label: "No"},
- *                                          {id: 3, value: 0, label: "Abstain"}]
+ * @property {String} description - Detailed description of the proposal content (default: empty string)
+ * @property {Array<String>} categories - Array of category labels for organizing proposals (default: empty array)
+ * @property {Array<String>} tags - Array of tag labels for filtering and searching proposals (default: empty array)
+ * @property {Object} data - Additional structured data related to the proposal (optional, format varies by proposal type)
+ * @property {String} voteType - Type of voting system: "default", "budget", "ranked", "scale", or "preference" (default: "default")
+ * @property {Number} voteIncrement - Increment value for scale votes (default: 1, e.g., 1 for integer scale, 0.5 for half-point scale)
+ * @property {Number} voterBudget - Budget limit for voters in budget vote type (default: 1, total cost cannot exceed this)
+ * @property {Boolean} abstainAllowed - Whether voters can select an "abstain" option (default: true, abstain cannot be combined with other votes)
+ * @property {Array<Object>} voteOptions - Available voting options for this proposal
+ *                                        Default: [{id: 1, cost: 1, label: "Yes"}, {id: 2, cost: 1, label: "No"}]
+ *                                        Each option has: id (number or "abstain" string), cost (number), label (string)
  * @property {Date} createdAt - Timestamp when the proposal was created (immutable)
  * @property {Date} updatedAt - Timestamp when the proposal was last updated
  *
  * @description
  * Proposals are items that voters can vote on within a ballot.
  * Each proposal belongs to a specific ballot and contains details about what's being voted on.
- * The schema includes configurable voting options with default Yes/No/Abstain values.
+ * The schema includes configurable voting options and supports multiple vote types including
+ * default (Yes/No), budget (with cost constraints), ranked, scale (numeric range), and preference voting.
  * Timestamps are automatically managed to track creation and modification times.
- * Indexes are maintained on ballotId and name for efficient queries.
+ * Indexes are maintained on ballotId and title for efficient queries.
  * The __v version key is removed from documents for cleaner output.
  */
 const proposalSchema = new Schema(
@@ -62,7 +70,12 @@ const proposalSchema = new Schema(
     voteType: {
       type: String,
       required: true,
-      default: "default",// default, budget, ranked
+      default: "default",// default, budget, ranked, scale, preference
+    },
+    voteIncrement: {
+      type: Number,
+      required: false,
+      default: 1,
     },
     voterBudget: {
       type: Number,
@@ -75,8 +88,12 @@ const proposalSchema = new Schema(
       default: [
         { id: 1, cost: 1, label: "Yes" },
         { id: 2, cost: 1, label: "No" },
-        { id: 3, cost: 1, label: "Abstain" },
       ],
+    },
+    abstainAllowed: {
+      type: Boolean,
+      required: true,
+      default: true,
     },
     createdAt: {
       type: Date,
@@ -97,12 +114,6 @@ const proposalSchema = new Schema(
 // Indexes for faster queries
 proposalSchema.index({ ballotId: 1 });
 proposalSchema.index({ title: 1 });
-
-// Pre-save middleware to update the updatedAt field
-proposalSchema.pre("save", function (next) {
-  this.updatedAt = new Date();
-  next();
-});
 
 const Proposal = mongoose.model("Proposal", proposalSchema);
 export { Proposal };

@@ -1,8 +1,9 @@
-// creates the voter cache for all eligable pools and checks if live_pledge is equal or greater than pledge
-import { fetchPoolTotals } from "../helper/koios.js";
 import { UserCache } from "../schema/UserCache.js";
+import { fetchPoolTotals, fetchAllDReps } from "../helper/koios.js";
+
 export async function startupBallot(ballotId) {
     console.log("Startup Script for Ballot", ballotId);
+
     const poolTotals = await fetchPoolTotals();
     if (poolTotals.error) {
         console.error(poolTotals.error);
@@ -27,9 +28,29 @@ export async function startupBallot(ballotId) {
 
     // upsert voter cache for all pools in poolTotals.poolsData and set voting_power to pledge
     for (const pool of poolTotals.poolData) {
-        await UserCache.findOneAndUpdate({ ballotId: ballotId, userId: pool.pool_id_bech32 }, { votingPower: pool.live_pledge, validated: true }, { upsert: true });
+        await UserCache.findOneAndUpdate(
+            { ballotId: ballotId, userId: pool.pool_id_bech32 },
+            { votingPower: pool.live_pledge, validated: true, voterGroup: "SPOs" },
+            { upsert: true }
+        );
     }
 
     console.log("Voter cache created for", poolTotals.poolData.length, "pools");
+
+
+    const dreps = await fetchAllDReps();
+    if (dreps.error) {
+        console.error(dreps.error);
+        process.exit(1);
+    }
+
+    // upsert voter cache for all dreps and set voting_power to amount
+    for (const drep of dreps) {
+        await UserCache.findOneAndUpdate(
+            { ballotId: ballotId, userId: drep.drep_id },
+            { votingPower: drep.amount, validated: true, voterGroup: "DReps" },
+            { upsert: true }
+        );
+    }
     return true;
 }

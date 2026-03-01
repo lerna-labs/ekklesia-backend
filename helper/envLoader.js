@@ -32,12 +32,12 @@ export function loadEnvironmentVariables(rootDir) {
 
   try {
     // Try to load environment-specific .env file first
-    const envConfig = dotenv.config({ path: envPath });
+    const envConfig = dotenv.config({ path: envPath, quiet: true });
 
     if (envConfig.error) {
       console.log(`No .env.${environment} found, trying default .env`);
       // Load default .env file
-      const defaultConfig = dotenv.config({ path: defaultEnvPath });
+      const defaultConfig = dotenv.config({ path: defaultEnvPath, quiet: true });
 
       if (defaultConfig.error) {
         console.warn("No .env file found");

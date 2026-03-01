@@ -5,7 +5,8 @@ import { Transaction } from "../schema/Transaction.js";
 import { Session } from "../schema/Session.js";
 import { Comment } from "../schema/Comment.js";
 import { Result } from "../schema/Result.js";
-import { VoterCache } from "../schema/VoterCache.js";
+import { UserCache } from "../schema/UserCache.js";
+import { FAQ } from "../schema/FAQ.js";
 
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
@@ -42,7 +43,8 @@ try {
         Session.deleteMany({}),
         Comment.deleteMany({}),
         Result.deleteMany({}),
-        VoterCache.deleteMany({}),
+        UserCache.deleteMany({}),
+        FAQ.deleteMany({}),
     ]);
 
     // Log deletion counts
@@ -54,6 +56,7 @@ try {
     console.log(`Deleted ${results[5].deletedCount} comments`);
     console.log(`Deleted ${results[6].deletedCount} results`);
     console.log(`Deleted ${results[7].deletedCount} caches`);
+    console.log(`Deleted ${results[8].deletedCount} faqs`);
     console.log("All collections wiped successfully.");
 
     console.timeEnd("Database wipe completed in");

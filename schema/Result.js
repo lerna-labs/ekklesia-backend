@@ -8,6 +8,7 @@ const { Schema } = mongoose;
  * @typedef {Object} Result
  * @property {ObjectId} proposalId - The ID of the proposal these results belong to (references Proposal)
  * @property {Object} results - Object containing the calculated voting results
+ * @property {Object} [resultsByGroup] - Optional results per voterGroup: { "<group>": { results: [{ id, label, count, votingPower }], totalVotes } }
  * @property {Date} createdAt - Timestamp when the results were first created (immutable)
  * @property {Date} updatedAt - Timestamp when the results were last updated
  *
@@ -30,6 +31,10 @@ const resultSchema = new Schema(
       type: Object,
       required: true,
     },
+    resultsByGroup: {
+      type: Object,
+      required: false,
+    },
     createdAt: {
       type: Date,
       default: Date.now,
@@ -45,12 +50,6 @@ const resultSchema = new Schema(
     versionKey: false, // Remove __v field from documents
   }
 );
-
-// Pre-save middleware to update the updatedAt field
-resultSchema.pre("save", function (next) {
-  this.updatedAt = new Date();
-  next();
-});
 
 const Result = mongoose.model("Result", resultSchema);
 export { Result };

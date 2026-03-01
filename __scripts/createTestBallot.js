@@ -127,10 +127,29 @@ const ballot = new Ballot({
 await ballot.save();
 console.log("Ballot created successfully", ballot._id);
 
-const newProposal = new Proposal({
-    title: "Budget Proposal",
+// default proposal with abstain
+const newDefaultProposal = new Proposal({
+    title: "Default Proposal: Abstain Allowed",
     ballotId: ballot._id,
-    description: "A budget proposal, total cost is 3, all items are equally costed at 1.",
+    description: "A default proposal with a yes/no/abstain vote.",
+    abstainAllowed: true,
+    voteType: "default",
+    voteBudget: 1,
+    voteOptions: [
+        { id: 1, cost: 1, label: "Yes" },
+        { id: 2, cost: 1, label: "No" },
+    ],
+});
+await newDefaultProposal.save();
+console.log("Proposal created successfully:", newDefaultProposal._id);
+
+// budget proposal
+// abstain allowed
+const newBudgetProposal = new Proposal({
+    title: "Budget Proposal: Abstain Allowed",
+    ballotId: ballot._id,
+    description: "A budget proposal, total budget is 3, all items have the same cost of 1. Abstain is allowed.",
+    abstainAllowed: true,
     data: {
         collapsible: {
             title: "Information",
@@ -208,15 +227,66 @@ const newProposal = new Proposal({
         },
     ],
 });
-await newProposal.save();
-console.log("Proposal created successfully:", newProposal._id);
+await newBudgetProposal.save();
+console.log("Proposal created successfully:", newBudgetProposal._id);
+
+// scale proposal
+// abstain not allowed
+const newScaleProposal = new Proposal({
+    title: "Scale Proposal: Abstain not allowed",
+    ballotId: ballot._id,
+    description: "A scale proposal with a range of 150 to 2500 and a step of 50.",
+    abstainAllowed: false,
+    voteType: "scale",
+    voteIncrement: 50,
+    voteOptions: [
+        {
+            "id": 150,
+            "label": "150",
+            "cost": 1
+        },
+        {
+            "id": 2500,
+            "label": "2500",
+            "cost": 1
+        },
+    ],
+});
+
+await newScaleProposal.save();
+console.log("Proposal created successfully:", newScaleProposal._id);
 
 
+// scale proposal
+// abstain allowed
+const newScaleProposalAbstainAllowed = new Proposal({
+    title: "Scale Proposal: Abstain allowed",
+    ballotId: ballot._id,
+    description: "A scale proposal with a range of -100 to 100 and a step of 1.",
+    abstainAllowed: true,
+    voteType: "scale",
+    voteIncrement: 1,
+    voteOptions: [
+        {
+            "id": -100,
+            "label": "-100",
+            "cost": 1
+        },
+        {
+            "id": 0,
+            "label": "0",
+            "cost": 1
+        },
+        {
+            "id": 100,
+            "label": "100",
+            "cost": 1
+        },
+    ],
+});
 
-
-
-
-
+await newScaleProposalAbstainAllowed.save();
+console.log("Proposal created successfully:", newScaleProposalAbstainAllowed._id);
 
 // disconnect from db
 await disconnectFromDatabase();

@@ -17,14 +17,14 @@ const validationCacheTime = 8; // hours
  */
 // !! this determines the voting power of the DRep only on login and if no cache is found. for live voting power this needs to be added to a cron job.
 // !! this validates registered DReps, no matter if active or not
-export async function validateVoter(voterId, ballotId) {
+export async function validateVoter(userId, ballotId) {
   let validated = false;
 
   let ballot = await Ballot.findOne({ _id: ballotId });
   // console.log("Ballot found, ballot is live?", ballot.status);
 
   // Check if the address is already validated
-  const existingValidation = await checkVoterValidation(voterId, ballotId);
+  const existingValidation = await checkVoterValidation(userId, ballotId);
 
   // check if the validation is older than 8 hours
   if (
@@ -33,7 +33,7 @@ export async function validateVoter(voterId, ballotId) {
   ) {
     return existingValidation.validated;
   } else {
-    console.log("No existing validation found", voterId);
+    console.log("No existing validation found", userId);
   }
 
   if (ballot.status !== "live") {
@@ -47,7 +47,7 @@ export async function validateVoter(voterId, ballotId) {
   }
 
   try {
-    console.log("Fetching voter data from API...", voterId);
+    console.log("Fetching voter data from API...", userId);
     const voterData = await fetch(API_URL + "/drep_info", {
       method: "POST",
       headers: {
@@ -55,7 +55,7 @@ export async function validateVoter(voterId, ballotId) {
         authorization: `Bearer ${API_TOKEN}`,
       },
       body: JSON.stringify({
-        _drep_ids: [voterId],
+        _drep_ids: [userId],
       }),
     });
 
@@ -67,10 +67,10 @@ export async function validateVoter(voterId, ballotId) {
 
     // check if result is empty
     if (voterInfo.length === 0) {
-      console.log("Voter not found in API: ", voterId);
+      console.log("Voter not found in API: ", userId);
       validated = false;
-      await saveVoterValidation(voterId, ballotId, validated);
-      await saveVotingPower(voterId, ballotId, 0);
+      await saveVoterValidation(userId, ballotId, validated, "drep");
+      await saveVotingPower(userId, ballotId, 0, "drep");
       return validated;
     }
 
@@ -78,14 +78,14 @@ export async function validateVoter(voterId, ballotId) {
     if (voterInfo[0].registered === true) {
       console.log("Voter is registered DRep: ", voterInfo[0].registered);
       validated = true;
-      await saveVoterValidation(voterId, ballotId, validated);
-      await saveVotingPower(voterId, ballotId, voterInfo[0].amount);
+      await saveVoterValidation(userId, ballotId, validated, "drep");
+      await saveVotingPower(userId, ballotId, voterInfo[0].amount, "drep");
       return validated;
     } else {
       console.log("Voter is not registered DRep: ", voterInfo[0].registered);
       validated = false;
-      await saveVoterValidation(voterId, ballotId, validated);
-      await saveVotingPower(voterId, ballotId, 0);
+      await saveVoterValidation(userId, ballotId, validated, "drep");
+      await saveVotingPower(userId, ballotId, 0, "drep");
       return validated;
     }
   } catch (error) {

@@ -7,9 +7,9 @@ info:
     ## Authentication
     Most endpoints require authentication via JWT token. The token is obtained through the session endpoints and is sent via HTTP-only cookie or Authorization header.
     
-    ## MultiSig Support
-    The API supports both standard wallet authentication and multisig wallet authentication. Use the `/multisig` endpoints for multisig wallets.
-  version: 0.5.31
+    ## Session (unified)
+    A single set of session endpoints handles both standard and multisig authentication. For multisig, include `scriptAddress` in the request body on POST (nonce) and PUT (verify). Nonce and verify requests are rate-limited.
+  version: 0.5.33
   contact:
     name: Adam Dean, Mad Orkestra
     license: ISC
@@ -22,7 +22,7 @@ servers:
 
 tags:
   - name: Status
-    description: System status and health check endpoints
+    description: Health and status endpoints (mounted at /health at server root)
   - name: Ballots
     description: Ballot management and retrieval
   - name: Proposals
@@ -43,12 +43,17 @@ tags:
     description: Frequently asked questions
 
 paths:
-  /status:
+  /health:
+    servers:
+      - url: http://localhost:3000
+        description: Local (health at root)
+      - url: https://api.example.com
+        description: Production (health at root)
     get:
       tags:
         - Status
       summary: Get system status
-      description: Returns comprehensive system status information including server uptime, versions, database connection status, and network information
+      description: Returns comprehensive system status (uptime, versions, database, network). Mounted at root, not under /api/v0.
       operationId: getStatus
       responses:
         '200':
@@ -59,12 +64,17 @@ paths:
                 $ref: '#/components/schemas/StatusResponse'
         '500':
           $ref: '#/components/responses/ServerError'
-  /status/health:
+  /health/health:
+    servers:
+      - url: http://localhost:3000
+        description: Local (health at root)
+      - url: https://api.example.com
+        description: Production (health at root)
     get:
       tags:
         - Status
       summary: Health check
-      description: Simple health check endpoint for load balancers and monitoring tools
+      description: Simple health check for load balancers and monitoring. Always returns 200 with status healthy unless server is down.
       operationId: getHealth
       responses:
         '200':
@@ -77,12 +87,17 @@ paths:
                   status:
                     type: string
                     example: healthy
-  /status/db:
+  /health/db:
+    servers:
+      - url: http://localhost:3000
+        description: Local (health at root)
+      - url: https://api.example.com
+        description: Production (health at root)
     get:
       tags:
         - Status
       summary: Database connection status
-      description: Returns the current database connection status
+      description: Returns the current database connection status.
       operationId: getDatabaseStatus
       responses:
         '200':
@@ -260,6 +275,7 @@ paths:
               schema:
                 type: string
                 enum: [title, commentCount, voteCount]
+                default: _id
             - name: direction
               in: query
               description: Sort direction
@@ -397,11 +413,16 @@ paths:
                     - type: object
                       properties:
                         voterVote:
-                          type: array
-                          items:
-                            type: number
+                          oneOf:
+                            - type: array
+                              items:
+                                oneOf:
+                                  - type: number
+                                  - type: string
+                                    enum: [abstain]
+                            - type: null
                           nullable: true
-                          description: Array of vote option IDs the authenticated voter selected
+                          description: Array of vote option IDs the authenticated voter selected (or null if not voted)
                         ballotStatus:
                           type: string
                         results:
@@ -442,6 +463,56 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Comment'
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
+      /results/grouped:
+        get:
+          tags:
+            - Proposals
+          summary: Get voting results by voter group
+          description: Get voting results for a proposal broken down by voter group. Returns stored results when available, otherwise computes on-the-fly.
+          operationId: getProposalResultsGrouped
+          parameters:
+            - name: proposalId
+              in: path
+              required: true
+              description: The ID of the proposal
+              schema:
+                type: string
+          responses:
+            '200':
+              description: Results per voter group
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      proposalId:
+                        type: string
+                        description: The proposal ID
+                      groups:
+                        type: object
+                        additionalProperties:
+                          type: object
+                          properties:
+                            results:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  value:
+                                    type: number
+                                    description: Vote option value/id
+                                  label:
+                                    type: string
+                                  count:
+                                    type: number
+                                  votingPower:
+                                    type: number
+                            totalVotes:
+                              type: number
             '404':
               $ref: '#/components/responses/NotFound'
             '500':
@@ -550,8 +621,12 @@ paths:
                   vote:
                     type: array
                     items:
-                      type: number
-                    description: Array of vote option IDs
+                      oneOf:
+                        - type: number
+                        - type: string
+                          enum: [abstain]
+                    description: Array of vote option IDs (numbers) or "abstain" string
+                    minItems: 1
         responses:
           '200':
             description: The saved vote object with indication if vote was changed
@@ -575,12 +650,98 @@ paths:
           '500':
             $ref: '#/components/responses/ServerError'
 
-  /comment:
+  /comments:
+    get:
+      tags:
+        - Comments
+      summary: List top-level comments for a proposal
+      description: |
+        Paginated top-level comments for a proposal. Query parameter `proposal` (proposalId) is required.
+        Public users see only live comments. Admins can filter by status (live, withdrawn, withdrawnByAdmin).
+        Response includes author, replyCount, likeCount, userLiked (when authenticated).
+      operationId: listComments
+      parameters:
+        - name: proposal
+          in: query
+          required: true
+          description: Proposal ID (ObjectId)
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by status (admins only; live, withdrawn, withdrawnByAdmin)
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Sort field
+          schema:
+            type: string
+            enum: [date, replyCount, likeCount]
+            default: date
+        - name: direction
+          in: query
+          description: Sort direction
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: userType
+          in: query
+          description: Filter by author type (comma-separated; proposer, admin, drep)
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Paginated comments with meta
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommentResponse'
+                  meta:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      totalPages:
+                        type: integer
+                      hasNextPage:
+                        type: boolean
+                      hasPreviousPage:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
     post:
       tags:
         - Comments
       summary: Create a comment
-      description: Creates a new comment on a specific proposal
+      description: Create a comment on a live proposal. Auth required. Optional parentId for replies. Before vote feedbackEndDate.
       operationId: createComment
       security:
         - cookieAuth: []
@@ -593,18 +754,21 @@ paths:
               type: object
               required:
                 - proposalId
-                - comment
+                - content
               properties:
                 proposalId:
                   type: string
-                  description: ID of the proposal to comment on
-                comment:
+                  description: Proposal ID (ObjectId)
+                content:
                   type: string
-                  description: Comment content (max 1000 characters)
-                  maxLength: 1000
+                  description: Comment content (max 2000 characters)
+                  maxLength: 2000
+                parentId:
+                  type: string
+                  description: Optional; parent comment ID for replies
       responses:
-        '200':
-          description: The saved comment object
+        '201':
+          description: Created comment
           content:
             application/json:
               schema:
@@ -613,40 +777,300 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/ServerError'
+    /{commentId}:
+      get:
+        tags:
+          - Comments
+        summary: Get a single comment
+        description: Get comment by ID. Public sees live only; author sees own in any status; admin can filter by status.
+        operationId: getComment
+        parameters:
+          - name: commentId
+            in: path
+            required: true
+            schema:
+              type: string
+          - name: status
+            in: query
+            description: Status filter (admins only)
+            schema:
+              type: string
+        responses:
+          '200':
+            description: Comment with author, replyCount, likeCount, userLiked
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/CommentResponse'
+          '400':
+            $ref: '#/components/responses/BadRequest'
+          '404':
+            $ref: '#/components/responses/NotFound'
+          '500':
+            $ref: '#/components/responses/ServerError'
+      put:
+        tags:
+          - Comments
+        summary: Update comment content
+        description: Author only; within 15 minutes of creation.
+        operationId: updateComment
+        security:
+          - cookieAuth: []
+          - bearerAuth: []
+        parameters:
+          - name: commentId
+            in: path
+            required: true
+            schema:
+              type: string
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - content
+                properties:
+                  content:
+                    type: string
+                    maxLength: 2000
+        responses:
+          '200':
+            description: Updated comment
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Comment'
+          '400':
+            $ref: '#/components/responses/BadRequest'
+          '401':
+            $ref: '#/components/responses/Unauthorized'
+          '403':
+            $ref: '#/components/responses/Forbidden'
+          '404':
+            $ref: '#/components/responses/NotFound'
+          '500':
+            $ref: '#/components/responses/ServerError'
+      /replies:
+        get:
+          tags:
+            - Comments
+          summary: List replies to a comment
+          description: Paginated replies. Parent must exist and be live. Sorted by createdAt asc.
+          operationId: listCommentReplies
+          parameters:
+            - name: commentId
+              in: path
+              required: true
+              schema:
+                type: string
+            - name: status
+              in: query
+              schema:
+                type: string
+            - name: page
+              in: query
+              schema:
+                type: integer
+                minimum: 1
+                default: 1
+            - name: limit
+              in: query
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 100
+                default: 10
+          responses:
+            '200':
+              description: Paginated replies with meta
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CommentResponse'
+                      meta:
+                        type: object
+                        properties:
+                          page:
+                            type: integer
+                          limit:
+                            type: integer
+                          total:
+                            type: integer
+                          totalPages:
+                            type: integer
+                          hasNextPage:
+                            type: boolean
+                          hasPreviousPage:
+                            type: boolean
+            '400':
+              $ref: '#/components/responses/BadRequest'
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
+      /like:
+        post:
+          tags:
+            - Comments
+          summary: Toggle like on a comment
+          description: Toggle like. 201 when like added, 200 when removed. Live comment only; before vote feedbackEndDate.
+          operationId: toggleCommentLike
+          security:
+            - cookieAuth: []
+            - bearerAuth: []
+          parameters:
+            - name: commentId
+              in: path
+              required: true
+              schema:
+                type: string
+          responses:
+            '200':
+              description: Like removed
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: success
+                      message:
+                        type: string
+                        example: Like removed.
+                      liked:
+                        type: boolean
+                        example: false
+                      likeCount:
+                        type: integer
+            '201':
+              description: Like added
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: success
+                      message:
+                        type: string
+                        example: Comment liked.
+                      liked:
+                        type: boolean
+                        example: true
+                      likeCount:
+                        type: integer
+            '400':
+              $ref: '#/components/responses/BadRequest'
+            '401':
+              $ref: '#/components/responses/Unauthorized'
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
+      /withdraw:
+        put:
+          tags:
+            - Comments
+          summary: Withdraw a comment (admin)
+          description: Vote admin withdraws a live comment. Body category required. Until feedbackEndDate.
+          operationId: withdrawComment
+          security:
+            - cookieAuth: []
+            - bearerAuth: []
+          parameters:
+            - name: commentId
+              in: path
+              required: true
+              schema:
+                type: string
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required:
+                    - category
+                  properties:
+                    category:
+                      type: string
+                      enum: [Inappropriate content, Spam, Policy violation, Duplicate, Other]
+                    comment:
+                      type: string
+                      description: Optional reason note
+          responses:
+            '200':
+              description: Withdrawn comment
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/Comment'
+            '400':
+              $ref: '#/components/responses/BadRequest'
+            '401':
+              $ref: '#/components/responses/Unauthorized'
+            '403':
+              $ref: '#/components/responses/Forbidden'
+            '404':
+              $ref: '#/components/responses/NotFound'
+            '500':
+              $ref: '#/components/responses/ServerError'
 
   /session:
     get:
       tags:
         - Session
       summary: Validate session
-      description: Validate JWT token and return voter ID
+      description: Validate JWT token and return voter ID plus user profile (name, lastLogin) when available
       operationId: getSession
       security:
         - cookieAuth: []
         - bearerAuth: []
       responses:
         '200':
-          description: The voter ID if token is valid
+          description: Voter ID and optional user profile
           content:
             application/json:
               schema:
                 type: object
+                required:
+                  - userId
                 properties:
-                  voterId:
+                  userId:
                     type: string
+                  name:
+                    type: string
+                    nullable: true
+                    description: DRep name or handle (from User, when set)
+                  lastLogin:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: Last login timestamp (from User)
         '401':
           $ref: '#/components/responses/Unauthorized'
     post:
       tags:
         - Session
       summary: Request authentication nonce
-      description: Request authentication nonce for standard (non-script) wallet
+      description: |
+        Request nonce for signing. Single endpoint for standard and multisig.
+        - Standard: send signerAddress and signType; userId is the signer address.
+        - Multisig: also send scriptAddress (CIP129 script address); userId in response is the script address.
+        Rate-limited (nonce requests per minute).
       operationId: requestNonce
       requestBody:
         required: true
@@ -663,7 +1087,10 @@ paths:
                   description: The address of the signer
                 signType:
                   type: string
-                  description: Type of signature (e.g., 'drep')
+                  description: Type of signature (e.g., 'drep', 'stake', 'pool')
+                scriptAddress:
+                  type: string
+                  description: For multisig only; CIP129 script address. When provided, identity is the script address.
       responses:
         '200':
           description: Nonce to sign and voter identification data
@@ -675,9 +1102,10 @@ paths:
                   dataHex:
                     type: string
                     description: Nonce to sign (hex encoded)
-                  voterId:
+                  userId:
                     type: string
-                  voterIdHex:
+                    description: Signer address (standard) or script address (multisig)
+                  userIdHex:
                     type: string
                   signerAddressHex:
                     type: string
@@ -685,6 +1113,9 @@ paths:
                     type: string
                     nullable: true
                     description: Calidus ID for pool signers (only present for pool signType)
+                  scriptAddress:
+                    type: string
+                    description: Present only for multisig; CIP129 script address
         '400':
           $ref: '#/components/responses/BadRequest'
         '403':
@@ -693,7 +1124,11 @@ paths:
       tags:
         - Session
       summary: Verify signature and login
-      description: Verify signature of nonce and issue JWT token for authentication
+      description: |
+        Verify signature and issue JWT. Single endpoint for standard and multisig.
+        - Standard: send signerAddress, signType, signature.
+        - Multisig: also send scriptAddress. Verifies signer is party to script.
+        On success, User lastLogin (and name for drep/stake/addr when fetched) is updated. Rate-limited.
       operationId: verifySignature
       requestBody:
         required: true
@@ -710,6 +1145,9 @@ paths:
                   type: string
                 signType:
                   type: string
+                scriptAddress:
+                  type: string
+                  description: For multisig only; CIP129 script address
                 signature:
                   $ref: '#/components/schemas/Signature'
       responses:
@@ -725,6 +1163,8 @@ paths:
                   expiresIn:
                     type: string
                     format: date-time
+                  userId:
+                    type: string
         '400':
           $ref: '#/components/responses/BadRequest'
     delete:
@@ -752,98 +1192,6 @@ paths:
                     example: Logged out successfully
         '401':
           $ref: '#/components/responses/Unauthorized'
-    /multisig:
-      post:
-        tags:
-          - Session
-        summary: Request authentication nonce for multisig
-        description: Request authentication nonce for multisig wallet
-        operationId: requestMultisigNonce
-        requestBody:
-          required: true
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                  - signerAddress
-                  - signType
-                  - scriptAddress
-                properties:
-                  signerAddress:
-                    type: string
-                  signType:
-                    type: string
-                  scriptAddress:
-                    type: string
-                    description: The address of the multisig script
-        responses:
-          '200':
-            description: Nonce to sign and identification data including script address
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    dataHex:
-                      type: string
-                      description: Nonce to sign (hex encoded)
-                    voterId:
-                      type: string
-                    voterIdHex:
-                      type: string
-                    signerAddressHex:
-                      type: string
-                    scriptAddress:
-                      type: string
-                      description: The CIP129 multisig script address
-                    scriptAddress:
-                      type: string
-          '400':
-            $ref: '#/components/responses/BadRequest'
-          '403':
-            $ref: '#/components/responses/Forbidden'
-      put:
-        tags:
-          - Session
-        summary: Verify multisig signature and login
-        description: Verify signature and script membership for multisig wallet, issue JWT token
-        operationId: verifyMultisigSignature
-        requestBody:
-          required: true
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                  - signerAddress
-                  - signType
-                  - scriptAddress
-                  - signature
-                properties:
-                  signerAddress:
-                    type: string
-                  signType:
-                    type: string
-                  scriptAddress:
-                    type: string
-                  signature:
-                    $ref: '#/components/schemas/Signature'
-        responses:
-          '200':
-            description: JWT token and expiration information
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    token:
-                      type: string
-                    expiresIn:
-                      type: string
-                      format: date-time
-          '400':
-            $ref: '#/components/responses/BadRequest'
 
   /dashboard:
     get:
@@ -863,7 +1211,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  voterId:
+                  userId:
                     type: string
                   lastLogin:
                     type: string
@@ -1039,8 +1387,8 @@ paths:
         post:
           tags:
             - Dashboard
-          summary: Request checkout for multisig
-          description: Request checkout for a ballot using multisig, creating or retrieving transaction data
+          summary: Request checkout for multisig (create or get transaction)
+          description: Request checkout for a ballot using multisig. Creates new transaction or returns existing one when transactionId is provided.
           operationId: requestMultisigCheckout
           security:
             - cookieAuth: []
@@ -1050,12 +1398,6 @@ paths:
               in: path
               required: true
               description: ID of the ballot to checkout
-              schema:
-                type: string
-            - name: transactionId
-              in: query
-              required: false
-              description: Optional ID of an existing pending transaction to retrieve
               schema:
                 type: string
           requestBody:
@@ -1162,6 +1504,59 @@ paths:
               $ref: '#/components/responses/Forbidden'
             '404':
               $ref: '#/components/responses/NotFound'
+        /{transactionId}:
+          post:
+            tags:
+              - Dashboard
+            summary: Get existing multisig transaction
+            description: Request checkout for multisig with an existing transaction ID; returns the existing pending transaction data for that ballot and voter.
+            operationId: getMultisigTransaction
+            security:
+              - cookieAuth: []
+              - bearerAuth: []
+            parameters:
+              - name: ballotId
+                in: path
+                required: true
+                description: ID of the ballot
+                schema:
+                  type: string
+              - name: transactionId
+                in: path
+                required: true
+                description: ID of the existing pending transaction to retrieve
+                schema:
+                  type: string
+            requestBody:
+              required: true
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    required:
+                      - scriptAddress
+                      - signerAddress
+                      - signType
+                    properties:
+                      scriptAddress:
+                        type: string
+                      signerAddress:
+                        type: string
+                      signType:
+                        type: string
+            responses:
+              '200':
+                description: Existing transaction data for signing
+                content:
+                  application/json:
+                    schema:
+                      $ref: '#/components/schemas/TransactionResponse'
+              '400':
+                $ref: '#/components/responses/BadRequest'
+              '401':
+                $ref: '#/components/responses/Unauthorized'
+              '404':
+                $ref: '#/components/responses/NotFound'
 
   /transactions:
     get:
@@ -1250,7 +1645,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [voterId, votes, lastLogin]
+            enum: [userId, votes, lastLogin]
             default: votes
         - name: direction
           in: query
@@ -1282,7 +1677,7 @@ paths:
                         items:
                           type: object
                           properties:
-                            voterId:
+                            userId:
                               type: string
                             votes:
                               type: number
@@ -1321,7 +1716,7 @@ paths:
                         type: number
           '500':
             $ref: '#/components/responses/ServerError'
-    /{voterId}:
+    /{userId}:
       get:
         tags:
           - Voters
@@ -1329,7 +1724,7 @@ paths:
         description: Get detailed information about a specific voter including voting history
         operationId: getVoter
         parameters:
-          - name: voterId
+          - name: userId
             in: path
             required: true
             description: The ID of the voter to retrieve
@@ -1346,7 +1741,7 @@ paths:
                     voterType:
                       type: string
                       enum: [stake, drep, pool]
-                    voterId:
+                    userId:
                       type: string
                     votes:
                       type: array
@@ -1426,6 +1821,13 @@ paths:
           schema:
             type: string
             example: voter,proposer
+        - name: featured
+          in: query
+          description: Filter by featured status (true or false)
+          required: false
+          schema:
+            type: string
+            enum: [true, false]
       responses:
         '200':
           description: List of live FAQs matching the search and filter criteria
@@ -1454,181 +1856,345 @@ components:
   schemas:
     StatusResponse:
       type: object
+      description: |
+        Comprehensive system status information including server health, database connection status,
+        network information, and runtime metrics. Used by monitoring tools and system administrators
+        to assess the operational state of the API server.
       properties:
         status:
           type: string
+          description: Overall system status (e.g., "operational", "degraded", "down")
           example: operational
         message:
           type: string
+          description: Human-readable status message describing the current system state
           example: System is operational
         timestamp:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the status was generated
         environment:
           type: string
+          description: Current deployment environment (e.g., "development", "production")
         network:
           type: string
+          description: Name of the blockchain network (e.g., "mainnet", "preprod", "preview")
         networkId:
           type: integer
+          description: Numeric identifier for the blockchain network
         server:
           type: object
+          description: Server runtime information and metrics
           properties:
             uptime:
               type: string
+              description: Human-readable server uptime (e.g., "5d 12h 30m 15s")
             uptimeSeconds:
               type: number
+              description: Server uptime in seconds since last restart
             version:
               type: string
+              description: Version of the API server application
             nodeVersion:
               type: string
+              description: Version of Node.js runtime
             memoryUsage:
               type: object
+              description: Current memory usage statistics
               properties:
                 rss:
                   type: string
+                  description: Resident Set Size - total memory allocated for the process
                 heapTotal:
                   type: string
+                  description: Total size of allocated heap memory
                 heapUsed:
                   type: string
+                  description: Amount of heap memory currently in use
         frontend:
           type: string
+          description: Version of the frontend application (if available)
         database:
           type: object
+          description: Database connection status and health information
           properties:
             status:
               type: string
               enum: [connected, disconnected]
+              description: Current database connection state
             message:
               type: string
+              description: Human-readable message about database connection status
 
     Ballot:
       type: object
+      description: |
+        Represents a registered ballot in the voting system. A ballot defines a voting period,
+        eligible voter types, and contains multiple proposals that voters can vote on. Ballots
+        can be in "upcoming", "live", or "closed" status based on the current time relative
+        to votePeriodStart and votePeriodEnd dates.
       properties:
         _id:
           type: string
+          description: Unique MongoDB ObjectId for the ballot
         title:
           type: string
+          description: Title of the ballot
         description:
           type: string
+          description: Detailed description of what the ballot is about
         ipfsHash:
           type: string
           nullable: true
+          description: IPFS hash of the ballot metadata (optional, for decentralized storage)
         voterType:
           type: string
+          description: Type of voters eligible for this ballot (e.g., 'stake', 'drep', 'pool')
         voterDescription:
           type: string
+          description: Human-readable description of who is eligible to vote in this ballot
         votePeriodStart:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the voting period begins
         votePeriodEnd:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the voting period ends
         voteFilters:
           type: boolean
+          description: Whether filtering options (tags, categories) are enabled for proposals in this ballot
         voteWeighted:
           type: boolean
-          description: Whether the voting is weighted
+          description: Whether votes in this ballot are weighted by voting power (true) or counted equally (false)
         proposalPeriodStart:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the proposal submission period begins
         proposalPeriodEnd:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the proposal submission period ends
         resultTxHash:
           type: string
           nullable: true
+          description: Blockchain transaction hash where final results were recorded (null if not yet finalized)
         status:
           type: string
           enum: [live, closed, upcoming]
+          description: |
+            Current status of the ballot:
+            - "upcoming": Voting period has not started yet
+            - "live": Voting period is currently active
+            - "closed": Voting period has ended
         createdAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the ballot was created
         updatedAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the ballot was last updated
 
     Proposal:
       type: object
+      description: |
+        Represents a registered proposal within a ballot. Proposals are items that voters can vote on.
+        Each proposal belongs to a specific ballot and contains details about what's being voted on,
+        along with configurable voting options. Proposals support multiple vote types including
+        default (Yes/No), budget (with cost constraints), ranked, scale (numeric range), and preference voting.
       properties:
         _id:
           type: string
+          description: Unique MongoDB ObjectId for the proposal
         ballotId:
           type: string
+          description: ID of the ballot this proposal belongs to
         ipfsHash:
           type: string
           nullable: true
+          description: IPFS hash of the proposal metadata (optional, for decentralized storage)
         title:
           type: string
+          description: Title of the proposal
         description:
           type: string
+          description: Detailed description of the proposal content
         categories:
           type: array
           items:
             type: string
+          description: Array of category labels for organizing proposals (e.g., ["Governance", "Treasury"])
         tags:
           type: array
           items:
             type: string
+          description: Array of tag labels for filtering and searching proposals
         data:
           type: object
           nullable: true
+          description: Additional structured data related to the proposal (format varies by proposal type)
         voteType:
           type: string
-          enum: [default, budget, ranked]
+          enum: [default, budget, ranked, scale, preference]
+          description: |
+            Type of voting system for this proposal:
+            - "default": Standard voting with predefined options (Yes/No/Abstain)
+            - "budget": Voting with cost constraints where voters have a budget to allocate
+            - "ranked": Voters rank options in order of preference
+            - "scale": Numeric scale voting (e.g., 1-10) with configurable increment
+            - "preference": Voters express preferences among multiple options
+        voteIncrement:
+          type: number
+          description: Increment value for scale votes (e.g., 1 for integer scale, 0.5 for half-point scale)
         voterBudget:
           type: number
+          description: Budget limit for voters in budget vote type (total cost of selected options cannot exceed this)
+        abstainAllowed:
+          type: boolean
+          description: Whether voters can select an "abstain" option (if true, abstain cannot be combined with other votes)
         voteOptions:
           type: array
           items:
             type: object
             properties:
               id:
-                type: number
+                oneOf:
+                  - type: number
+                  - type: string
+                    enum: [abstain]
+                description: Vote option ID (number) or "abstain" string
               cost:
                 type: number
+                description: Cost of selecting this option (used in budget vote type, defaults to 1)
               label:
                 type: string
+                description: Display label for this vote option (e.g., "Yes", "No", "Strongly Agree")
+          description: Array of available voting options for this proposal
         commentCount:
           type: number
+          description: Number of comments posted on this proposal (computed field)
         voteCount:
           type: number
+          description: Number of unique voters who have submitted votes on this proposal (computed field)
         votingPower:
           type: number
+          description: Total voting power of all votes cast on this proposal (computed field, only in weighted ballots)
         result:
           type: object
           nullable: true
+          description: Calculated voting results object (structure varies by voteType, null if results not yet calculated)
         updatedAt:
           type: string
           format: date-time
           nullable: true
+          description: ISO 8601 timestamp when the proposal was last updated (or when results were last calculated)
         createdAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the proposal was created
 
     Vote:
       type: object
+      description: |
+        Represents a vote cast by a voter for a specific proposal within a ballot. Votes can exist
+        in two states: pending (not yet submitted) and submitted. When votes are submitted via
+        transaction, the submittedVote and submittedAt fields are updated. If a voter changes their
+        vote before submission, only the vote field changes. Each voter can only have one vote per proposal.
       properties:
         _id:
           type: string
-        voterId:
+          description: Unique MongoDB ObjectId for the vote record
+        userId:
           type: string
+          description: ID of the voter who cast the vote (references Voter, format depends on voterType)
         ballotId:
           type: string
+          description: ID of the ballot this vote belongs to
         proposalId:
           type: string
+          description: ID of the proposal being voted on
         vote:
           type: array
           items:
-            type: number
+            oneOf:
+              - type: number
+              - type: string
+                enum: [abstain]
+          description: |
+            Current value of the vote (may differ from submittedVote if changed after initial submission).
+            Array of vote option IDs (numbers) or "abstain" string. For scale votes, contains the numeric value.
+            For budget votes, contains multiple option IDs that fit within the voter's budget.
         submittedVote:
           type: array
           items:
-            type: number
+            oneOf:
+              - type: number
+              - type: string
+                enum: [abstain]
           nullable: true
+          description: |
+            Value of the vote when it was last submitted via transaction. This is the vote that counts
+            toward results. Null if the vote has never been submitted. Array of vote option IDs that
+            were submitted (numbers) or "abstain" string.
         submittedAt:
           type: string
           format: date-time
           nullable: true
+          description: ISO 8601 timestamp when the vote was last submitted via transaction (null if never submitted)
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the vote was first created
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the vote was last updated (changes when vote value is modified)
+
+    Comment:
+      type: object
+      description: |
+        Comment on a proposal. Can be top-level (parentId null) or a reply (parentId set).
+        Status is live or withdrawnByAdmin; withdrawalDetails set when withdrawn by admin.
+      properties:
+        _id:
+          type: string
+          description: Unique MongoDB ObjectId for the comment
+        proposalId:
+          type: string
+          description: ID of the proposal this comment belongs to
+        parentId:
+          type: string
+          nullable: true
+          description: ID of parent comment for replies, or null for top-level
+        userId:
+          type: string
+          description: ID of the user who created the comment
+        content:
+          type: string
+          maxLength: 2000
+          description: Comment content
+        status:
+          type: string
+          enum: [live, withdrawnByAdmin]
+          description: Comment visibility status
+        withdrawalDetails:
+          type: object
+          nullable: true
+          description: Set when status is withdrawnByAdmin (admin only)
+          properties:
+            category:
+              type: string
+              enum: [Inappropriate content, Spam, Policy violation, Duplicate, Other]
+            userId:
+              type: string
+              description: Admin who withdrew
+            comment:
+              type: string
+              description: Optional reason
+            date:
+              type: string
+              format: date-time
         createdAt:
           type: string
           format: date-time
@@ -1636,17 +2202,61 @@ components:
           type: string
           format: date-time
 
-    Comment:
+    CommentResponse:
       type: object
+      description: Comment as returned by list/get endpoints (includes author, replyCount, likeCount, userLiked)
       properties:
         _id:
           type: string
-        proposalId:
+        parentId:
           type: string
-        voterId:
-          type: string
+          nullable: true
         content:
           type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        replyCount:
+          type: integer
+          description: Number of replies (respecting visibility)
+        likeCount:
+          type: integer
+          description: Number of likes
+        userLiked:
+          type: boolean
+          description: Whether the authenticated user has liked this comment
+        author:
+          type: object
+          nullable: true
+          description: User info and type (proposer, admin, drep, user)
+          properties:
+            _id:
+              type: string
+            name:
+              type: string
+              nullable: true
+            type:
+              type: string
+              enum: [proposer, admin, drep, user]
+        withdrawalDetails:
+          type: object
+          description: Present only for author or admin when comment was withdrawn
+
+    CommentLike:
+      type: object
+      description: A like on a comment (one per user per comment; unique on commentId + userId)
+      properties:
+        _id:
+          type: string
+        commentId:
+          type: string
+          description: Comment that was liked
+        userId:
+          type: string
+          description: User who liked
         createdAt:
           type: string
           format: date-time
@@ -1656,107 +2266,160 @@ components:
 
     FAQ:
       type: object
+      description: |
+        Represents a frequently asked question in the voting system. FAQs help users understand
+        how to use the platform, voting procedures, and common questions. Only FAQs with is_live=true
+        are returned by the API. FAQs can be tagged for filtering and can be marked as featured
+        to appear prominently on the homepage.
       properties:
         _id:
           type: string
+          description: Unique MongoDB ObjectId for the FAQ
         title:
           type: string
-          description: Title of the FAQ
+          description: Title/question text of the FAQ
         content:
           type: string
-          description: Answer content of the FAQ
+          description: Answer content of the FAQ (supports markdown formatting)
         tags:
           type: array
           items:
             type: string
-          description: Tags for the FAQ (e.g., ["voter", "proposer"])
+          description: Tags for categorizing the FAQ (e.g., ["voter", "proposer", "technical"])
           example: [voter]
 
     Transaction:
       type: object
+      description: |
+        Represents a transaction for submitting votes in the voting system. Transactions batch multiple
+        votes together for efficient blockchain submission. Transactions track the state of vote submissions
+        from initial creation through signature verification to final submission. Transactions may require
+        single signatures or multiple signatures (via the multiSig array) depending on the voter type.
+        The merkleRoot provides cryptographic integrity verification for all votes in the transaction.
       properties:
         _id:
           type: string
-        voterId:
+          description: Unique MongoDB ObjectId for the transaction
+        userId:
           type: string
+          description: ID of the voter associated with this transaction
         ballotId:
           type: string
+          description: ID of the ballot this transaction belongs to
         merkleRoot:
           type: string
+          description: |
+            Merkle root hash of all votes in this transaction. Used for cryptographic verification
+            of vote integrity. This is the data that must be signed by the voter.
         votes:
           type: object
-          description: Collection of votes associated with this transaction
+          description: |
+            Collection of votes associated with this transaction. Keys are proposal IDs, values contain
+            the vote data for each proposal. Structure: { [proposalId]: { proposalId: string, vote: number[] } }
           additionalProperties:
             type: object
             properties:
               proposalId:
                 type: string
+                description: ID of the proposal being voted on
               vote:
                 type: array
                 items:
-                  type: number
+                  oneOf:
+                    - type: number
+                    - type: string
+                      enum: [abstain]
+                description: Array of vote option IDs (numbers) or "abstain" string for this proposal
         txHash:
           type: string
           nullable: true
-          description: The transaction hash after submission to blockchain
+          description: Blockchain transaction hash after successful submission (null if not yet submitted to blockchain)
         status:
           type: string
           enum: [created, pending, submitted]
+          description: |
+            Current status of the transaction:
+            - "created": Transaction created but not yet signed
+            - "pending": Transaction signed but multisig incomplete (for multisig transactions)
+            - "submitted": Transaction fully signed and votes have been submitted
         signature:
           $ref: '#/components/schemas/Signature'
           nullable: true
+          description: Signature object for single-signature transactions (null for multisig transactions)
         multiSig:
           type: array
           items:
             $ref: '#/components/schemas/Signature'
+          description: Array of signatures for multisig transactions (empty for single-signature transactions)
         createdAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the transaction was created
         updatedAt:
           type: string
           format: date-time
+          description: ISO 8601 timestamp when the transaction was last updated
 
     TransactionResponse:
       type: object
+      description: |
+        Response object returned when requesting checkout for a ballot. Contains the transaction data
+        that needs to be signed by the voter, along with hex-encoded values for signing operations.
+        This is used in the checkout flow where voters sign their votes before final submission.
       properties:
         _id:
           type: string
-        voterId:
+          description: Unique MongoDB ObjectId for the transaction
+        userId:
           type: string
+          description: ID of the voter associated with this transaction
         ballotId:
           type: string
+          description: ID of the ballot this transaction belongs to
         merkleRoot:
           type: string
+          description: Merkle root hash of all votes in this transaction
         votes:
           type: object
-          description: Collection of votes associated with this transaction
+          description: Collection of votes associated with this transaction (same structure as Transaction.votes)
         dataHex:
           type: string
-          description: Hex-encoded merkle root for signing
-        voterIdHex:
+          description: Hex-encoded merkle root for signing (this is what the voter signs)
+        userIdHex:
           type: string
-          description: Hex-encoded voter ID
+          description: Hex-encoded voter ID (used for signature verification)
         calidusID:
           type: string
           nullable: true
-          description: Calidus ID for pool signers (only present for pool signType)
+          description: Calidus ID for pool signers (only present when signType is "pool")
 
     Signature:
       type: object
-      description: Signature object structure (varies by signature type)
+      description: |
+        Signature object structure for verifying voter identity and vote integrity. The structure
+        varies by signature type (drep, stake, pool) and includes cryptographic proof that the voter
+        signed the transaction data. For multisig transactions, multiple signature objects are stored
+        in an array until all required signatures are collected.
       additionalProperties: true
 
     Pagination:
       type: object
+      description: |
+        Pagination metadata included in paginated API responses. Provides information about the
+        total number of items, current page, items per page, and total number of pages available.
       properties:
         total:
           type: integer
+          description: Total number of items matching the query (across all pages)
         page:
           type: integer
+          description: Current page number (1-indexed)
         limit:
           type: integer
+          description: Number of items per page (maximum 100)
         totalPages:
           type: integer
+          description: Total number of pages available (calculated as ceil(total / limit))
 
   responses:
     BadRequest:
