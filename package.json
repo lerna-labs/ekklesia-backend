@@ -22,7 +22,7 @@
     "autocannon": "^8.0.0",
     "bech32": "^2.0.0",
     "blakejs": "^1.2.1",
-    "cbor": "^10.0.3",
+    "cbor": "^10.0.12",
     "compress": "^0.99.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
