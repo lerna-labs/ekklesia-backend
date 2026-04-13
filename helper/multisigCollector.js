@@ -1,23 +1,20 @@
-// Native-script signature aggregation for voter DReps using multi-sig.
+// Native-script signature aggregation for multisig voter DReps.
 //
-// Given a NativeScript definition and a running list of collected signatures
-// (each is an object with `key` = signer keyHash hex, `coseSign1Hex`, etc.),
-// determines whether the script is satisfied.
+// Uses @lerna-labs/ekklesia-helpers/crypto.getScriptCriteria to flatten
+// a portable NativeScript definition into { keys, required, ... } and
+// then counts collected signatures against that threshold.
 //
-// Delegates the actual threshold logic to @lerna-labs/ekklesia-helpers/crypto:
-//   - getScriptCriteria(script)   → { required, keys: [keyHash...] }
-//   - validateScriptSignatures(script, signatures) → boolean / detail
-//
-// The wrapper here adds:
-//   - a list of still-required keyHashes
-//   - a dedupe + structural check of incoming witnesses
-//   - a `thresholdMet(script, signatures)` helper that's easy to call from
-//     the route without needing to know helper-package internals.
+// Notes on delegation:
+//   - `validateScriptSignatures` in the shared lib expects a 4-arg
+//     signature including an on-chain-encoded (timelock) script body,
+//     not the portable NativeScript shape the broker sees. The broker
+//     does its own signature-counting here so we don't need to round-
+//     trip to Cardano-encoded form.
+//   - COSE witness *validity* (signature matches COSE key → keyHash)
+//     is a separate concern handled by crypto.verifySignature on each
+//     incoming witness before it ever reaches this collector.
 
-import {
-  getScriptCriteria,
-  validateScriptSignatures,
-} from "@lerna-labs/ekklesia-helpers/crypto";
+import { getScriptCriteria } from "@lerna-labs/ekklesia-helpers/crypto";
 
 export class MultisigError extends Error {
   constructor(message, { code } = {}) {
@@ -27,30 +24,48 @@ export class MultisigError extends Error {
   }
 }
 
+function normalizeKey(k) {
+  return (k || "").toLowerCase();
+}
+
 function keyHashesOf(signatures = []) {
-  return new Set(signatures.map((s) => (s.key || s.keyHash || "").toLowerCase()).filter(Boolean));
+  return new Set(
+    signatures
+      .map((s) => normalizeKey(s.key || s.keyHash))
+      .filter(Boolean)
+  );
 }
 
 /**
- * @param {object} nativeScript  — portable native-script definition
- * @param {Array<object>} signatures — collected witnesses so far
- * @returns {{ required: number, satisfied: boolean, outstandingKeys: string[] }}
+ * @param {object} nativeScript  — portable NativeScript definition with a
+ *                                 root of type "all" | "any" | "atLeast".
+ *                                 A bare {type:"sig"} at the root is not
+ *                                 multisig and shouldn't land here.
+ * @param {Array<object>} signatures — collected witnesses so far.
+ * @returns {{ required: number, eligibleKeys: string[], outstandingKeys: string[], satisfied: boolean }}
  */
 export function status(nativeScript, signatures = []) {
   if (!nativeScript) throw new MultisigError("nativeScript required", { code: "BAD_INPUT" });
+  if (!Array.isArray(nativeScript.scripts)) {
+    throw new MultisigError(
+      "nativeScript must have a nested scripts array (type: all|any|atLeast)",
+      { code: "UNSUPPORTED_SCRIPT" }
+    );
+  }
+
   const criteria = getScriptCriteria(nativeScript);
+  const eligibleKeys = (criteria.keys || []).map(normalizeKey);
+  const required = criteria.required ?? eligibleKeys.length;
+
   const supplied = keyHashesOf(signatures);
-
-  const validHashes = (criteria.keys || []).map((k) => k.toLowerCase());
-  const outstandingKeys = validHashes.filter((k) => !supplied.has(k));
-
-  const satisfied = validateScriptSignatures(nativeScript, signatures);
+  const satisfying = eligibleKeys.filter((k) => supplied.has(k));
+  const outstandingKeys = eligibleKeys.filter((k) => !supplied.has(k));
 
   return {
-    required: criteria.required ?? validHashes.length,
-    eligibleKeys: validHashes,
+    required,
+    eligibleKeys,
     outstandingKeys,
-    satisfied: Boolean(satisfied),
+    satisfied: satisfying.length >= required,
   };
 }
 
@@ -59,13 +74,13 @@ export function thresholdMet(nativeScript, signatures) {
 }
 
 /**
- * Return signatures with any duplicates (by key hash) removed. Later entries
- * win; callers typically append to an array and then call this.
+ * Deduplicate collected signatures by keyHash. Later entries replace
+ * earlier ones (the caller typically appends and then dedupes).
  */
 export function dedupeSignatures(signatures = []) {
   const seen = new Map();
   for (const sig of signatures) {
-    const key = (sig.key || sig.keyHash || "").toLowerCase();
+    const key = normalizeKey(sig.key || sig.keyHash);
     if (!key) continue;
     seen.set(key, sig);
   }
