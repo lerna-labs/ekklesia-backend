@@ -1,14 +1,28 @@
 import { Vote } from "../schema/Vote.js";
 import { UserCache } from "../schema/UserCache.js";
 import { Proposal } from "../schema/Proposal.js";
+import { Ballot } from "../schema/Ballot.js";
 import { Result } from "../schema/Result.js";
+
+// Runs every ~10 minutes (see crons/10min.js wiring). Produces provisional
+// tallies for every proposal that has recent activity.
+//
+// Source-aware behavior:
+//   - Legacy ballots: always tallied, stamped source: "provisional"
+//     (consistent with historical behavior — a final result is written when
+//     someone calls the archival rollup flow, out of scope for this cron).
+//   - Hydra ballots WITH provisionalResultsEnabled: tallied the same way;
+//     the Vote rows are populated by the broker's mirror (syncVoteRecords).
+//   - Hydra ballots WITHOUT provisionalResultsEnabled: skipped. A final
+//     result lands via writeFinalResult() when Hydra /finalize returns.
+//
+// An existing Result with source: "final" is never overwritten by this cron.
 
 export async function aggregateVotes() {
   const now = new Date();
   // Use 12 minutes to ensure overlap and catch all votes
   const twelveMinutesAgo = new Date(now.getTime() - 12 * 60 * 1000);
 
-  // Get all proposalIds that have votes submitted in the last 12 minutes
   const proposalIds = await Vote.find({
     submittedAt: { $gte: twelveMinutesAgo, $lt: now },
   }).distinct("proposalId");
@@ -18,33 +32,57 @@ export async function aggregateVotes() {
     return;
   }
 
+  const ballotCache = new Map();
+  async function loadBallot(id) {
+    const key = id.toString();
+    if (!ballotCache.has(key)) {
+      ballotCache.set(key, await Ballot.findById(id).lean());
+    }
+    return ballotCache.get(key);
+  }
+
   for (const proposalId of proposalIds) {
     console.log("Processing proposal:", proposalId.toString());
 
-    // get the proposal from the database with complete data
     const proposal = await Proposal.findById(proposalId);
     if (!proposal) {
       console.error(`Proposal not found: ${proposalId}`);
       continue;
     }
 
-    // Check if there are actually new votes in the last 12 minutes for this proposal
+    const ballot = await loadBallot(proposal.ballotId);
+    if (!ballot) {
+      console.warn(`Ballot missing for proposal ${proposalId} — skipping`);
+      continue;
+    }
+
+    if (ballot.source === "hydra" && !ballot.provisionalResultsEnabled) {
+      console.log(
+        `Skipping Hydra proposal ${proposalId}: provisional results disabled`
+      );
+      continue;
+    }
+
+    const existing = await Result.findOne({ proposalId }).lean();
+    if (existing?.source === "final") {
+      console.log(`Skipping proposal ${proposalId}: already finalized`);
+      continue;
+    }
+
     const recentVotesCount = await Vote.countDocuments({
-      proposalId: proposalId,
+      proposalId,
       submittedAt: { $gte: twelveMinutesAgo, $lt: now },
     });
-
     if (recentVotesCount === 0) {
       console.log(`Skipping proposal ${proposalId}: no recent votes`);
       continue;
     }
 
     const voteAggregation = await Vote.aggregate([
-      // Add time filter to only aggregate ALL votes for proposals with recent activity
       { $match: { proposalId } },
       {
         $lookup: {
-          from: "usercaches", // collection name in MongoDB
+          from: "usercaches",
           let: { userId: "$userId", ballotId: proposal.ballotId },
           pipeline: [
             {
@@ -63,13 +101,11 @@ export async function aggregateVotes() {
       },
       {
         $addFields: {
-          // Extract the votingPower directly from the first element of voterData array
           votingPower: {
             $ifNull: [{ $arrayElemAt: ["$voterData.votingPower", 0] }, 1],
           },
         },
       },
-      // Unwind the submittedVote array to handle multiple vote options
       {
         $unwind: {
           path: "$submittedVote",
@@ -83,51 +119,29 @@ export async function aggregateVotes() {
           votingPower: { $sum: "$votingPower" },
         },
       },
-      {
-        $project: {
-          _id: 1,
-          count: 1,
-          votingPower: 1,
-        },
-      },
+      { $project: { _id: 1, count: 1, votingPower: 1 } },
     ]);
 
-    // Add console logging to help debug
-    console.log(
-      "Vote aggregation results:",
-      JSON.stringify(voteAggregation, null, 2)
-    );
-
-    // restructure results with labels
     const resultsWithLabels = proposal.voteOptions.map((option) => {
-      // Find if there's a matching result from the aggregation
-      const matchingResult = voteAggregation.find(
-        (result) => result._id == option.id
-      );
-
+      const match = voteAggregation.find((r) => r._id == option.id);
       return {
         id: option.id,
         label: option.label,
-        count: matchingResult ? matchingResult.count : 0,
-        votingPower: matchingResult ? matchingResult.votingPower : 0,
+        count: match ? match.count : 0,
+        votingPower: match ? match.votingPower : 0,
       };
     });
 
-    // add abstain to overall results when allowed (aggregation _id may be string "abstain" from $group by submittedVote)
     if (proposal.abstainAllowed !== false) {
-      const matchingAbstainResult = voteAggregation.find(
-        (result) => String(result._id) === "abstain"
-      );
-
+      const abstain = voteAggregation.find((r) => String(r._id) === "abstain");
       resultsWithLabels.push({
         id: "abstain",
         label: "Abstain",
-        count: matchingAbstainResult ? matchingAbstainResult.count : 0,
-        votingPower: matchingAbstainResult ? matchingAbstainResult.votingPower : 0,
+        count: abstain ? abstain.count : 0,
+        votingPower: abstain ? abstain.votingPower : 0,
       });
     }
 
-    // By-group aggregation: same pipeline + voterGroup, group by voterGroup and vote value
     const byGroupAggregation = await Vote.aggregate([
       { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
       {
@@ -169,7 +183,6 @@ export async function aggregateVotes() {
       },
     ]);
 
-    // Build resultsByGroup: { "<voterGroup>": { results: [{ id, label, count, votingPower }], totalVotes } }
     const resultsByGroup = {};
     for (const row of byGroupAggregation) {
       const groupKey = row._id.voterGroup;
@@ -177,7 +190,11 @@ export async function aggregateVotes() {
         resultsByGroup[groupKey] = { results: [], totalVotes: 0 };
       }
       const option = proposal.voteOptions.find((o) => o.id == row._id.voteValue);
-      const label = option ? option.label : (row._id.voteValue === "abstain" ? "Abstain" : String(row._id.voteValue));
+      const label = option
+        ? option.label
+        : row._id.voteValue === "abstain"
+        ? "Abstain"
+        : String(row._id.voteValue);
       resultsByGroup[groupKey].results.push({
         id: row._id.voteValue,
         label,
@@ -204,15 +221,68 @@ export async function aggregateVotes() {
       }
     }
 
-    // upsert the result into the database (results + resultsByGroup)
     await Result.updateOne(
       { proposalId },
-      { results: resultsWithLabels, resultsByGroup },
+      {
+        $set: {
+          results: resultsWithLabels,
+          resultsByGroup,
+          source: "provisional",
+          ballotSource: ballot.source,
+          ballotId: ballot._id,
+        },
+      },
       { upsert: true }
     );
 
-    console.log(`Results for proposal ${proposalId} updated successfully`);
+    console.log(
+      `[provisional] results for proposal ${proposalId} (${ballot.source}) updated`
+    );
   }
 
   console.log(`Finished processing ${proposalIds.length} proposals`);
+}
+
+/**
+ * Write final results for every proposal under a ballot. Called from the
+ * admin /finalize handler after Hydra /finalize returns. Stamps source:
+ * "final" and finalizedAt; unconditionally overwrites any provisional
+ * tally.
+ *
+ * @param {string|ObjectId} ballotId
+ * @param {Object} [hydraData]  — whatever Hydra /finalize returned
+ */
+export async function writeFinalResult(ballotId, hydraData = {}) {
+  const ballot = await Ballot.findById(ballotId).lean();
+  if (!ballot) throw new Error(`Ballot ${ballotId} not found`);
+
+  const proposals = await Proposal.find({ ballotId }).lean();
+  const perProposalTallies = hydraData?.tallies || {};
+
+  for (const proposal of proposals) {
+    const hydraForProposal = perProposalTallies[proposal._id.toString()] || null;
+
+    // Fall back to the current provisional tally if Hydra didn't supply a
+    // per-proposal breakdown — the last provisional run is the best record
+    // we have locally.
+    const provisional = await Result.findOne({ proposalId: proposal._id }).lean();
+
+    await Result.updateOne(
+      { proposalId: proposal._id },
+      {
+        $set: {
+          results: hydraForProposal?.results || provisional?.results || [],
+          resultsByGroup:
+            hydraForProposal?.resultsByGroup || provisional?.resultsByGroup || null,
+          source: "final",
+          ballotSource: ballot.source,
+          ballotId: ballot._id,
+          finalizedAt: new Date(),
+          hydraEvidenceCid: hydraData?.evidenceCid || null,
+        },
+      },
+      { upsert: true }
+    );
+    console.log(`[final] results for proposal ${proposal._id} stamped`);
+  }
 }

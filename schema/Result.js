@@ -35,6 +35,29 @@ const resultSchema = new Schema(
       type: Object,
       required: false,
     },
+    source: {
+      type: String,
+      enum: ["provisional", "final"],
+      default: "provisional",
+    },
+    ballotSource: {
+      type: String,
+      enum: ["legacy", "hydra"],
+      default: "legacy",
+    },
+    ballotId: {
+      type: Schema.Types.ObjectId,
+      ref: "Ballot",
+      required: false,
+    },
+    finalizedAt: {
+      type: Date,
+      default: null,
+    },
+    hydraEvidenceCid: {
+      type: String,
+      default: null,
+    },
     createdAt: {
       type: Date,
       default: Date.now,

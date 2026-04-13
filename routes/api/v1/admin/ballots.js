@@ -18,6 +18,7 @@ import {
   forEndpoint,
   HydraClientError,
 } from "../../../../helper/hydraClient.js";
+import { writeFinalResult } from "../../../../crons/10minAggregateVotes.js";
 
 const router = Router();
 
@@ -100,8 +101,32 @@ function lifecycleRoute(method) {
 
 router.post("/:id/start", lifecycleRoute("start"));
 router.post("/:id/close", lifecycleRoute("close"));
-router.post("/:id/finalize", lifecycleRoute("finalize"));
-router.post("/:id/settle", lifecycleRoute("settle"));
+
+router.post("/:id/finalize", async (req, res) => {
+  try {
+    const client = await forBallot(req.params.id);
+    const data = await client.finalize(req.body || {});
+    await writeFinalResult(req.params.id, data).catch((err) => {
+      console.warn(`[admin/finalize] writeFinalResult failed: ${err.message}`);
+    });
+    return res.json({ status: "success", hydra: data });
+  } catch (err) {
+    return handleHydraError(err, res);
+  }
+});
+
+router.post("/:id/settle", async (req, res) => {
+  try {
+    const client = await forBallot(req.params.id);
+    const data = await client.settle(req.body || {});
+    await writeFinalResult(req.params.id, data).catch((err) => {
+      console.warn(`[admin/settle] writeFinalResult failed: ${err.message}`);
+    });
+    return res.json({ status: "success", hydra: data });
+  } catch (err) {
+    return handleHydraError(err, res);
+  }
+});
 
 router.get("/:id/head-info", async (req, res) => {
   try {
