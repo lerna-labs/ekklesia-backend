@@ -41,8 +41,12 @@ import {
 import * as nonceManager from "../../../helper/nonceManager.js";
 import { forBallot, HydraClientError } from "../../../helper/hydraClient.js";
 import { credentialHrp } from "../../../helper/voterCredential.js";
+import { voteWriteLimiter } from "../../../helper/rateLimiters.js";
 
 const router = Router();
+
+// Apply the write-path limiter to every mutating broker endpoint.
+router.use(voteWriteLimiter);
 
 function requireSession(req, res) {
   const t = verifyToken(req);

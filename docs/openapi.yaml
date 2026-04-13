@@ -2,11 +2,32 @@ openapi: 3.0.3
 info:
   title: Ekklesia Voting Backend API
   description: |
-    API for the Ekklesia voting system backend. This API provides endpoints for managing ballots, proposals, votes, comments, and voter authentication.
-    
+    API for the Ekklesia voting system backend.
+
+    ## Versioning
+
+    - **`/api/v0`** — legacy, read-only archival surface. Writes to
+      ballot/proposal/vote/voter/transaction/dashboard resources return
+      HTTP 410 Gone. Session, comments, and FAQs remain live here.
+    - **`/api/v1`** — Hydra-backed live surface (broker endpoints, admin
+      lifecycle, unified ballot listing, public integrator endpoints).
+      See `openapi.v1.yaml` for the full v1 spec.
+
+    ## Unified listing
+
+    `GET /api/v1/ballots` aggregates across sources (legacy, hydra, future)
+    via pluggable adapters. Each row includes a `source` discriminator so
+    clients can render conditionally.
+
     ## Authentication
-    Most endpoints require authentication via JWT token. The token is obtained through the session endpoints and is sent via HTTP-only cookie or Authorization header.
-    
+
+    - Voter sessions: JWT via HTTP-only cookie or Authorization header.
+    - Admin (`/api/v1/admin/*`): same JWT, plus `role === "admin"` claim
+      or userId listed in `ADMIN_USER_IDS` env.
+    - Public (`/api/v1/public/*`): API key via `Authorization: Bearer <key>`
+      or `x-api-key`. Keys are scoped (`read:ballots`, `read:results`) and
+      rate-limited per key.
+
     ## Session (unified)
     A single set of session endpoints handles both standard and multisig authentication. For multisig, include `scriptAddress` in the request body on POST (nonce) and PUT (verify). Nonce and verify requests are rate-limited.
   version: 0.5.33

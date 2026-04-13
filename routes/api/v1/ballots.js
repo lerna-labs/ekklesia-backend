@@ -11,6 +11,30 @@ import { listUnified, getUnified } from "../../../helper/ballotAdapters/index.js
 
 const router = Router();
 
+/**
+ * State-aware cache TTL (seconds). Results are served separately via
+ * /api/v1/results/*, so a ballot's definition is effectively static for
+ * its lifetime — the main reason to invalidate is a status transition
+ * (upcoming → live → closed) or admin metadata changes.
+ */
+function ballotMaxAge(status) {
+  switch (status) {
+    case "closed": return 3600;   // 1h — changes are extremely rare
+    case "live":   return 120;    // 2m — rolling status + window fields matter
+    case "upcoming":
+    default:       return 30;     // 30s — admin may still be editing
+  }
+}
+
+function applyBallotCache(res, doc) {
+  if (!doc) {
+    res.set("Cache-Control", "no-store");
+    return;
+  }
+  const maxAge = ballotMaxAge(doc.status);
+  res.set("Cache-Control", `public, max-age=${maxAge}`);
+}
+
 router.get("/", async (req, res) => {
   const { voterType, status, search, page = 1, limit = 10, source } = req.query;
 
@@ -85,6 +109,9 @@ router.get("/", async (req, res) => {
       limit: limitNum,
       source,
     });
+    // Listing cache: 60s — long enough to matter, short enough that a new
+    // ballot or status flip lands reasonably quickly.
+    res.set("Cache-Control", "public, max-age=60");
     return res.status(200).json({ data: result.items, pagination: result.pagination });
   } catch (error) {
     console.error("Error fetching unified ballots:", error);
@@ -101,6 +128,7 @@ router.get("/:id", async (req, res) => {
     if (!doc) {
       return res.status(404).json({ status: "error", message: "Ballot not found" });
     }
+    applyBallotCache(res, doc);
     return res.status(200).json({ data: doc });
   } catch (error) {
     console.error("Error fetching ballot:", error);

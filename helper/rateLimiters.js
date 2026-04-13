@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 
 /**
  * Rate limiter for nonce requests (POST /session).
@@ -25,6 +25,38 @@ export const sessionVerificationLimiter = rateLimit({
   message: {
     status: "error",
     message: "Too many authentication attempts. Please try again later.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Write-path limit for v1 broker endpoints (draft/signature/submit).
+// Session-authenticated, so keyed by userId when available — falls back to IP.
+export const voteWriteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: (req, res) => req.auth?.userId || ipKeyGenerator(req, res),
+  message: {
+    status: "error",
+    message: "Too many vote operations. Slow down.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Per-API-key bucket for the public read surface. Honors a per-key override
+// stored on ApiKey.rateLimit when set; otherwise uses env defaults or
+// 120 requests per minute.
+export const publicApiLimiter = rateLimit({
+  windowMs: Number(process.env.PUBLIC_API_WINDOW_MS) || 60 * 1000,
+  max: (req) =>
+    req.apiKey?.rateLimit?.max ||
+    Number(process.env.PUBLIC_API_MAX) ||
+    120,
+  keyGenerator: (req, res) => req.apiKey?.id || ipKeyGenerator(req, res),
+  message: {
+    status: "error",
+    message: "Public API rate limit exceeded for this key.",
   },
   standardHeaders: true,
   legacyHeaders: false,
