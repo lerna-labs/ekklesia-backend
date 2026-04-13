@@ -92,6 +92,12 @@ function makeUserCaches(ballotId, list) {
   }));
 }
 
+// Probe the URI once at suite boot. If the server isn't reachable within a
+// short window (e.g. no local Mongo, Docker service name like `mongo` that
+// only resolves inside a container), skip the suite and emit a clear
+// warning — do not hang the whole test run.
+let mongoReady = false;
+
 const runDescribe = mongoUri ? describe : describe.skip;
 runDescribe("aggregateVotes grouped results", () => {
   const runId = Date.now();
@@ -99,11 +105,20 @@ runDescribe("aggregateVotes grouped results", () => {
   beforeAll(async () => {
     if (!mongoUri) return;
     mongoose.set("strictQuery", true);
-    await mongoose.connect(mongoUri);
-  });
+    try {
+      await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 2000 });
+      mongoReady = true;
+    } catch (err) {
+      console.warn(
+        `[aggregateVotes.grouped] skipping: MongoDB unreachable at ${mongoUri} (${err.message}). ` +
+          `Start a local Mongo (docs repo: 'cd ~/ekklesia/docs && docker compose -f docker-compose.test.yml up -d mongo') ` +
+          `or set MONGODB_URI_TEST to a reachable server.`
+      );
+    }
+  }, 10_000);
 
   afterAll(async () => {
-    if (!mongoUri) return;
+    if (!mongoReady) return;
     try {
       const ballots = await Ballot.find({ title: new RegExp("^" + BALLOT_TITLE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + runId) }).lean();
       const ballotIds = ballots.map((b) => b._id);
@@ -124,7 +139,14 @@ runDescribe("aggregateVotes grouped results", () => {
     }
   });
 
-  test("two groups (drep/pool): overall and resultsByGroup", async () => {
+  // Wrapper that skips a test body when Mongo isn't available.
+  const maybeTest = (name, fn) =>
+    test(name, async () => {
+      if (!mongoReady) return;
+      await fn();
+    });
+
+  maybeTest("two groups (drep/pool): overall and resultsByGroup", async () => {
     const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId));
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
 
@@ -185,7 +207,7 @@ runDescribe("aggregateVotes grouped results", () => {
     expect(pool.results.find((r) => r.id === 2)).toEqual({ id: 2, label: "No", count: 3, votingPower: 12 });
   });
 
-  test("abstain vote: abstain in results and in drep group", async () => {
+  maybeTest("abstain vote: abstain in results and in drep group", async () => {
     const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + " abstain"));
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: true }));
 
@@ -244,7 +266,7 @@ runDescribe("aggregateVotes grouped results", () => {
     expect(poolAbstain.votingPower).toBe(0);
   });
 
-  test("default group: voter with no group appears in default group", async () => {
+  maybeTest("default group: voter with no group appears in default group", async () => {
     const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + " default"));
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
 
