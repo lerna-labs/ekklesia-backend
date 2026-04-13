@@ -17,6 +17,7 @@
   "description": "Ekklesia Voting Backend",
   "dependencies": {
     "@emurgo/cardano-serialization-lib-nodejs": "^15.0.3",
+    "@lerna-labs/ekklesia-helpers": "^0.1.0",
     "@meshsdk/common": "^1.9.0-beta.100",
     "@meshsdk/core": "^1.9.0-beta.100",
     "autocannon": "^8.0.0",
@@ -28,8 +29,8 @@
     "cors": "^2.8.5",
     "dayjs": "^1.11.19",
     "dotenv": "^17.2.3",
-    "express-rate-limit": "^8.3.1",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.3.1",
     "fast-sort": "^3.4.1",
     "jsonwebtoken": "^9.0.3",
     "merkletreejs": "^0.6.0",
