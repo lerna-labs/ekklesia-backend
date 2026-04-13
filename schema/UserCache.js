@@ -46,7 +46,14 @@ const userCacheSchema = new Schema(
     voterGroup: {
       type: String,
       default: "default",
-    }
+    },
+    // Last committed Hydra voter-token nonce. Reserved optimistically during
+    // draft creation and committed on Hydra acceptance; cleared/rolled back on
+    // failure. Null for legacy ballots.
+    nonce: {
+      type: Number,
+      default: null,
+    },
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt

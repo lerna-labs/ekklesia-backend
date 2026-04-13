@@ -11,6 +11,7 @@ import {
   checkDatabaseConnectionMW,
 } from "./helper/dbManager.js";
 import cookieParser from "cookie-parser";
+import { v0Freeze } from "./helper/v0Freeze.js";
 
 // Initialize console with timestamps
 initializeConsole();
@@ -42,6 +43,7 @@ app.use(
   })
 );
 app.use("/api", checkDatabaseConnectionMW); // Check database connection for all API routes
+app.use("/api/v0", v0Freeze); // Return 410 for legacy-ballot write endpoints; reads pass through
 
 // Start server
 async function startServer() {

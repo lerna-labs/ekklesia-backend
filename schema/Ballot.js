@@ -115,6 +115,36 @@ const ballotSchema = new Schema(
       default: "upcoming",
       required: true,
     },
+    source: {
+      type: String,
+      enum: ["legacy", "hydra"],
+      default: "legacy",
+      required: true,
+    },
+    hydraEndpoint: {
+      type: String,
+      default: null,
+    },
+    hydraHeadId: {
+      type: String,
+      default: null,
+    },
+    ballotCid: {
+      type: String,
+      default: null,
+    },
+    instancePolicyId: {
+      type: String,
+      default: null,
+    },
+    provisionalResultsEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    provisionalResultsConfig: {
+      type: Object,
+      default: null,
+    },
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
@@ -139,6 +169,7 @@ const ballotSchema = new Schema(
 // Indexes for faster queries
 ballotSchema.index({ title: 1 });
 ballotSchema.index({ voterType: 1 });
+ballotSchema.index({ source: 1 });
 
 const Ballot = mongoose.model("Ballot", ballotSchema);
 export { Ballot };

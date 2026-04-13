@@ -59,7 +59,49 @@ const voteSchema = new Schema(
     submittedAt: {
       type: Date,
       required: false,
-    }
+    },
+    // Hydra integration fields — null for legacy votes.
+    nonce: {
+      type: Number,
+      default: null,
+    },
+    voteHash: {
+      type: String,
+      default: null,
+    },
+    hydraTxId: {
+      type: String,
+      default: null,
+    },
+    hydraProof: {
+      type: Object,
+      default: null,
+    },
+    ipfsCid: {
+      type: String,
+      default: null,
+    },
+    confirmedAt: {
+      type: Date,
+      default: null,
+    },
+    signatures: {
+      type: Array,
+      default: [],
+    },
+    status: {
+      type: String,
+      enum: [
+        "legacy",
+        "draft",
+        "awaiting-signatures",
+        "awaiting-submission",
+        "broker-submitted",
+        "hydra-confirmed",
+        "failed",
+      ],
+      default: "legacy",
+    },
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
@@ -72,6 +114,7 @@ voteSchema.index({ userId: 1 });
 voteSchema.index({ proposalId: 1 });
 voteSchema.index({ ballotId: 1 });
 voteSchema.index({ proposalId: 1, userId: 1 }, { unique: true });
+voteSchema.index({ ballotId: 1, status: 1 });
 
 const Vote = mongoose.model("Vote", voteSchema);
 export { Vote };
