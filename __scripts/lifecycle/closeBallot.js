@@ -128,42 +128,56 @@ if (["FINAL", "Final"].includes(headStatus)) {
   process.exit(0);
 }
 
-// Orphaned: hydra-node was wiped or the head was never opened for this
-// ballot. There's nothing to burn/finalize/close upstream — /settle/burn
-// will 500 because the snapshot doesn't exist. Just mark the Ballot doc
-// locally so the unified listing shows it as closed.
+// Possibly-orphaned: head-info says Idle/Unknown. But the middleware's
+// hydraMonitor.headInfo can lag behind reality (WebSocket Greetings not
+// yet processed), so don't jump straight to orphan-cleanup. Cross-check
+// by counting confirmed VotePackages for this ballot — if any exist,
+// the head MUST be live upstream and /head-info is just stale.
 if (["Idle", "Unknown", null, undefined, "(unknown)"].includes(headStatus)) {
-  console.log(
-    "[closeBallot] head is Idle — the hydra-node has no record of this ballot's head.\n" +
-      "               marking the Mongo ballot doc closed locally (no Hydra calls)."
-  );
-  const mongoose = (await import("mongoose")).default;
-  const { Ballot } = await import("../../schema/Ballot.js");
   const { connectToDatabase, disconnectFromDatabase } = await import(
     "../../helper/dbManager.js"
   );
+  const { VotePackage } = await import("../../schema/VotePackage.js");
   await connectToDatabase();
-  const updated = await Ballot.findByIdAndUpdate(
-    flags.ballotId,
-    {
-      $set: {
-        status: "closed",
-        hydraHeadStatus: "Final",
-      },
-    },
-    { new: true }
-  ).lean();
+  const confirmedVotes = await VotePackage.countDocuments({
+    ballotId: flags.ballotId,
+    status: "hydra-confirmed",
+  });
   await disconnectFromDatabase();
-  if (!updated) {
-    console.error(`[closeBallot] Ballot ${flags.ballotId} not found in Mongo`);
-    process.exit(1);
+
+  if (confirmedVotes > 0) {
+    console.log(
+      `[closeBallot] head-info says "${headStatus}" but ${confirmedVotes} ` +
+        `VotePackage(s) are hydra-confirmed on this ballot — the head IS live ` +
+        `and the middleware cache is stale. Proceeding with the normal ` +
+        `burn → finalize → close sequence.`
+    );
+    // Fall through to the normal sequence below.
+  } else {
+    console.log(
+      "[closeBallot] head is Idle and no confirmed votes recorded — this ballot's\n" +
+        "               head was truly never opened or the hydra-node was wiped.\n" +
+        "               marking the Mongo ballot doc closed locally (no Hydra calls)."
+    );
+    const { Ballot } = await import("../../schema/Ballot.js");
+    await connectToDatabase();
+    const updated = await Ballot.findByIdAndUpdate(
+      flags.ballotId,
+      { $set: { status: "closed", hydraHeadStatus: "Final" } },
+      { new: true }
+    ).lean();
+    await disconnectFromDatabase();
+    if (!updated) {
+      console.error(`[closeBallot] Ballot ${flags.ballotId} not found in Mongo`);
+      process.exit(1);
+    }
+    console.log("[closeBallot] done — ballot doc marked status=closed, hydraHeadStatus=Final");
+    console.log(
+      "  Note: if you want to also clean up L1 tokens, call Hydra /prepare/cancel\n" +
+        "  for this ballot's namespace before the timelock expires."
+    );
+    process.exit(0);
   }
-  console.log("[closeBallot] done — ballot doc marked status=closed, hydraHeadStatus=Final");
-  console.log(
-    "  Note: if you want to also clean up L1 tokens, call Hydra /prepare/cancel\n" +
-      "  for this ballot's namespace before the timelock expires."
-  );
-  process.exit(0);
 }
 
 // Step 1: burn — loop until remaining === 0
