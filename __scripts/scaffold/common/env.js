@@ -6,13 +6,16 @@ import { dirname, join } from "path";
 import dotenv from "dotenv";
 import process from "process";
 import { connectToDatabase, disconnectFromDatabase } from "../../../helper/dbManager.js";
+import { loadLocalOverrides } from "../../../helper/envOverlay.js";
 
 export async function bootstrap() {
   const env = process.env.NODE_ENV || "development";
   const here = dirname(fileURLToPath(import.meta.url));
-  const envPath = join(here, "..", "..", "..", `.env.${env}`);
+  const repoRoot = join(here, "..", "..", "..");
+  const envPath = join(repoRoot, `.env.${env}`);
   dotenv.config({ path: envPath });
   console.info(`[scaffold] loaded env from ${envPath}`);
+  loadLocalOverrides(repoRoot);
   await connectToDatabase();
   return { env };
 }

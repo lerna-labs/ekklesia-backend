@@ -1,9 +1,11 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-dotenv.config({
-    path: path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", ".env.development"),
-});
+const __repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+dotenv.config({ path: path.join(__repoRoot, ".env.development") });
+// Overlay .env.local if present so developers can override API_URL/API_TOKEN
+// without editing the container-written .env.development.
+dotenv.config({ path: path.join(__repoRoot, ".env.local"), override: true });
 
 import {verifySignature} from "../verifySignature";
 

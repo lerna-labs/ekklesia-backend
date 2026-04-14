@@ -91,6 +91,34 @@ describe("hydraClient transport", () => {
     expect(JSON.parse(capturedBody)).toEqual({ voterId: "drep1xxx", nonce: 2 });
   });
 
+  test("mutating POSTs are one-shot by default (no retry on 5xx)", async () => {
+    // /prepare, /vote, /start, etc. are not idempotent on Hydra — retrying
+    // a dropped 5xx can double-mint tokens or resubmit a vote. The client
+    // must NOT retry these by default.
+    const fetchSpy = jest.fn(async () => upstreamError(503, { message: "overloaded" }));
+    global.fetch = fetchSpy;
+    const client = forEndpoint("http://hydra.example"); // default retries
+    await expect(client.prepare({})).rejects.toBeInstanceOf(HydraClientError);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    fetchSpy.mockClear();
+    await expect(client.vote({})).rejects.toBeInstanceOf(HydraClientError);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test("read-only /ledger POST is still retry-safe", async () => {
+    let calls = 0;
+    global.fetch = jest.fn(async () => {
+      calls++;
+      if (calls < 3) return upstreamError(503, { message: "overloaded" });
+      return ok({ utxos: [], admin_wallet: "addr1..." });
+    });
+    const client = forEndpoint("http://hydra.example");
+    const data = await client.ledger({});
+    expect(data).toEqual({ utxos: [], admin_wallet: "addr1..." });
+    expect(calls).toBe(3); // initial + 2 retries
+  });
+
   test("network failure (thrown fetch) wraps as HydraClientError with cause", async () => {
     global.fetch = jest.fn(async () => {
       throw new Error("econnreset");

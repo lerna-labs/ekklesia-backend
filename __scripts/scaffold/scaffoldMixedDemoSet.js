@@ -12,14 +12,13 @@
 import process from "process";
 import { bootstrap, teardown, parseArgs } from "./common/env.js";
 import { upsertScaffoldBallot } from "./common/ballotFactory.js";
+import { buildPrepareBody } from "./common/hydraPrepare.js";
 import { VOTERS } from "./common/fixtures.js";
 import { User } from "../../schema/User.js";
 import { UserCache } from "../../schema/UserCache.js";
 import { forEndpoint, HydraClientError } from "../../helper/hydraClient.js";
 
 const { flags } = parseArgs();
-const endpoint = flags.endpoint || process.env.HYDRA_DEFAULT_ENDPOINT;
-const skipHydra = Boolean(flags["skip-hydra"]) || !endpoint;
 
 const LEGACY_PLAN = [
   { flavor: "dreps", state: "closed", index: 1 },
@@ -31,7 +30,12 @@ const HYDRA_PLAN = [
   { flavor: "stake", state: "upcoming", index: 1 },
 ];
 
+// bootstrap() loads .env.development + .env.local, so read HYDRA_DEFAULT_ENDPOINT
+// AFTER bootstrap completes — reading before would miss env-file values.
 await bootstrap();
+
+const endpoint = flags.endpoint || process.env.HYDRA_DEFAULT_ENDPOINT;
+const skipHydra = Boolean(flags["skip-hydra"]) || !endpoint;
 
 // 1. Voters + base profiles
 for (const v of VOTERS) {
@@ -73,18 +77,16 @@ for (const spec of HYDRA_PLAN) {
 
   try {
     const client = forEndpoint(endpoint);
-    const data = await client.prepare({
-      title: b.title,
-      description: b.description,
-      votePeriodStart: b.votePeriodStart,
-      votePeriodEnd: b.votePeriodEnd,
-    });
+    const body = await buildPrepareBody(b);
+    const data = await client.prepare(body);
     b.hydraEndpoint = endpoint;
-    if (data?.ballotCid) b.ballotCid = data.ballotCid;
-    if (data?.instancePolicyId) b.instancePolicyId = data.instancePolicyId;
+    if (data?.ballotCid || data?.ballotIpfsCid)
+      b.ballotCid = data.ballotCid || data.ballotIpfsCid;
+    if (data?.instancePolicyId || data?.policyId)
+      b.instancePolicyId = data.instancePolicyId || data.policyId;
     if (data?.hydraHeadId) b.hydraHeadId = data.hydraHeadId;
     await b.save();
-    console.log(`[mixed] hydra   ${b.title} — prepared`);
+    console.log(`[mixed] hydra   ${b.title} — prepared (namespace=${body.namespace})`);
   } catch (err) {
     const msg = err instanceof HydraClientError ? err.message : err.stack || err.message;
     console.warn(`[mixed] hydra   ${b.title} — /prepare FAILED: ${msg}`);

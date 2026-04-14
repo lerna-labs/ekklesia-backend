@@ -68,8 +68,11 @@ export function toUnified(doc) {
     hydra: {
       endpoint: doc.hydraEndpoint ?? null,
       headId: doc.hydraHeadId ?? null,
+      headStatus: doc.hydraHeadStatus ?? null,
       ballotCid: doc.ballotCid ?? null,
       instancePolicyId: doc.instancePolicyId ?? null,
+      prepareTxHash: doc.prepareTxHash ?? null,
+      prepareTxSubmittedAt: doc.prepareTxSubmittedAt ?? null,
     },
     provisionalResultsEnabled: doc.provisionalResultsEnabled ?? false,
     createdAt: doc.createdAt,

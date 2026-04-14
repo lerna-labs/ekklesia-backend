@@ -5,6 +5,7 @@ import { dirname, join } from "path";
 import cors from "cors";
 import { initializeConsole } from "./helper/consoleManager.js";
 import { loadEnvironmentVariables } from "./helper/envLoader.js";
+import { loadLocalOverrides } from "./helper/envOverlay.js";
 import {
   connectToDatabase,
   isDatabaseConnected,
@@ -16,11 +17,14 @@ import { v0Freeze } from "./helper/v0Freeze.js";
 // Initialize console with timestamps
 initializeConsole();
 
-// Load environment variables
+// Load environment variables. The base file (.env.${NODE_ENV}) is loaded
+// first; .env.local then overlays host-owned overrides on top so local
+// edits survive when the docs docker-compose rewrites .env.development.
 try {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
   loadEnvironmentVariables(__dirname);
+  loadLocalOverrides(__dirname);
 } catch (error) {
   console.warn(`Error loading environment variables: ${error.message}`);
   process.exit(1);

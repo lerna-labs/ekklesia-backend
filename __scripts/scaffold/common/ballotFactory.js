@@ -27,21 +27,40 @@ const VALIDATION_SCRIPTS = {
   },
 };
 
+const MINUTE = 60 * 1000;
 const DAY = 24 * 60 * 60 * 1000;
+
+// Minimum buffer between "now" and the voting window open. Hydra's minting
+// policy is timelocked `before(votingOpenSlot)` — once that slot is reached
+// the policy is permanently locked and `/prepare` cannot mint the ballot
+// tokens. 4 minutes leaves enough time for the prepare tx to confirm on-chain
+// before the window opens.
+const HYDRA_PREPARE_BUFFER_MS = 4 * MINUTE;
 
 /**
  * Compute vote period bounds for a given state.
- * upcoming: starts in the future
- * live:     started in the past, ends in the future
- * closed:   ended in the past
+ *
+ * @param {"upcoming"|"live"|"closed"} state
+ * @param {"legacy"|"hydra"} [source="legacy"] — Hydra ballots must have a
+ *   future votePeriodStart (timelock requirement) so `live` gets a short
+ *   buffer instead of a past start, and `closed` is rejected.
  */
-function windowForState(state, now = Date.now()) {
+function windowForState(state, source = "legacy", now = Date.now()) {
   switch (state) {
     case "upcoming":
       return { votePeriodStart: new Date(now + 1 * DAY), votePeriodEnd: new Date(now + 8 * DAY) };
     case "live":
-      return { votePeriodStart: new Date(now - 1 * DAY), votePeriodEnd: new Date(now + 6 * DAY) };
+      // Legacy can back-date to pretend the ballot is already running;
+      // Hydra must keep the window ahead of the mint tx confirmation.
+      return source === "hydra"
+        ? { votePeriodStart: new Date(now + HYDRA_PREPARE_BUFFER_MS), votePeriodEnd: new Date(now + 7 * DAY) }
+        : { votePeriodStart: new Date(now - 1 * DAY), votePeriodEnd: new Date(now + 6 * DAY) };
     case "closed":
+      if (source === "hydra") {
+        throw new Error(
+          "Cannot scaffold a 'closed' Hydra ballot: the mint-policy timelock requires votePeriodStart to be in the future at /prepare time. Run the full lifecycle (prepare → start → close/finalize) to produce a closed Hydra ballot, or use source=legacy for a pre-closed archive row."
+        );
+      }
       return { votePeriodStart: new Date(now - 14 * DAY), votePeriodEnd: new Date(now - 7 * DAY) };
     default:
       throw new Error(`Unknown ballot state: ${state}`);
@@ -100,21 +119,17 @@ export async function upsertScaffoldBallot({
   if (!flavorCfg) throw new Error(`Unknown validation flavor: ${flavor}`);
 
   const title = `${titlePrefix}/${source}/${flavor}/${state}#${String(index).padStart(3, "0")}`;
-  const window = windowForState(state);
+  const window = windowForState(state, source);
 
-  const payload = {
+  const setFields = {
     title,
     description: `Scaffolded ${source} ballot (${flavor}, ${state}).`,
     voterType: flavorCfg.voterType,
     voterDescription: `Scaffold voters — ${flavor}`,
     voteWeighted: true,
     voteFilters: true,
-    votePeriodStart: window.votePeriodStart,
-    votePeriodEnd: window.votePeriodEnd,
     voteAuthorityId: `scaffold-authority`,
     voteAuthorityAddress: `scaffold-address`,
-    proposalPeriodStart: new Date(Date.now() - 30 * DAY),
-    proposalPeriodEnd: new Date(Date.now() - 15 * DAY),
     voterValidationScript: flavorCfg.script,
     rollupScript: "rollupBallot.js",
     startupScript: flavorCfg.startup,
@@ -123,11 +138,27 @@ export async function upsertScaffoldBallot({
     provisionalResultsEnabled,
   };
 
-  const ballot = await Ballot.findOneAndUpdate({ title }, { $set: payload }, {
-    upsert: true,
-    new: true,
-    setDefaultsOnInsert: true,
-  });
+  // Window handling — the voting window becomes mint-policy-anchored once
+  // /prepare succeeds (hydraEndpoint set). Until then it's safe to refresh
+  // on each run so `live` ballots don't end up with a stale past start if
+  // the first attempt failed.
+  const existing = await Ballot.findOne({ title }).lean();
+  const anchored = Boolean(existing?.hydraEndpoint);
+  if (!anchored) {
+    setFields.votePeriodStart = window.votePeriodStart;
+    setFields.votePeriodEnd = window.votePeriodEnd;
+  }
+
+  const setOnInsertFields = {
+    proposalPeriodStart: new Date(Date.now() - 30 * DAY),
+    proposalPeriodEnd: new Date(Date.now() - 15 * DAY),
+  };
+
+  const ballot = await Ballot.findOneAndUpdate(
+    { title },
+    { $set: setFields, $setOnInsert: setOnInsertFields },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
 
   // Proposals: upsert-by-title-within-ballot for idempotence.
   for (const p of defaultProposals(ballot._id)) {

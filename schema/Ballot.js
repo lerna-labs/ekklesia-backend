@@ -129,11 +129,65 @@ const ballotSchema = new Schema(
       type: String,
       default: null,
     },
+    // Raw Hydra head state, mirrored from /head-info. Distinct from
+    // `status` above, which is the user-facing ballot lifecycle.
+    hydraHeadStatus: {
+      type: String,
+      enum: [
+        null,
+        "Idle",
+        "Initializing",
+        "Open",
+        "Closing",
+        "Closed",
+        "Final",
+        "FanoutPossible",
+      ],
+      default: null,
+    },
     ballotCid: {
       type: String,
       default: null,
     },
     instancePolicyId: {
+      type: String,
+      default: null,
+    },
+    // Asset names (hex) produced by Hydra /prepare. The (600) definition
+    // token is never spent; the (601) instance token gets committed into
+    // the head at /start and spent at /finalize.
+    definitionAssetName: {
+      type: String,
+      default: null,
+    },
+    instanceAssetName: {
+      type: String,
+      default: null,
+    },
+    // L1 tx hash from Hydra /prepare. Recorded so operators can monitor
+    // confirmation on an explorer before proceeding to /start — the commit
+    // UTxOs produced by /prepare need to be visible on-chain first.
+    prepareTxHash: {
+      type: String,
+      default: null,
+    },
+    prepareTxSubmittedAt: {
+      type: Date,
+      default: null,
+    },
+    // UTxO refs Hydra returned in `commitUtxos` — what /start needs.
+    commitUtxos: {
+      type: Array,
+      default: [],
+    },
+    // Slot at which the mint policy locks (== voting window open).
+    timelockSlot: {
+      type: Number,
+      default: null,
+    },
+    // 28-byte blake2b_256(namespace).slice(0,28) as hex — shared across
+    // (600) and (601) asset names.
+    ballotFingerprint: {
       type: String,
       default: null,
     },

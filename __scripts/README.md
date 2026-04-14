@@ -47,10 +47,15 @@ node __scripts/scaffold/scaffoldMixedDemoSet.js --skip-hydra
 | Script | Purpose | Destructive |
 |---|---|---|
 | `backfillBallotSource.js` | One-shot: stamps `source: "legacy"` on Ballot docs missing the field. Idempotent. | no |
+| `waitForPrepareConfirmation.js` | Polls Koios `/tx_info` for the `/prepare` L1 tx stamped on a Ballot doc and blocks until it lands. Flags: `--ballotId` or `--txHash`, `--pollSec`, `--timeoutSec`. Exits 0 on confirmation, 1 on timeout. | no |
+| `resetHydraBallot.js` | Wipes backend Mongo state for a ballot (VotePackages, Votes, UserCache nonces) and either clears Hydra fields (`--clear`) or deletes the Ballot + Proposals (`--delete`). Scoped: `--ballotId` / `--title` / `--all-hydra` / `--all` (bulk modes require `--confirm`). Pair with `sweepAdminWallet.js` + Hydra restart for a full end-to-end reset. | **yes — edits Mongo** |
+| `sweepAdminWallet.js` | Calls Hydra `POST /sweep` to consolidate the admin wallet and offload residue tokens to `HYDRA_SWEEP_ADDRESS` (or `--dumpAddress`). Run between test runs or after a failed `/prepare`. Submits a real L1 tx. | no (but submits a tx) |
+| `issueApiKey.js` | Mints a public-API key. Prints plaintext secret ONCE. | no |
+| `mintDevJwt.js` | Dev-only: mints a JWT using `JWT_SECRET`. Dev workflow only. | no |
 | `createTestBallot.js` | **Legacy** — original non-idempotent ballot factory. Prefer `scaffold/scaffoldLegacyBallot.js`. | no |
 | `createTestBallotVoterGroups.js` | Legacy variant of the above. | no |
 | `createIncentiveVote.js` | Legacy scaffold for the incentive-vote shape. | no |
-| `wipeDB.js` | Drops all collections. **Destructive.** | **yes** |
+| `wipeDB.js` | Drops every collection. Requires `--confirm` (dry-run otherwise). `--except sessions,faqs` preserves specific collections. **Destructive.** | **yes** |
 | `comparePoolData/` | Offline comparison utility for stake-pool snapshots. | no |
 | `faqs/importFAQs.js` | Upserts FAQ entries from `faqs/faqs.json`. | no |
 

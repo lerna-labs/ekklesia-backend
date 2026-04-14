@@ -30,7 +30,6 @@ import { Vote } from "../../../schema/Vote.js";
 import { checkVoterValidation, checkVotingPower } from "../../../helper/voterValidation.js";
 import {
   buildDraft,
-  finalizeEvidence,
   BrokerError,
 } from "../../../helper/voteBroker.js";
 import {
@@ -268,53 +267,46 @@ async function currentPackageView(id) {
  */
 async function submitPackage(pkg, ballot) {
   try {
-    const { evidence, voteHash } = finalizeEvidence(
-      // Reconstruct the evidence skeleton from stored payload.
-      {
-        specVersion: "ekklesia/1.0",
-        surveyTxId: ballot._id.toString(),
-        responderRole: "Voter",
-        answers: pkg.signingPayload.votes,
-        ekklesia: {
-          voterId: pkg.userId,
-          credentialHrp: credentialHrp(pkg.userId),
-          nonce: pkg.nonce,
-          signedPayload: pkg.signingPayload,
-          witnesses: [],
-          merkleProof: pkg.merkleProof || { root: "", steps: [] },
-        },
-      },
-      {
-        witnesses: pkg.signatures,
-        nativeScript: pkg.nativeScript,
-        calidusDeclaration: pkg.calidusDeclaration,
-      }
-    );
-
     pkg.status = "broker-submitted";
-    pkg.voteHash = voteHash;
     await pkg.save();
 
     const client = await forBallot(ballot._id.toString());
+
+    // Build Hydra's expected body shape. Hydra owns the evidence JSON,
+    // merkle-proof construction, IPFS pinning, and voteHash — we send the
+    // structured votes + a single `signature` envelope. For key-based
+    // voters the envelope IS the single CoseWitness; for multisig we
+    // attach the native script + witnesses array and leave the top-level
+    // COSE fields empty (Hydra validates via validateScriptSignatures).
+    const witnesses = pkg.signatures || [];
+    const signature = pkg.nativeScript
+      ? {
+          nativeScript: pkg.nativeScript,
+          witnesses,
+          ...(pkg.calidusDeclaration && { calidusDeclaration: pkg.calidusDeclaration }),
+        }
+      : {
+          ...(witnesses[0] || {}),
+          ...(pkg.calidusDeclaration && { calidusDeclaration: pkg.calidusDeclaration }),
+        };
+
     const submissionBody = {
       voterId: pkg.userId,
       ballotId: ballot._id.toString(),
-      evidence,
-      signatures: pkg.signatures,
-      nativeScript: pkg.nativeScript,
-      calidusDeclaration: pkg.calidusDeclaration,
+      votes: pkg.signingPayload.votes,
+      signature,
       nonce: pkg.nonce,
+      responderRole: "Voter",
     };
 
-    // Choose between /vote and /vote-and-register by peek: register-if-needed
-    // is owned by Hydra already, so /vote covers both cases when the instance
-    // supports upsert semantics. Most Hydra deployments expose both; pick
-    // based on whether the voter has a prior nonce.
-    const data = pkg.nonce === 1 ? await client.voteAndRegister(submissionBody) : await client.vote(submissionBody);
+    // /vote is unified on the Hydra side — auto-registers if the voter
+    // isn't yet. No conditional branching needed.
+    const data = await client.vote(submissionBody);
 
     pkg.hydraTxId = data?.txId || data?.hydraTxId || null;
-    pkg.ipfsCid = data?.ipfsCid || null;
-    pkg.hydraProof = data?.proof || null;
+    pkg.ipfsCid = data?.ipfsCid || data?.evidenceCid || null;
+    pkg.voteHash = data?.voteHash || pkg.voteHash;
+    pkg.hydraProof = data?.proof || data?.merkleProof || null;
     pkg.confirmedAt = new Date();
     pkg.status = "hydra-confirmed";
     await pkg.save();

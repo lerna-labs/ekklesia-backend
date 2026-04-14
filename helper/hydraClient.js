@@ -15,7 +15,50 @@ import {
 } from "./hydraRegistry.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_RETRIES = 2;
+
+// Per-path timeouts for long-running POSTs. Defaults picked to match or
+// exceed Hydra's internal wait timeouts so we don't abort client-side while
+// Hydra is still working (e.g. Hydra /start uses waitForHeadOpen(600_000) —
+// 10 minutes — so our client must be at least that).
+const POST_TIMEOUTS_MS = {
+  "/prepare": 5 * 60_000,           // L1 mint + IPFS pin
+  "/prepare/cancel": 5 * 60_000,    // L1 burn
+  "/prepare/update": 5 * 60_000,    // L1 re-datum
+  "/prepare/handoff": 5 * 60_000,   // L1 token transfer
+  "/start": 12 * 60_000,            // 10m Hydra-side + headroom
+  "/finalize": 5 * 60_000,
+  "/count": 5 * 60_000,
+  "/settle/burn": 10 * 60_000,      // stepped — loops until remaining===0
+  "/settle/finalize": 5 * 60_000,
+  "/settle/close": 5 * 60_000,
+  "/sweep": 5 * 60_000,
+};
+
+function defaultTimeoutFor(method, path) {
+  if (method === "POST" && POST_TIMEOUTS_MS[path]) return POST_TIMEOUTS_MS[path];
+  return DEFAULT_TIMEOUT_MS;
+}
+
+// Retry policy is method-aware by default. Hydra's mutating endpoints
+// (/prepare, /start, /vote, etc.) are NOT idempotent — a dropped 5xx
+// response followed by a client-side retry can mint the same tokens twice
+// or burn wallet change a second time. We only retry reads by default.
+const DEFAULT_RETRIES_BY_METHOD = {
+  GET: 2,
+  HEAD: 2,
+  POST: 0,
+  PUT: 0,
+  PATCH: 0,
+  DELETE: 0,
+};
+// A handful of POSTs are effectively read-only and safe to retry. Whitelist
+// them here so we keep the rest of POST strictly one-shot.
+const RETRY_SAFE_POST_PATHS = new Set(["/ledger"]);
+
+function defaultRetriesFor(method, path) {
+  if (method === "POST" && RETRY_SAFE_POST_PATHS.has(path)) return 2;
+  return DEFAULT_RETRIES_BY_METHOD[method] ?? 0;
+}
 
 export class HydraClientError extends Error {
   constructor(message, { status, code, data, cause } = {}) {
@@ -103,26 +146,63 @@ async function doFetch({ endpoint, apiKey, path, method = "GET", body, timeoutMs
  * Build a client bound to a specific Hydra instance. Call via `forBallot`
  * or `forEndpoint` rather than constructing directly.
  */
-function buildClient({ endpoint, apiKey, timeoutMs = DEFAULT_TIMEOUT_MS, retries = DEFAULT_RETRIES }) {
+function buildClient({ endpoint, apiKey, timeoutMs, retries }) {
+  // Explicit overrides win. Otherwise pick per method + path so L1 txs get
+  // the long timeout and mutating POSTs stay one-shot.
+  const resolveRetries = (method, path) =>
+    retries !== undefined ? retries : defaultRetriesFor(method, path);
+  const resolveTimeout = (method, path) =>
+    timeoutMs !== undefined ? timeoutMs : defaultTimeoutFor(method, path);
   const call = (method, path, body) =>
-    doFetch({ endpoint, apiKey, method, path, body, timeoutMs, retries });
+    doFetch({
+      endpoint,
+      apiKey,
+      method,
+      path,
+      body,
+      timeoutMs: resolveTimeout(method, path),
+      retries: resolveRetries(method, path),
+    });
 
   return {
     endpoint,
     // Health / info
     health: () => call("GET", "/health"),
     headInfo: () => call("GET", "/head-info"),
-    // Ballot lifecycle (admin)
+    // Ballot lifecycle — L1 mint/update/cancel
     prepare: (body) => call("POST", "/prepare", body),
+    prepareCancel: (body) => call("POST", "/prepare/cancel", body),
+    prepareUpdate: (body) => call("POST", "/prepare/update", body),
+    prepareHandoff: (body) => call("POST", "/prepare/handoff", body),
+
+    // Head lifecycle — only /start is exposed. The top-level /close and
+    // the monolithic /settle are deprecated as unreliable; the only
+    // supported close path is the stepped settlement sequence below.
     start: (body) => call("POST", "/start", body),
-    close: (body) => call("POST", "/close", body),
-    finalize: (body) => call("POST", "/finalize", body),
-    count: (body) => call("POST", "/count", body),
-    settle: (body) => call("POST", "/settle", body),
-    // Voting
+
+    // Individual read-only lifecycle helpers (still useful outside the
+    // settlement sequence — e.g. /finalize between rounds of partial
+    // results if that's ever needed; /count for inspection). Neither
+    // replaces the stepped settle path.
+    finalize: () => call("POST", "/finalize"),
+    count: () => call("POST", "/count"),
+
+    // Stepped settlement — the only supported close path (Hydra spec
+    // v0.3.0+). Call in order: burn → finalize → close.
+    settleBurn: (body) => call("POST", "/settle/burn", body),
+    settleFinalize: () => call("POST", "/settle/finalize"),
+    settleClose: (body) => call("POST", "/settle/close", body),
+
+    // Sweep / queue / cache — operations & cleanup
+    sweep: (body) => call("POST", "/sweep", body),
+    queueStatus: () => call("GET", "/queue/status"),
+    queueDrain: (body) => call("POST", "/queue/drain", body),
+    flushCache: () => call("POST", "/flush-cache"),
+    // Voting — /vote is unified on Hydra: auto-registers if the voter isn't
+    // yet. The legacy /vote-and-register endpoint is deprecated and no
+    // longer exposed here. Use /vote for both first-time and subsequent votes.
     register: (body) => call("POST", "/register", body),
     vote: (body) => call("POST", "/vote", body),
-    voteAndRegister: (body) => call("POST", "/vote-and-register", body),
     // Queries
     ballot: () => call("GET", "/ballot"),
     votes: () => call("GET", "/votes"),
