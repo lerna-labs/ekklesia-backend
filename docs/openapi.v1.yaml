@@ -540,7 +540,39 @@ components:
         source: { type: string, enum: [provisional, final] }
         ballotSource: { type: string, enum: [legacy, hydra] }
         finalizedAt: { type: string, format: date-time, nullable: true }
-        hydraEvidenceCid: { type: string, nullable: true }
+        # Hydra settlement artifacts (populated only on source=="final")
+        hydraEvidenceCid:
+          type: string
+          nullable: true
+          description: IPFS CID of the directory of per-voter evidence files.
+        hydraResultsCid:
+          type: string
+          nullable: true
+          description: IPFS CID of the compact results JSON.
+        hydraFinalizeTxHash:
+          type: string
+          nullable: true
+          description: Hydra tx hash from the in-head /settle/finalize tx.
+        hydraResultsHash:
+          type: string
+          nullable: true
+          description: blake2b_256 of the canonical results JSON — anchored on the (601) datum for on-chain verification.
+        hydraEvidenceMerkleRoot:
+          type: string
+          nullable: true
+          description: Merkle root over the per-voter evidence files in the IPFS directory.
+        hydraTotalVoters:
+          type: integer
+          nullable: true
+          description: Number of voter tokens included in the final tally.
+        hydraExcludedVoters:
+          type: array
+          description: Voter tokens excluded from the tally (evidence mismatch / missing). Each entry carries tokenName and reason.
+          items:
+            type: object
+            properties:
+              tokenName: { type: string }
+              reason: { type: string }
         results:
           type: array
           items:

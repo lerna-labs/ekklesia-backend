@@ -32,8 +32,12 @@ export class NonceError extends Error {
 
 /**
  * Reserve the next nonce for a voter on a ballot. The reservation is written
- * into UserCache.nonce atomically via $inc so concurrent callers get distinct
- * values. Returns the reserved integer.
+ * into UserCache.nonce atomically so concurrent callers get distinct values.
+ *
+ * Uses an aggregation-pipeline update ($ifNull + $add) so the increment
+ * works uniformly whether the existing nonce is a number, null (the schema
+ * default for fresh/reset rows), or missing entirely. MongoDB's plain `$inc`
+ * rejects null with a TypeMismatch error.
  */
 export async function reserveNext({ userId, ballotId }) {
   if (!userId || !ballotId) {
@@ -41,16 +45,9 @@ export async function reserveNext({ userId, ballotId }) {
   }
   const updated = await UserCache.findOneAndUpdate(
     { userId, ballotId },
-    { $inc: { nonce: 1 } },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
+    [{ $set: { nonce: { $add: [{ $ifNull: ["$nonce", 0] }, 1] } } }],
+    { new: true, upsert: true, setDefaultsOnInsert: true, updatePipeline: true }
   );
-  // UserCache default for nonce is null. $inc on a null field sets it to 1 —
-  // which is what we want. If it was 0 explicitly (never expected but guarded),
-  // promote to 1.
-  if (updated.nonce === null || updated.nonce === 0) {
-    updated.nonce = 1;
-    await updated.save();
-  }
   return updated.nonce;
 }
 

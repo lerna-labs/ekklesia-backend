@@ -278,7 +278,26 @@ export async function writeFinalResult(ballotId, hydraData = {}) {
           ballotSource: ballot.source,
           ballotId: ballot._id,
           finalizedAt: new Date(),
-          hydraEvidenceCid: hydraData?.evidenceCid || null,
+          // Hydra /settle/finalize (and /finalize) return:
+          //   { txHash, resultsHash, evidenceDirectoryCid, resultsCid,
+          //     evidenceMerkleRoot, totalVoters, excludedVoters }
+          // We persist all of them for auditability — resultsHash and
+          // evidenceMerkleRoot are anchored on the (601) datum so auditors
+          // can independently verify the pinned artifacts match on-chain.
+          hydraEvidenceCid:
+            hydraData?.evidenceDirectoryCid ||
+            hydraData?.resultsCid ||
+            hydraData?.evidenceCid ||
+            null,
+          hydraFinalizeTxHash: hydraData?.txHash || null,
+          hydraResultsHash: hydraData?.resultsHash || null,
+          hydraEvidenceMerkleRoot: hydraData?.evidenceMerkleRoot || null,
+          hydraResultsCid: hydraData?.resultsCid || null,
+          hydraTotalVoters:
+            typeof hydraData?.totalVoters === "number" ? hydraData.totalVoters : null,
+          hydraExcludedVoters: Array.isArray(hydraData?.excludedVoters)
+            ? hydraData.excludedVoters
+            : [],
         },
       },
       { upsert: true }

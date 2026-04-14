@@ -116,13 +116,27 @@ export async function buildDraft({
     merkleProof,
   });
   const signingPayload = evidence.ekklesia.signedPayload;
-  const signingPayloadCanonical = canonicalize(signingPayload);
-  const signingPayloadHex = Buffer.from(signingPayloadCanonical, "utf8").toString("hex");
+
+  // Hydra's signature verification (hydra-sdk verify-signature.js:38) does
+  //   const merkleRoot = bytesToHex(blake2b256(JSON.stringify(signedPayload)));
+  //   message_matches = signaturePayloadAscii === merkleRoot
+  // — the voter signs the 64-char hex merkleRoot string (UTF-8 bytes),
+  // NOT the raw signedPayload JSON. Match Hydra's serialization exactly
+  // (plain JSON.stringify with { ballotId, nonce, votes } insertion order
+  // — which is already alphabetical, so this also matches our canonical
+  // form, but we use the same call for parity with Hydra).
+  const signedPayloadJson = JSON.stringify(signingPayload);
+  const merkleRoot = blake2b256Hex(Buffer.from(signedPayloadJson, "utf8"));
+  // cardano-signer --data-hex takes the hex of the bytes to sign. We sign
+  // the UTF-8 bytes of the merkleRoot hex string, so signingPayloadHex
+  // is the hex of those ASCII bytes.
+  const signingPayloadHex = Buffer.from(merkleRoot, "utf8").toString("hex");
 
   return {
     nonce,
     signingPayload,
-    signingPayloadCanonical,
+    signedPayloadJson,
+    merkleRoot,
     signingPayloadHex,
     evidence,
     prelimVoteHash: voteHash(evidence),

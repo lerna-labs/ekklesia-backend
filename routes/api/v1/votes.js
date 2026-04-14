@@ -124,6 +124,11 @@ router.post("/:ballotId/draft", async (req, res) => {
       },
       signingPayload: draft.signingPayload,
       signingPayloadHex: draft.signingPayloadHex,
+      // `merkleRoot` is the 64-char hex string the voter must sign (UTF-8
+      // bytes). Hydra's verifySignature compares the COSE payload ASCII
+      // against this exact string — see hydra-sdk verify-signature.js:38.
+      merkleRoot: draft.merkleRoot,
+      signedPayloadJson: draft.signedPayloadJson,
       prelimVoteHash: draft.prelimVoteHash,
       multisig,
     });
@@ -303,7 +308,9 @@ async function submitPackage(pkg, ballot) {
     // isn't yet. No conditional branching needed.
     const data = await client.vote(submissionBody);
 
-    pkg.hydraTxId = data?.txId || data?.hydraTxId || null;
+    // Hydra /vote response shape (per openapi.yaml VoteResponse):
+    //   { txHash, voteHash, ipfsCid, version, tokenName, registered }
+    pkg.hydraTxId = data?.txHash || data?.txId || data?.hydraTxId || null;
     pkg.ipfsCid = data?.ipfsCid || data?.evidenceCid || null;
     pkg.voteHash = data?.voteHash || pkg.voteHash;
     pkg.hydraProof = data?.proof || data?.merkleProof || null;

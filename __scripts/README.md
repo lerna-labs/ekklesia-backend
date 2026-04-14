@@ -42,6 +42,19 @@ node __scripts/scaffold/scaffoldMixedDemoSet.js
 node __scripts/scaffold/scaffoldMixedDemoSet.js --skip-hydra
 ```
 
+## Lifecycle orchestration
+
+Phase 3 E2E voting flow, end-to-end. Each script is usable on its own; the
+top-level orchestrator stitches them together.
+
+| Script | Purpose |
+|---|---|
+| `phase3E2E.js` | One-shot orchestrator: scaffold → wait → seed → /start → single-sig vote → multisig vote → stepped close. Flags: `--force`, `--ballotId`, `--flavor`, `--state`, `--skipVotes`, `--keepOpen`, `--closeToken`. |
+| `lifecycle/startBallot.js` | Scaffold a ballot (or reuse via `--ballotId`), wait for the prepare tx on L1, then call `/start` on the backend admin route. Prints `export BALLOT='…'`. |
+| `lifecycle/closeBallot.js` | Canonical stepped close: `/settle/burn` (looped until `remaining === 0`), `/settle/finalize`, `/settle/close`. Requires `--closeToken`. |
+| `vote/castVote.js` | Single-sig voter end-to-end: mint JWT → `/draft` → `cardano-signer` COSE sign → `/signature`. |
+| `vote/castVoteMultisig.js` | Multisig voter end-to-end: mint JWT → `/draft` with `nativeScript` → sign with N cosigners (defaults to `script.required`) → `/signature` per witness; backend aggregates + submits once threshold is met. |
+
 ## Utilities
 
 | Script | Purpose | Destructive |

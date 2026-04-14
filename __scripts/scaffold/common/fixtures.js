@@ -37,11 +37,12 @@ export const VOTERS = [
     kind: "key",
   },
   {
-    // Synthetic multisig DRep: 2-of-3 native script. Signing keys are
-    // generated in Phase 3 E2E; the fixture carries the script topology
-    // so multisigCollector can be exercised in isolation.
-    userId: "drep1y-multisig-fixture-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    name: "Scaffold Multisig DRep",
+    // Real 2-of-3 multisig DRep registered on preprod. Keys live at
+    // ~/hydra-voter.multisig.drep.{1,2,3}.skey (and matching .vkey / .addr).
+    // The native script below matches the on-chain registration. For
+    // Phase 3 E2E we sign with any 2 of the 3 keys to satisfy `required`.
+    userId: "drep1yvtqft3982fwrxaw5p5phd3xnwls0nc3tqdp68kgw8zvu6qn73kqt",
+    name: "Scaffold Multisig DRep (real preprod)",
     voterGroup: "drep",
     votingPower: 2500,
     validated: true,
@@ -50,10 +51,36 @@ export const VOTERS = [
       type: "atLeast",
       required: 2,
       scripts: [
-        { type: "sig", keyHash: "aa".repeat(28) },
-        { type: "sig", keyHash: "bb".repeat(28) },
-        { type: "sig", keyHash: "cc".repeat(28) },
+        { type: "sig", keyHash: "48163fd5ff61896c1983ac9dcc01769bf926c11b40a669abe62ccecd" },
+        { type: "sig", keyHash: "57a02df7872543b7aa0043a336255b4a8a4776d6bec483a93001df91" },
+        { type: "sig", keyHash: "a7828ce917588c67174cdec44f51a7bd4cca3497499b28f686aacd41" },
       ],
     },
+    // Absolute paths to the cosigner skeys (home-directory expanded at
+    // runtime). castVoteMultisig.js signs with the first `required` keys
+    // by default.
+    keyPaths: [
+      "~/hydra-voter.multisig.drep.1.skey",
+      "~/hydra-voter.multisig.drep.2.skey",
+      "~/hydra-voter.multisig.drep.3.skey",
+    ],
   },
 ];
+
+// Single-sig DRep used for Phase 3 E2E signing. The key lives in the
+// docs repo test keys.
+export const SINGLE_SIG_VOTER = {
+  userId: "drep1ytdnkw2l4q7uy2d7d7sj9fhgsun56zg2uleqlfqx2lvcc6gusnw9c",
+  voterGroup: "drep",
+  votingPower: 1000,
+  keyPath: "~/ekklesia/docs/__tests/keys/drep01/drep.skey",
+  addrPath: null, // DRep signing doesn't need an address, just the skey
+};
+
+// Lookup by short name for convenience in scripts.
+export const VOTERS_BY_NAME = {
+  drep01: VOTERS[0],
+  pool01: VOTERS[1],
+  stake01: VOTERS[2],
+  multisig: VOTERS[3],
+};

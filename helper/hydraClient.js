@@ -8,11 +8,29 @@
 //   - Timeout per request
 //   - Registry lookup by ballotId (or explicit endpoint during /prepare)
 
+import { Agent } from "undici";
 import {
   resolveByBallotId,
   resolveByEndpoint,
   HydraRegistryError,
 } from "./hydraRegistry.js";
+
+/**
+ * Build a per-request undici Agent that won't abort before our own
+ * AbortController does. Node's default `fetch` uses undici with built-in
+ * headersTimeout + bodyTimeout of 300_000ms (5 min). For long-running
+ * Hydra operations (waitForHeadOpen 10m, waitForHeadClose 15m, fanout
+ * 10–15m) those defaults fire prematurely regardless of the AbortSignal
+ * we pass. The agent below extends both to the request's timeoutMs.
+ */
+function longTimeoutDispatcher(timeoutMs) {
+  return new Agent({
+    headersTimeout: timeoutMs,
+    bodyTimeout: timeoutMs,
+    keepAliveTimeout: 10_000,
+    keepAliveMaxTimeout: timeoutMs,
+  });
+}
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -30,7 +48,11 @@ const POST_TIMEOUTS_MS = {
   "/count": 5 * 60_000,
   "/settle/burn": 10 * 60_000,      // stepped — loops until remaining===0
   "/settle/finalize": 5 * 60_000,
-  "/settle/close": 5 * 60_000,
+  // Hydra's /settle/close internally waits up to 10 min on the
+  // Open→FINAL path and up to 15 min on the CLOSED→FANOUT_POSSIBLE→FINAL
+  // path (settlement.ts:842-850). Give the client 16 min of headroom so
+  // we never abort mid-fanout.
+  "/settle/close": 16 * 60_000,
   "/sweep": 5 * 60_000,
 };
 
@@ -83,6 +105,7 @@ async function doFetch({ endpoint, apiKey, path, method = "GET", body, timeoutMs
   while (attempt <= retries) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const dispatcher = longTimeoutDispatcher(timeoutMs);
     try {
       const res = await fetch(url, {
         method,
@@ -92,6 +115,7 @@ async function doFetch({ endpoint, apiKey, path, method = "GET", body, timeoutMs
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
+        dispatcher,
       });
       clearTimeout(timer);
 
@@ -137,6 +161,8 @@ async function doFetch({ endpoint, apiKey, path, method = "GET", body, timeoutMs
       throw new HydraClientError(`Hydra ${method} ${path} network error: ${err.message}`, {
         cause: err,
       });
+    } finally {
+      dispatcher.close().catch(() => { /* ignore close errors */ });
     }
   }
   throw new HydraClientError(`Hydra ${method} ${path} exhausted retries`, { cause: lastError });
