@@ -75,6 +75,8 @@ export function toUnified(doc) {
       prepareTxSubmittedAt: doc.prepareTxSubmittedAt ?? null,
     },
     provisionalResultsEnabled: doc.provisionalResultsEnabled ?? false,
+    proposalSource: doc.proposalSource?.moduleId ? doc.proposalSource : null,
+    facets: Array.isArray(doc.facets) ? doc.facets : [],
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };

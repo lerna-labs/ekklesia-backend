@@ -332,6 +332,79 @@ paths:
                   status: { type: string }
                   package: { $ref: "#/components/schemas/VotePackage" }
 
+  /proposals/ballot/{ballotId}:
+    get:
+      tags: [Proposals]
+      summary: List proposals for a ballot, with facet-driven sort + filter
+      description: |
+        Sort and filter keys must be declared on `Ballot.facets[]`.
+        Multi-value enum filters take CSV (e.g. `?filter[category]=a,b`);
+        OR semantics. Unknown keys and attempts to sort on a
+        non-sortable facet return 400. Facets are frozen once the
+        ballot goes live, so the filter UI can safely cache the
+        facet list for the ballot's lifetime.
+      parameters:
+        - in: path
+          name: ballotId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: sort
+          description: Facet key to sort by. Must have `sortable: true`.
+          schema: { type: string }
+        - in: query
+          name: dir
+          schema: { type: string, enum: [asc, desc] }
+        - in: query
+          name: filter
+          style: deepObject
+          explode: true
+          description: |
+            Object of `filter[<facetKey>]=<csv>` filters. CSV split on
+            `,`; OR within a single facet; AND across facets.
+          schema:
+            type: object
+            additionalProperties: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        "200":
+          description: Paginated proposals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data: { type: array, items: { type: object } }
+                  pagination:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      limit: { type: integer }
+                  applied:
+                    type: object
+                    properties:
+                      filters:
+                        type: object
+                        additionalProperties:
+                          type: array
+                          items: { type: string }
+                      sort:
+                        type: object
+                        properties:
+                          key: { type: string }
+                          direction: { type: string, enum: [asc, desc] }
+                          source: { type: string, enum: [default, fallback] }
+        "400":
+          description: Unknown facet key, unsortable sort target, or bad filter value
+        "404": { description: Ballot not found }
+
   /admin/ballots/import:
     post:
       tags: [Admin, Ingestion]
@@ -554,6 +627,25 @@ components:
             headInfo: { type: object, nullable: true }
             ballot: { type: object, nullable: true }
         provisionalResultsEnabled: { type: boolean }
+        proposalSource:
+          nullable: true
+          description: |
+            Present when the ballot was imported from an upstream
+            proposals module. Null for scaffold-created or legacy
+            ballots.
+          type: object
+          properties:
+            moduleId: { type: string }
+            moduleUrl: { type: string, nullable: true }
+            externalBallotId: { type: string }
+            version: { type: string, nullable: true }
+            importedAt: { type: string, format: date-time }
+            importMethod: { type: string, enum: [push, upload] }
+            importedBy: { type: string }
+        facets:
+          type: array
+          description: Sort/filter dimensions declared for this ballot.
+          items: { $ref: "#/components/schemas/FacetDefinition" }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 

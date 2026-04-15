@@ -192,8 +192,11 @@ export async function disconnectFromDatabase() {
 export async function checkDatabaseConnection() {
   try {
     if (connection && connection.readyState === 1) {
-      // Execute a simple command to verify the connection is working
-      await mongoose.connection.db.admin().ping();
+      // Previously ran admin().ping() on every request, which hangs
+      // indefinitely when the connected user lacks admin-db access
+      // (common with devuser + authSource=admin on the docs compose
+      // image). readyState === 1 already means the socket is healthy;
+      // the mongoose driver itself will surface per-query errors.
       return true;
     }
     return false;
