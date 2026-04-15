@@ -64,6 +64,39 @@ paths:
                   status:  { type: string, example: "ok" }
                   timestamp: { type: string, format: date-time }
 
+  /config:
+    get:
+      tags: [Health]
+      summary: Deployment runtime config (explorer + IPFS gateway + network)
+      description: |
+        Public, unauthenticated. Frontends and third-party integrators read
+        this to render cexplorer / IPFS links without hardcoding a network.
+        Values come from `IPFS_GATEWAY_BASE`, `EXPLORER_TX_BASE`,
+        `EXPLORER_ADDRESS_BASE`, `CARDANO_NETWORK` env vars (with safe
+        defaults).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ipfsGatewayBase, explorerTxBase, explorerAddressBase, network]
+                properties:
+                  ipfsGatewayBase:
+                    type: string
+                    example: "https://ipfs.io/ipfs/"
+                  explorerTxBase:
+                    type: string
+                    example: "https://cexplorer.io/tx/"
+                  explorerAddressBase:
+                    type: string
+                    example: "https://cexplorer.io/address/"
+                  network:
+                    type: string
+                    enum: [preprod, preview, mainnet]
+                    example: "preprod"
+
   /ballots:
     get:
       tags: [Unified Ballots]

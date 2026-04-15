@@ -12,6 +12,16 @@ function adminIdSet() {
   return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
 }
 
+/**
+ * Pure check — does this (userId, role) combination have admin rights?
+ * Used by session reads that need to tell the frontend whether to show
+ * admin UI. The middleware below wraps this for route gating.
+ */
+export function userIsAdmin({ userId, role } = {}) {
+  if (role === "admin") return true;
+  return adminIdSet().has(userId);
+}
+
 export function isAdmin(req, res, next) {
   const result = verifyToken(req);
   if (result.status !== "success") {

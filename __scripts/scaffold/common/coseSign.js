@@ -20,23 +20,13 @@ import { promisify } from "node:util";
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
-import blake from "blakejs";
+import { normalizeWitness } from "../../../helper/coseWitness.js";
 
 const exec = promisify(execFile);
 
 /** Expand a leading `~` in a path. */
 export function expandHome(p) {
   return p?.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p;
-}
-
-/**
- * blake2b_224(publicKey bytes) — the 28-byte keyHash used in native scripts
- * and matched against `sig { keyHash }` entries by the multisig collector.
- */
-function keyHashFromPublicKey(publicKeyHex) {
-  return Buffer.from(
-    blake.blake2b(Buffer.from(publicKeyHex, "hex"), null, 28)
-  ).toString("hex");
 }
 
 /**
@@ -93,19 +83,20 @@ export async function signCose(canonicalJson, skeyPath, address) {
 
   const coseSign1Hex = parsed.output?.COSE_Sign1_hex || parsed.COSE_Sign1_hex;
   const coseKeyHex = parsed.output?.COSE_Key_hex || parsed.COSE_Key_hex;
-  const signature = parsed.signature;
-  const publicKey = parsed.publicKey;
-  if (!coseSign1Hex || !coseKeyHex || !signature || !publicKey) {
+  if (!coseSign1Hex || !coseKeyHex) {
     throw new Error(
       `cardano-signer output missing fields: ${JSON.stringify(Object.keys(parsed))}`
     );
   }
 
-  return {
+  // Derive key/signature/publicKey centrally — same helper the backend's
+  // /signature route uses, so wire-compatible output is guaranteed.
+  // Pre-supply cardano-signer's own values as hints (normalizeWitness
+  // preserves caller-provided fields) for a tiny CPU save.
+  return normalizeWitness({
     coseSign1Hex,
     coseKeyHex,
-    key: keyHashFromPublicKey(publicKey),
-    signature,
-    publicKey,
-  };
+    signature: parsed.signature,
+    publicKey: parsed.publicKey,
+  });
 }

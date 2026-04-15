@@ -5,6 +5,8 @@ const router = Router();
 // schema import
 import { Session } from "../../../schema/Session.js";
 import { User } from "../../../schema/User.js";
+import { VotePackage } from "../../../schema/VotePackage.js";
+import { userIsAdmin } from "../../../helper/adminAuth.js";
 
 // helper
 import jwt from "jsonwebtoken";
@@ -15,7 +17,8 @@ import {
   verifySignature,
   isPartyToScript,
 } from "../../../helper/verifySignature.js";
-import { validateAddress } from "../../../helper/validateAddress.js";
+import { validateAddress, getAddressType } from "../../../helper/validateAddress.js";
+import { getScript } from "@lerna-labs/ekklesia-helpers/cardano";
 import {
   fetchCalidusKey,
   fetchDrepName,
@@ -129,18 +132,57 @@ router.get("/", isAuthenticated, async (req, res) => {
   const { userId } = req;
   let name;
   let lastLogin;
+  let nativeScript = null;
   try {
-    const userDoc = await User.findById(userId).select("name lastLogin").lean();
+    const userDoc = await User.findById(userId)
+      .select("name lastLogin nativeScript")
+      .lean();
     if (userDoc) {
       if (userDoc.name != null) name = userDoc.name;
       if (userDoc.lastLogin != null) lastLogin = userDoc.lastLogin;
+      if (userDoc.nativeScript) nativeScript = userDoc.nativeScript;
     }
   } catch (err) {
     console.error("Error fetching user for session GET:", err);
   }
-  const payload = { userId };
+
+  // Pending broker packages: anything the voter owns that still needs
+  // action (draft, collecting signatures, or waiting on Hydra submit).
+  // The frontend uses this to surface a "finish signing" prompt without
+  // having to query each ballot individually.
+  let pendingPackages = [];
+  try {
+    const pending = await VotePackage.find({
+      userId,
+      status: { $in: ["draft", "awaiting-signatures", "awaiting-submission"] },
+    })
+      .select("_id ballotId status nonce signatures nativeScript updatedAt")
+      .sort({ updatedAt: -1 })
+      .limit(25)
+      .lean();
+    pendingPackages = pending.map((p) => ({
+      id: p._id.toString(),
+      ballotId: p.ballotId?.toString(),
+      status: p.status,
+      nonce: p.nonce,
+      signatureCount: Array.isArray(p.signatures) ? p.signatures.length : 0,
+      isMultisig: !!p.nativeScript,
+      updatedAt: p.updatedAt,
+    }));
+  } catch (err) {
+    console.error("Error fetching pending packages for session GET:", err);
+  }
+
+  const payload = {
+    userId,
+    isAdmin: userIsAdmin({ userId }),
+  };
   if (name !== undefined) payload.name = name;
   if (lastLogin !== undefined) payload.lastLogin = lastLogin;
+  // Always include nativeScript on the payload so the frontend can rely on
+  // the field being present (null for key-based voters, JSON for script).
+  payload.nativeScript = nativeScript;
+  payload.pendingPackages = pendingPackages;
   return res.status(200).json(payload);
 });
 
@@ -315,6 +357,43 @@ router.put("/", sessionVerificationLimiter, validateSessionRequest, async (req, 
       );
     } catch (error) {
       console.error("Error upserting User lastLogin:", error);
+    }
+    // Fetch + cache the native script on first multisig login (or on
+    // ?refresh=true). Scripts are immutable on-chain so one fetch per
+    // user is enough. Failure is non-fatal — /draft will surface a
+    // clearer error if the script is actually needed later.
+    try {
+      const forceRefresh = req.query?.refresh === "true";
+      const existing = await User.findById(validatedScriptAddress).lean();
+      if (forceRefresh || !existing?.nativeScript) {
+        const addr = getAddressType(validatedScriptAddress);
+        const scriptHash = addr?.keyHash;
+        if (scriptHash) {
+          const scriptInfo = await getScript(scriptHash);
+          const nativeScript =
+            scriptInfo?.value || scriptInfo?.script || scriptInfo || null;
+          if (nativeScript) {
+            await User.updateOne(
+              { _id: validatedScriptAddress },
+              {
+                $set: {
+                  nativeScript,
+                  nativeScriptFetchedAt: new Date(),
+                },
+              }
+            );
+          } else {
+            console.warn(
+              `Multisig login: could not fetch native script for ${validatedScriptAddress} ` +
+                `(hash=${scriptHash}) — Koios returned no script body`
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `Multisig login: native-script fetch failed for ${validatedScriptAddress}: ${error.message}`
+      );
     }
     setAuthCookie(res, token, expiryDate);
     hydraVoterPing(validatedScriptAddress);

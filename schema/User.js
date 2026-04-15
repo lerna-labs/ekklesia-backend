@@ -20,6 +20,22 @@ const userSchema = new Schema(
       type: Date,
       default: Date.now,
     },
+    // Portable NativeScript JSON for script-based credentials (multisig
+    // DReps, script stake keys, etc.). Fetched from Koios once at login
+    // via @lerna-labs/ekklesia-helpers/cardano.getScript and cached here
+    // — scripts are immutable on-chain so no TTL is needed. Null for
+    // key-based voters.
+    nativeScript: {
+      type: Object,
+      default: null,
+    },
+    // Last time the nativeScript was fetched. Informational; also used
+    // as a cheap "have we tried before?" check to avoid re-fetching on
+    // every login when a prior fetch failed (Koios 503, etc.).
+    nativeScriptFetchedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

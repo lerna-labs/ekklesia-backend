@@ -7,7 +7,11 @@
 //         signatures", returns the canonical signing payload.
 //
 //   POST /api/v1/votes/:ballotId/signature
-//         body: { packageId, witness: { key, coseSign1Hex, coseKeyHex, signature } }
+//         body: { packageId, witness: { coseSign1Hex, coseKeyHex, ...? } }
+//         Minimum body is the two hex strings CIP-30 signData returns;
+//         the backend derives `key` (blake2b_224 of pub key), `signature`
+//         (raw ed25519 sig extracted from the COSE_Sign1), and
+//         `publicKey` from those. Pre-supplied fields are preserved.
 //         Appends a witness; promotes the package when the native-script
 //         threshold is met, or immediately for key-based voters.
 //         Triggers submission synchronously on the final signature.
@@ -37,6 +41,9 @@ import {
   dedupeSignatures,
   MultisigError,
 } from "../../../helper/multisigCollector.js";
+import { normalizeWitness, CoseWitnessError } from "../../../helper/coseWitness.js";
+import { User } from "../../../schema/User.js";
+import blake from "blakejs";
 import * as nonceManager from "../../../helper/nonceManager.js";
 import { forBallot, HydraClientError } from "../../../helper/hydraClient.js";
 import { credentialHrp } from "../../../helper/voterCredential.js";
@@ -46,6 +53,51 @@ const router = Router();
 
 // Apply the write-path limiter to every mutating broker endpoint.
 router.use(voteWriteLimiter);
+
+/**
+ * Normalized error codes returned alongside the existing `status: "error"`
+ * envelope on broker endpoints. The frontend uses these to route UX
+ * (retry, re-draft, "ask another cosigner", etc.) without string-matching
+ * the human-readable message.
+ *
+ *   BAD_INPUT          — missing / malformed body fields
+ *   ELIGIBILITY_DENIED — voter not in UserCache.validated for this ballot
+ *   PACKAGE_NOT_FOUND  — packageId not on this ballot
+ *   FORBIDDEN          — session userId doesn't own the package
+ *   PACKAGE_TERMINAL   — package is in a terminal state (hydra-confirmed,
+ *                        failed, cancelled) and can't accept more signatures
+ *   SIGNATURE_INVALID  — Hydra rejected the witness (sig + message + key)
+ *   NONCE_STALE        — Hydra rejected the submission's nonce as stale
+ *                        (replay or out-of-order attempt)
+ *   HYDRA_UPSTREAM     — any other Hydra-side failure (timeout, 5xx, etc.)
+ *   INTERNAL           — unexpected server error
+ */
+export const ERROR_CODES = Object.freeze({
+  BAD_INPUT: "BAD_INPUT",
+  ELIGIBILITY_DENIED: "ELIGIBILITY_DENIED",
+  PACKAGE_NOT_FOUND: "PACKAGE_NOT_FOUND",
+  FORBIDDEN: "FORBIDDEN",
+  PACKAGE_TERMINAL: "PACKAGE_TERMINAL",
+  SIGNATURE_INVALID: "SIGNATURE_INVALID",
+  NONCE_STALE: "NONCE_STALE",
+  HYDRA_UPSTREAM: "HYDRA_UPSTREAM",
+  INTERNAL: "INTERNAL",
+});
+
+/**
+ * Best-effort map from a Hydra HydraClientError to a normalized broker
+ * error code. Hydra's own `code` field already speaks a similar language
+ * (SIGNATURE_INVALID, NONCE_STALE in some flows); we recognize a couple
+ * of common patterns and fall back to HYDRA_UPSTREAM.
+ */
+function hydraErrorCode(err) {
+  const code = (err?.code || "").toUpperCase();
+  if (!code) return ERROR_CODES.HYDRA_UPSTREAM;
+  if (code.includes("SIGNATURE")) return ERROR_CODES.SIGNATURE_INVALID;
+  if (code.includes("NONCE")) return ERROR_CODES.NONCE_STALE;
+  if (code.includes("REPLAY")) return ERROR_CODES.NONCE_STALE;
+  return ERROR_CODES.HYDRA_UPSTREAM;
+}
 
 function requireSession(req, res) {
   const t = verifyToken(req);
@@ -79,15 +131,24 @@ router.post("/:ballotId/draft", async (req, res) => {
   const ballot = await requireHydraBallot(req, res);
   if (!ballot) return;
 
-  const { votes, responderRole, nativeScript, calidusDeclaration } = req.body || {};
+  const { votes, responderRole, calidusDeclaration } = req.body || {};
+  let nativeScript = req.body?.nativeScript || null;
   if (!Array.isArray(votes) || votes.length === 0) {
-    return res.status(400).json({ status: "error", message: "votes[] required" });
+    return res.status(400).json({ status: "error", code: ERROR_CODES.BAD_INPUT, message: "votes[] required" });
   }
 
   // Eligibility gate (L1 validation)
   const validated = await checkVoterValidation(session.userId, ballot._id);
   if (!validated) {
-    return res.status(403).json({ status: "error", message: "Voter is not eligible for this ballot" });
+    return res.status(403).json({ status: "error", code: ERROR_CODES.ELIGIBILITY_DENIED, message: "Voter is not eligible for this ballot" });
+  }
+
+  // Multisig voters: if the caller didn't include a nativeScript, pull
+  // the cached one from the User doc (populated at login). Body override
+  // still wins when explicitly supplied.
+  if (!nativeScript && session.multiSig) {
+    const user = await User.findById(session.userId).lean();
+    if (user?.nativeScript) nativeScript = user.nativeScript;
   }
 
   try {
@@ -137,7 +198,7 @@ router.post("/:ballotId/draft", async (req, res) => {
       return res.status(400).json({ status: "error", code: err.code, message: err.message });
     }
     console.error("[votes/draft] error:", err);
-    return res.status(500).json({ status: "error", message: "Server error" });
+    return res.status(500).json({ status: "error", code: ERROR_CODES.INTERNAL, message: "Server error" });
   }
 });
 
@@ -148,18 +209,31 @@ router.post("/:ballotId/signature", async (req, res) => {
   const ballot = await requireHydraBallot(req, res);
   if (!ballot) return;
 
-  const { packageId, witness } = req.body || {};
-  if (!packageId || !witness) {
-    return res.status(400).json({ status: "error", message: "packageId and witness required" });
+  const { packageId, witness: rawWitness } = req.body || {};
+  if (!packageId || !rawWitness) {
+    return res.status(400).json({ status: "error", code: ERROR_CODES.BAD_INPUT, message: "packageId and witness required" });
+  }
+
+  // CIP-30 `signData` returns only { signature (COSE_Sign1 hex), key (COSE key hex) }.
+  // Derive the remaining fields (keyHash, raw pub key, raw ed25519 sig) so
+  // multisigCollector has what it needs and our Mongo audit trail is complete.
+  let witness;
+  try {
+    witness = normalizeWitness(rawWitness);
+  } catch (err) {
+    if (err instanceof CoseWitnessError) {
+      return res.status(400).json({ status: "error", code: err.code, message: err.message });
+    }
+    throw err;
   }
 
   const pkg = await VotePackage.findOne({ _id: packageId, ballotId: ballot._id });
-  if (!pkg) return res.status(404).json({ status: "error", message: "Package not found" });
+  if (!pkg) return res.status(404).json({ status: "error", code: ERROR_CODES.PACKAGE_NOT_FOUND, message: "Package not found" });
   if (pkg.userId !== session.userId) {
-    return res.status(403).json({ status: "error", message: "Not the package owner" });
+    return res.status(403).json({ status: "error", code: ERROR_CODES.FORBIDDEN, message: "Not the package owner" });
   }
   if (!["draft", "awaiting-signatures"].includes(pkg.status)) {
-    return res.status(409).json({ status: "error", message: `Package in terminal state: ${pkg.status}` });
+    return res.status(409).json({ status: "error", code: ERROR_CODES.PACKAGE_TERMINAL, message: `Package in terminal state: ${pkg.status}` });
   }
 
   pkg.signatures = dedupeSignatures([...(pkg.signatures || []), witness]);
@@ -192,6 +266,7 @@ router.post("/:ballotId/signature", async (req, res) => {
     if (!result.ok) {
       return res.status(502).json({
         status: "error",
+        code: hydraErrorCode(result.err),
         message: `Submission failed: ${result.err?.message || "unknown"}`,
         package: await currentPackageView(pkg._id),
       });
@@ -220,21 +295,22 @@ router.post("/:ballotId/submit", async (req, res) => {
 
   const { packageId } = req.body || {};
   const pkg = await VotePackage.findOne({ _id: packageId, ballotId: ballot._id });
-  if (!pkg) return res.status(404).json({ status: "error", message: "Package not found" });
+  if (!pkg) return res.status(404).json({ status: "error", code: ERROR_CODES.PACKAGE_NOT_FOUND, message: "Package not found" });
   if (pkg.userId !== session.userId) {
-    return res.status(403).json({ status: "error", message: "Not the package owner" });
+    return res.status(403).json({ status: "error", code: ERROR_CODES.FORBIDDEN, message: "Not the package owner" });
   }
   if (pkg.status === "hydra-confirmed") {
     return res.json({ status: "success", package: await currentPackageView(pkg._id) });
   }
   if (pkg.status !== "awaiting-submission") {
-    return res.status(409).json({ status: "error", message: `Package in state ${pkg.status}` });
+    return res.status(409).json({ status: "error", code: ERROR_CODES.PACKAGE_TERMINAL, message: `Package in state ${pkg.status}` });
   }
 
   const result = await submitPackage(pkg, ballot).catch((err) => ({ ok: false, err }));
   if (!result.ok) {
     return res.status(502).json({
       status: "error",
+      code: hydraErrorCode(result.err),
       message: `Submission failed: ${result.err?.message || "unknown"}`,
       package: await currentPackageView(pkg._id),
     });
@@ -253,15 +329,97 @@ router.get("/:ballotId/package/:packageId", async (req, res) => {
     _id: req.params.packageId,
     ballotId: ballot._id,
   }).lean();
-  if (!pkg) return res.status(404).json({ status: "error", message: "Package not found" });
+  if (!pkg) return res.status(404).json({ status: "error", code: ERROR_CODES.PACKAGE_NOT_FOUND, message: "Package not found" });
   if (pkg.userId !== session.userId) {
-    return res.status(403).json({ status: "error", message: "Not the package owner" });
+    return res.status(403).json({ status: "error", code: ERROR_CODES.FORBIDDEN, message: "Not the package owner" });
   }
-  return res.json({ status: "success", package: pkg });
+  return res.json({ status: "success", package: enrichPackageView(pkg) });
+});
+
+// GET /:ballotId/packages — list packages for the authenticated user on
+// this ballot. Default returns only active (draft / awaiting-signatures /
+// awaiting-submission). Pass ?includeTerminal=true OR ?status=<state>
+// to broaden the filter; ?limit=N (default 10).
+router.get("/:ballotId/packages", async (req, res) => {
+  const session = requireSession(req, res);
+  if (!session) return;
+  const ballot = await requireHydraBallot(req, res);
+  if (!ballot) return;
+
+  const ACTIVE_STATUSES = ["draft", "awaiting-signatures", "awaiting-submission"];
+  const filter = { ballotId: ballot._id, userId: session.userId };
+  if (req.query.status) {
+    filter.status = String(req.query.status);
+  } else if (req.query.includeTerminal !== "true") {
+    filter.status = { $in: ACTIVE_STATUSES };
+  }
+  const limit = Math.min(parseInt(req.query.limit, 10) || 10, 100);
+
+  const packages = await VotePackage.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
+
+  return res.json({
+    status: "success",
+    data: packages.map(enrichPackageView),
+    pagination: { limit, returned: packages.length },
+  });
 });
 
 async function currentPackageView(id) {
-  return VotePackage.findById(id).lean();
+  const pkg = await VotePackage.findById(id).lean();
+  return enrichPackageView(pkg);
+}
+
+/**
+ * Augment a raw VotePackage doc with derived fields the frontend expects:
+ *   - merkleRoot: blake2b_256 hex of JSON.stringify(signingPayload)
+ *   - signingPayloadHex: utf8-hex of merkleRoot (what the voter signs)
+ *   - signedPayloadJson: canonical JSON string for display
+ *   - multisig: { required, eligibleKeys, outstandingKeys, satisfied } when nativeScript
+ */
+function enrichPackageView(pkg) {
+  if (!pkg) return null;
+  let merkleRoot = pkg.voteHash || null;
+  let signedPayloadJson = null;
+  let signingPayloadHex = null;
+  if (pkg.signingPayload) {
+    signedPayloadJson = JSON.stringify(pkg.signingPayload);
+    // Recompute merkleRoot deterministically from the stored payload so
+    // it matches what the voter signs at /draft time. (pkg.voteHash also
+    // stamps the signing target after the broker computes it; both
+    // values should be identical.)
+    if (!merkleRoot) {
+      // Fallback only — happens if the package was created before
+      // voteHash was being stamped at draft time.
+      try {
+        merkleRoot = Buffer.from(
+          blake.blake2b(Buffer.from(signedPayloadJson, "utf8"), null, 32)
+        ).toString("hex");
+      } catch {
+        /* ignore */
+      }
+    }
+    if (merkleRoot) {
+      signingPayloadHex = Buffer.from(merkleRoot, "utf8").toString("hex");
+    }
+  }
+  let multisig = null;
+  if (pkg.nativeScript) {
+    try {
+      multisig = multisigStatus(pkg.nativeScript, pkg.signatures || []);
+    } catch {
+      multisig = null;
+    }
+  }
+  return {
+    ...pkg,
+    merkleRoot,
+    signingPayloadHex,
+    signedPayloadJson,
+    multisig,
+  };
 }
 
 /**
