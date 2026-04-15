@@ -34,6 +34,9 @@ import { seedBallotVotes } from "./common/voteSeeder.js";
 import { User } from "../../schema/User.js";
 import { UserCache } from "../../schema/UserCache.js";
 import { Proposal } from "../../schema/Proposal.js";
+import { Ballot } from "../../schema/Ballot.js";
+import { Vote } from "../../schema/Vote.js";
+import { Result } from "../../schema/Result.js";
 import { forEndpoint, HydraClientError } from "../../helper/hydraClient.js";
 
 const { flags } = parseArgs();
@@ -78,6 +81,38 @@ await bootstrap();
 const endpoint = flags.endpoint || process.env.HYDRA_DEFAULT_ENDPOINT;
 const skipHydra = Boolean(flags["skip-hydra"]) || !endpoint;
 const skipVotes = Boolean(flags["skip-votes"]);
+
+// ------------------------------------------------------------------
+// 0. Cleanup — remove stale scaffolded legacy upcoming/live rows.
+//
+// Older plan revisions allowed legacy ballots in live / upcoming
+// states. The current policy is legacy = archive-only (closed). Anything
+// from a previous run that still sits in upcoming/live gets removed
+// here, along with its Proposals / Votes / Results / UserCache rows.
+// Only scaffolded titles are touched — real legacy archive data is
+// identified by prefix and left alone.
+// ------------------------------------------------------------------
+const staleFilter = {
+  source: "legacy",
+  status: { $in: ["upcoming", "live"] },
+  title: { $regex: "^Scaffold/legacy/" },
+};
+const stale = await Ballot.find(staleFilter).select("_id title status").lean();
+if (stale.length > 0) {
+  const ids = stale.map((b) => b._id);
+  await Promise.all([
+    Vote.deleteMany({ ballotId: { $in: ids } }),
+    Result.deleteMany({ ballotId: { $in: ids } }),
+    UserCache.deleteMany({ ballotId: { $in: ids } }),
+    Proposal.deleteMany({ ballotId: { $in: ids } }),
+  ]);
+  await Ballot.deleteMany({ _id: { $in: ids } });
+  for (const b of stale) {
+    console.log(`[mixed] cleanup removed stale legacy ${b.status} ballot: ${b.title}`);
+  }
+} else {
+  console.log("[mixed] cleanup: no stale legacy upcoming/live ballots");
+}
 
 // ------------------------------------------------------------------
 // 1. Voter profiles

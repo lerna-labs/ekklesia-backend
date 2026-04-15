@@ -99,6 +99,15 @@ const HYDRA_PREPARE_BUFFER_MS = 4 * MINUTE;
  *   buffer instead of a past start, and `closed` is rejected.
  */
 function windowForState(state, source = "legacy", simulated = false, now = Date.now()) {
+  // Legacy is a read-only archive surface in this codebase — upcoming
+  // and live legacy ballots don't represent anything real and would
+  // only muddy the unified listing. Block them at the factory so no
+  // scaffold can create one by mistake.
+  if (source === "legacy" && state !== "closed") {
+    throw new Error(
+      `Cannot scaffold a '${state}' legacy ballot. Legacy is archive-only — use source:"hydra" for upcoming/live ballots.`
+    );
+  }
   switch (state) {
     case "upcoming":
       return { votePeriodStart: new Date(now + 1 * DAY), votePeriodEnd: new Date(now + 8 * DAY) };
