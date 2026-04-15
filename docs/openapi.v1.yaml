@@ -332,6 +332,65 @@ paths:
                   status: { type: string }
                   package: { $ref: "#/components/schemas/VotePackage" }
 
+  /admin/ballots/import:
+    post:
+      tags: [Admin, Ingestion]
+      summary: Import a compiled ballot (push from proposals module or admin upload)
+      description: |
+        Accepts a `CompiledBallot` v1 payload under either:
+          - **Admin JWT** (`cookieAuth`) — treated as `importMethod: "upload"`.
+          - **API key** with scope `write:ballot-import` — treated as
+            `importMethod: "push"`. Key-holders are typically proposals
+            modules that transform their internal shape into CompiledBallot.
+
+        Upsert key is `(source.moduleId, source.externalBallotId)`. The
+        target ballot is **frozen once its status transitions to `live`
+        or `closed`** — re-import attempts after that point return 409.
+
+        Proposals are replaced wholesale on every import (delete-then-insert).
+        The raw payload is archived to `ImportedBallotPayload` for audit.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+        - apiKeyHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompiledBallot" }
+      responses:
+        "200":
+          description: Existing ballot updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BallotImportResult" }
+        "201":
+          description: New ballot created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BallotImportResult" }
+        "400":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "error" }
+                  code: { type: string, example: "VALIDATION_FAILED" }
+                  message: { type: string }
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path: { type: string }
+                        message: { type: string }
+        "401": { description: Auth required (admin JWT or API key) }
+        "403": { description: API key missing write:ballot-import scope }
+        "409":
+          description: Ballot is live/closed and cannot be re-imported
+
   /admin/ballots/{id}/prepare:
     post:
       tags: [Admin]
@@ -497,6 +556,170 @@ components:
         provisionalResultsEnabled: { type: boolean }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    BallotImportResult:
+      type: object
+      required: [status, ballotId, created, proposalsImported, schemaVersion]
+      properties:
+        status: { type: string, example: "success" }
+        ballotId: { type: string }
+        created:
+          type: boolean
+          description: true on first import; false on subsequent updates
+        proposalsImported: { type: integer }
+        schemaVersion: { type: string, example: "1" }
+
+    CompiledBallot:
+      type: object
+      description: |
+        Canonical import payload. Produced by a proposals module's
+        transform layer or hand-written as a JSON file uploaded by an
+        admin. See `helper/compiledBallot/schema.js` for the
+        authoritative shape + length caps.
+      required: [schemaVersion, source, ballot, proposals]
+      properties:
+        schemaVersion:
+          type: string
+          enum: ["1"]
+        source:
+          type: object
+          required: [moduleId, externalBallotId]
+          properties:
+            moduleId: { type: string, example: "catalyst-v2" }
+            moduleUrl: { type: string, nullable: true }
+            externalBallotId: { type: string, example: "fund-11" }
+            version: { type: string, nullable: true }
+        ballot:
+          type: object
+          required:
+            - title
+            - description
+            - voterType
+            - voterDescription
+            - voteWeighted
+            - voteFilters
+            - votePeriodStart
+            - votePeriodEnd
+            - proposalPeriodStart
+            - proposalPeriodEnd
+            - voteAuthorityId
+            - voteAuthorityAddress
+          properties:
+            title: { type: string, maxLength: 200 }
+            description: { type: string, maxLength: 2000 }
+            voterType:
+              type: string
+              enum: [stake, drep, pool, cc, any]
+            voterDescription: { type: string }
+            voteWeighted: { type: boolean }
+            voteFilters: { type: boolean }
+            votePeriodStart: { type: string, format: date-time }
+            votePeriodEnd: { type: string, format: date-time }
+            proposalPeriodStart: { type: string, format: date-time }
+            proposalPeriodEnd: { type: string, format: date-time }
+            voteAuthorityId: { type: string }
+            voteAuthorityAddress: { type: string }
+            ipfsHash: { type: string, nullable: true }
+            voterValidationScript: { type: string }
+            rollupScript: { type: string }
+            startupScript: { type: string }
+        facets:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/FacetDefinition" }
+        proposals:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items: { $ref: "#/components/schemas/CompiledProposal" }
+
+    FacetDefinition:
+      type: object
+      required: [key, label, type]
+      description: |
+        Declares a sort/filter dimension for this ballot's proposals.
+        Frozen at `status === "live"`. CSV is the wire format for
+        multi-value enums (option names must not contain `,`).
+      properties:
+        key:
+          type: string
+          pattern: "^[a-zA-Z0-9_-]+$"
+        label: { type: string, maxLength: 120 }
+        type:
+          type: string
+          enum: [enum, number, string, boolean, date]
+        multi:
+          type: boolean
+          default: false
+          description: |
+            Only meaningful for `type:"enum"`. Implies `sortable:false`.
+        options:
+          type: array
+          description: Required when `type:"enum"`. Items must not contain `,`.
+          items: { type: string }
+        unit: { type: string, nullable: true }
+        sortable: { type: boolean, default: false }
+        filterable: { type: boolean, default: true }
+        defaultSort:
+          type: string
+          enum: [asc, desc]
+          nullable: true
+          description: At most one facet may declare this.
+
+    CompiledProposal:
+      type: object
+      required: [title, voteOptions]
+      properties:
+        title: { type: string, maxLength: 200 }
+        description: { type: string }
+        categories: { type: array, items: { type: string } }
+        tags: { type: array, items: { type: string } }
+        voteType:
+          type: string
+          enum: [default, budget, ranked, scale, preference]
+        voteIncrement: { type: number }
+        voterBudget: { type: number }
+        abstainAllowed: { type: boolean }
+        voteOptions:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              id: { oneOf: [{ type: number }, { type: string }] }
+              cost: { type: number }
+              label: { type: string }
+        data: { type: object }
+        ipfsHash: { type: string, nullable: true }
+        externalProposal:
+          type: object
+          required: [id]
+          properties:
+            id: { type: string }
+            url: { type: string, nullable: true }
+            snapshot:
+              type: object
+              required: [title, summary]
+              properties:
+                title: { type: string, maxLength: 200 }
+                summary: { type: string, maxLength: 2000 }
+                rationale: { type: string, maxLength: 10000, nullable: true }
+                authors:
+                  type: array
+                  maxItems: 20
+                  items: { type: string, maxLength: 120 }
+                version: { type: string }
+                facets:
+                  type: object
+                  description: |
+                    Keys must match `Ballot.facets[].key`. Multi-value
+                    enums use CSV (e.g. `"education,infrastructure"`).
+                    Single-value enums carry no trailing comma.
+                  additionalProperties:
+                    oneOf:
+                      - { type: string }
+                      - { type: number }
+                      - { type: boolean }
 
     Pagination:
       type: object

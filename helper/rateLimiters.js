@@ -44,6 +44,23 @@ export const voteWriteLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Tight bucket for the compiled-ballot import endpoint. Separate from
+// the public-read bucket so a noisy read workload can't starve push
+// updates and vice versa. Per-key when authenticated via API key;
+// per-user when authenticated via admin JWT.
+export const ballotImportLimiter = rateLimit({
+  windowMs: Number(process.env.BALLOT_IMPORT_WINDOW_MS) || 60 * 1000,
+  max: Number(process.env.BALLOT_IMPORT_MAX) || 30,
+  keyGenerator: (req, res) =>
+    req.auth?.id || req.auth?.userId || ipKeyGenerator(req, res),
+  message: {
+    status: "error",
+    message: "Ballot import rate limit exceeded.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Per-API-key bucket for the public read surface. Honors a per-key override
 // stored on ApiKey.rateLimit when set; otherwise uses env defaults or
 // 120 requests per minute.

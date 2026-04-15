@@ -199,6 +199,66 @@ const ballotSchema = new Schema(
       type: Object,
       default: null,
     },
+
+    // Origin of the ballot definition when imported from a proposals
+    // module (push via API key) or uploaded as a compiled JSON file by
+    // an admin. Null for scaffold-created or legacy ballots.
+    //
+    // `importMethod` distinguishes push (API key, proposals module owns
+    // the transform) from upload (admin JWT, admin owns the file).
+    //
+    // Upsert key: (moduleId, externalBallotId) — the proposals module
+    // can re-push updates up until the ballot goes live.
+    proposalSource: {
+      moduleId: { type: String, default: null },
+      moduleUrl: { type: String, default: null },
+      externalBallotId: { type: String, default: null },
+      version: { type: String, default: null },
+      importedAt: { type: Date, default: null },
+      importMethod: {
+        type: String,
+        enum: [null, "push", "upload"],
+        default: null,
+      },
+      importedBy: { type: String, default: null }, // admin userId or ApiKey.keyPrefix
+    },
+
+    // Dynamic sort/filter dimensions. Declared once per ballot so the
+    // frontend can render filter UIs without hardcoding ballot-type
+    // logic. Proposals reference these keys on their
+    // externalProposal.snapshot.facets map. Once the ballot goes live,
+    // the facets array is frozen with everything else.
+    //
+    // Rules (enforced by helper/facets/validate.js at import time):
+    //   - option strings must not contain `,` (CSV is the wire format)
+    //   - multi: true implies sortable: false
+    //   - at most one facet may declare defaultSort
+    //   - proposals can only carry facet keys declared here
+    facets: {
+      type: [
+        {
+          _id: false,
+          key: { type: String, required: true },
+          label: { type: String, required: true },
+          type: {
+            type: String,
+            enum: ["enum", "number", "string", "boolean", "date"],
+            required: true,
+          },
+          multi: { type: Boolean, default: false },
+          options: { type: [String], default: [] },
+          unit: { type: String, default: null },
+          sortable: { type: Boolean, default: false },
+          filterable: { type: Boolean, default: true },
+          defaultSort: {
+            type: String,
+            enum: [null, "asc", "desc"],
+            default: null,
+          },
+        },
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt

@@ -95,6 +95,23 @@ const proposalSchema = new Schema(
       required: true,
       default: true,
     },
+    // Back-reference to the originating proposal in an upstream
+    // proposals module (populated by the compiled-ballot importer).
+    // Null for scaffold-created / legacy proposals. The `snapshot`
+    // carries a whitelisted, length-capped copy of upstream display
+    // fields so the voting UX can render without live-fetching the
+    // proposals module — and cannot be broken by arbitrary upstream
+    // data shapes. `snapshot.facets` is a dict keyed by
+    // `Ballot.facets[].key`; multi-value enums use CSV strings.
+    externalProposal: {
+      type: {
+        _id: false,
+        id: { type: String, required: true },
+        url: { type: String, default: null },
+        snapshot: { type: Object, default: null },
+      },
+      default: null,
+    },
     createdAt: {
       type: Date,
       default: Date.now,

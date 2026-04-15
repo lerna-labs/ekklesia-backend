@@ -37,7 +37,12 @@ const apiKeySchema = new Schema(
       windowMs: { type: Number, default: null },
       max: { type: Number, default: null },
     },
-    // Simple scope string array — "read:ballots", "read:results", etc.
+    // Simple scope string array. Recognized values:
+    //   "read:ballots"        — public v1 ballot listing/detail
+    //   "read:results"        — public v1 results reads
+    //   "write:ballot-import" — POST /api/v1/admin/ballots/import
+    //                           (push path for proposals modules)
+    // Additional scopes can be added without a schema change.
     scopes: {
       type: [String],
       default: ["read:ballots", "read:results"],

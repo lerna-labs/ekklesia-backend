@@ -13,6 +13,13 @@
 import { Router } from "express";
 import { Ballot } from "../../../../schema/Ballot.js";
 import { isAdmin } from "../../../../helper/adminAuth.js";
+import { adminOrScope } from "../../../../helper/compositeAuth.js";
+import { ballotImportLimiter } from "../../../../helper/rateLimiters.js";
+import { validateCompiledBallot } from "../../../../helper/compiledBallot/validator.js";
+import {
+  writeCompiledBallot,
+  CompiledBallotWriteError,
+} from "../../../../helper/compiledBallot/writer.js";
 import {
   forBallot,
   forEndpoint,
@@ -21,6 +28,58 @@ import {
 import { writeFinalResult } from "../../../../crons/10minAggregateVotes.js";
 
 const router = Router();
+
+// POST /import — accepts a CompiledBallot (v1) from either a proposals
+// module (API key with `write:ballot-import`) or an admin (JWT). Must
+// be registered BEFORE router.use(isAdmin) so the composite auth can
+// run in place of the global admin-only gate.
+//
+// Body: CompiledBallot (see helper/compiledBallot/schema.js)
+// Returns: { ballotId, created, proposalsImported, schemaVersion }
+// 409 if the target ballot is already live/closed.
+router.post(
+  "/import",
+  ballotImportLimiter,
+  adminOrScope("write:ballot-import"),
+  async (req, res) => {
+    const payload = req.body;
+    const validation = validateCompiledBallot(payload);
+    if (!validation.ok) {
+      return res.status(400).json({
+        status: "error",
+        code: "VALIDATION_FAILED",
+        message: "Compiled ballot payload failed validation",
+        errors: validation.errors,
+      });
+    }
+
+    const authCtx = {
+      method: req.auth.kind === "apiKey" ? "push" : "upload",
+      importedBy:
+        req.auth.kind === "apiKey" ? req.auth.prefix : req.auth.userId,
+    };
+
+    try {
+      const result = await writeCompiledBallot(payload, authCtx);
+      return res.status(result.created ? 201 : 200).json({
+        status: "success",
+        ...result,
+      });
+    } catch (err) {
+      if (err instanceof CompiledBallotWriteError) {
+        return res.status(err.status).json({
+          status: "error",
+          code: err.code,
+          message: err.message,
+        });
+      }
+      console.error("[ballots/import] error:", err);
+      return res
+        .status(500)
+        .json({ status: "error", code: "INTERNAL", message: "Server error" });
+    }
+  }
+);
 
 router.use(isAdmin);
 
