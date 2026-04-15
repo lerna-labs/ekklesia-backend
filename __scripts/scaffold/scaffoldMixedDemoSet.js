@@ -1,43 +1,87 @@
-// Seed a realistic mixed-source demo set: N legacy + M Hydra ballots across
-// upcoming/live/closed states, plus the deterministic voter cohort.
+// Seed a realistic mixed-source demo set: legacy archive rows + Hydra
+// ballots across upcoming/live/closed states, spanning every combination
+// of eligible voter groups, and with simulated votes + rollup results
+// populated for closed and live ballots.
 //
-// Idempotent at the Ballot/User/UserCache level. Hydra /prepare calls are
-// only attempted for ballots that haven't already been prepared.
+// Legacy ballots are ONLY scaffolded as closed (archive) — new writes
+// to legacy are frozen in this codebase, so upcoming/live legacy rows
+// would be pure noise.
+//
+// Hydra "closed" ballots in this scaffold are SIMULATED: they never
+// touched the chain, but carry deterministic fake policy IDs, CIDs,
+// head IDs, and asset names so the UI renders them identically to real
+// archived Hydra ballots. Live/upcoming Hydra ballots can optionally
+// /prepare against a real Hydra endpoint.
+//
+// Idempotent at the Ballot/Proposal/Vote/Result/UserCache level. Re-runs
+// converge deterministically — same votes, same tallies.
 //
 // Usage:
 //   node __scripts/scaffold/scaffoldMixedDemoSet.js
 //   node __scripts/scaffold/scaffoldMixedDemoSet.js --endpoint https://hydra.preprod.example
 //   node __scripts/scaffold/scaffoldMixedDemoSet.js --skip-hydra
+//   node __scripts/scaffold/scaffoldMixedDemoSet.js --skip-votes
 
 import process from "process";
 import { bootstrap, teardown, parseArgs } from "./common/env.js";
-import { upsertScaffoldBallot } from "./common/ballotFactory.js";
+import {
+  upsertScaffoldBallot,
+  VALIDATION_SCRIPTS,
+} from "./common/ballotFactory.js";
 import { buildPrepareBody } from "./common/hydraPrepare.js";
 import { VOTERS } from "./common/fixtures.js";
+import { seedBallotVotes } from "./common/voteSeeder.js";
 import { User } from "../../schema/User.js";
 import { UserCache } from "../../schema/UserCache.js";
+import { Proposal } from "../../schema/Proposal.js";
 import { forEndpoint, HydraClientError } from "../../helper/hydraClient.js";
 
 const { flags } = parseArgs();
 
+// ------------------------------------------------------------------
+// Ballot plan
+// ------------------------------------------------------------------
+// Legacy — archive only. Each entry becomes one scaffolded closed ballot.
+// Flavor set covers single-group and combined-group eligibility so the
+// frontend can exercise every filter scenario against the archive.
 const LEGACY_PLAN = [
   { flavor: "dreps", state: "closed", index: 1 },
-  { flavor: "dreps", state: "live", index: 1 },
-  { flavor: "poolPledge", state: "upcoming", index: 1 },
-];
-const HYDRA_PLAN = [
-  { flavor: "dreps", state: "live", index: 1 },
-  { flavor: "stake", state: "upcoming", index: 1 },
+  { flavor: "stake", state: "closed", index: 1 },
+  { flavor: "poolStake", state: "closed", index: 1 },
+  { flavor: "drepsPools", state: "closed", index: 1 },
+  { flavor: "drepsStake", state: "closed", index: 1 },
+  { flavor: "poolsStake", state: "closed", index: 1 },
+  { flavor: "allGroups", state: "closed", index: 1 },
 ];
 
-// bootstrap() loads .env.development + .env.local, so read HYDRA_DEFAULT_ENDPOINT
-// AFTER bootstrap completes — reading before would miss env-file values.
+// Hydra — upcoming + live may hit a real Hydra endpoint; closed is
+// always simulated (mint-policy timelock prevents scaffolding a real
+// closed Hydra ballot from scratch).
+const HYDRA_PLAN = [
+  // Upcoming
+  { flavor: "dreps", state: "upcoming", index: 1 },
+  { flavor: "poolPledge", state: "upcoming", index: 1 },
+  { flavor: "drepsPools", state: "upcoming", index: 1 },
+  // Live
+  { flavor: "dreps", state: "live", index: 1 },
+  { flavor: "stake", state: "live", index: 1 },
+  { flavor: "allGroups", state: "live", index: 1 },
+  // Closed (simulated)
+  { flavor: "dreps", state: "closed", index: 1, simulated: true },
+  { flavor: "poolPledge", state: "closed", index: 1, simulated: true },
+  { flavor: "drepsStake", state: "closed", index: 1, simulated: true },
+  { flavor: "allGroups", state: "closed", index: 1, simulated: true },
+];
+
 await bootstrap();
 
 const endpoint = flags.endpoint || process.env.HYDRA_DEFAULT_ENDPOINT;
 const skipHydra = Boolean(flags["skip-hydra"]) || !endpoint;
+const skipVotes = Boolean(flags["skip-votes"]);
 
-// 1. Voters + base profiles
+// ------------------------------------------------------------------
+// 1. Voter profiles
+// ------------------------------------------------------------------
 for (const v of VOTERS) {
   await User.updateOne(
     { _id: v.userId },
@@ -47,15 +91,21 @@ for (const v of VOTERS) {
 }
 console.log(`[mixed] seeded ${VOTERS.length} user profiles`);
 
-// 2. Legacy ballots
+// ------------------------------------------------------------------
+// 2. Legacy archive ballots
+// ------------------------------------------------------------------
 const legacyBallots = [];
 for (const spec of LEGACY_PLAN) {
   const b = await upsertScaffoldBallot({ source: "legacy", ...spec });
-  legacyBallots.push(b);
-  console.log(`[mixed] legacy  ${b.title} (${b._id})`);
+  legacyBallots.push({ ballot: b, spec });
+  console.log(
+    `[mixed] legacy  ${b.title} (${b._id}) — ${VALIDATION_SCRIPTS[spec.flavor].voterType}`
+  );
 }
 
-// 3. Hydra ballot docs (+ /prepare if endpoint is available)
+// ------------------------------------------------------------------
+// 3. Hydra ballots (upsert docs; /prepare for non-simulated upcoming/live)
+// ------------------------------------------------------------------
 const hydraBallots = [];
 for (const spec of HYDRA_PLAN) {
   const b = await upsertScaffoldBallot({
@@ -63,15 +113,20 @@ for (const spec of HYDRA_PLAN) {
     ...spec,
     provisionalResultsEnabled: true,
   });
-  hydraBallots.push(b);
+  hydraBallots.push({ ballot: b, spec });
 
-  if (skipHydra) {
-    console.log(`[mixed] hydra   ${b.title} (${b._id}) — SKIPPED /prepare (${endpoint ? "use --force on scaffoldHydraBallot" : "no endpoint"})`);
+  const label = `[mixed] hydra   ${b.title} (${b._id}) — ${VALIDATION_SCRIPTS[spec.flavor].voterType}`;
+
+  if (spec.simulated) {
+    console.log(`${label} — SIMULATED (no /prepare; fake on-chain IDs)`);
     continue;
   }
-
-  if (b.hydraEndpoint) {
-    console.log(`[mixed] hydra   ${b.title} (${b._id}) — already prepared at ${b.hydraEndpoint}`);
+  if (skipHydra) {
+    console.log(`${label} — SKIPPED /prepare (${endpoint ? "--skip-hydra" : "no endpoint"})`);
+    continue;
+  }
+  if (b.hydraEndpoint && !String(b.hydraEndpoint).startsWith("https://simulated.")) {
+    console.log(`${label} — already prepared at ${b.hydraEndpoint}`);
     continue;
   }
 
@@ -86,26 +141,67 @@ for (const spec of HYDRA_PLAN) {
       b.instancePolicyId = data.instancePolicyId || data.policyId;
     if (data?.hydraHeadId) b.hydraHeadId = data.hydraHeadId;
     await b.save();
-    console.log(`[mixed] hydra   ${b.title} — prepared (namespace=${body.namespace})`);
+    console.log(`${label} — prepared (namespace=${body.namespace})`);
   } catch (err) {
     const msg = err instanceof HydraClientError ? err.message : err.stack || err.message;
-    console.warn(`[mixed] hydra   ${b.title} — /prepare FAILED: ${msg}`);
+    console.warn(`${label} — /prepare FAILED: ${msg}`);
   }
 }
 
-// 4. Voter caches for every scaffolded ballot
-for (const b of [...legacyBallots, ...hydraBallots]) {
+// ------------------------------------------------------------------
+// 4. UserCache — validate per ballot based on flavor.eligibleGroups
+//    (not every voter on every ballot)
+// ------------------------------------------------------------------
+const allBallots = [...legacyBallots, ...hydraBallots];
+let cacheRows = 0;
+for (const { ballot, spec } of allBallots) {
+  const eligible = new Set(VALIDATION_SCRIPTS[spec.flavor].eligibleGroups);
   for (const v of VOTERS) {
+    const isEligible = eligible.has(v.voterGroup);
     await UserCache.updateOne(
-      { ballotId: b._id, userId: v.userId },
-      { $set: { validated: v.validated, votingPower: v.votingPower, voterGroup: v.voterGroup } },
+      { ballotId: ballot._id, userId: v.userId },
+      {
+        $set: {
+          validated: isEligible && v.validated,
+          votingPower: v.votingPower,
+          voterGroup: v.voterGroup,
+        },
+      },
       { upsert: true }
     );
+    cacheRows++;
   }
 }
 console.log(
-  `[mixed] voter caches written for ${legacyBallots.length + hydraBallots.length} ballots`
+  `[mixed] ${cacheRows} UserCache rows written across ${allBallots.length} ballots (per-flavor eligibility)`
 );
+
+// ------------------------------------------------------------------
+// 5. Votes + results for closed and live ballots
+// ------------------------------------------------------------------
+if (skipVotes) {
+  console.log(`[mixed] --skip-votes — no votes or results seeded`);
+} else {
+  let totalVotes = 0;
+  for (const { ballot, spec } of allBallots) {
+    if (spec.state === "upcoming") continue;
+    const proposals = await Proposal.find({ ballotId: ballot._id }).lean();
+    const eligibleVoters = VOTERS.filter((v) =>
+      VALIDATION_SCRIPTS[spec.flavor].eligibleGroups.includes(v.voterGroup)
+    );
+    const { totalVotes: n, proposalsSeeded } = await seedBallotVotes({
+      ballot,
+      proposals,
+      voters: eligibleVoters,
+      state: spec.state,
+    });
+    totalVotes += n;
+    console.log(
+      `[mixed] votes   ${ballot.title} — ${n} votes across ${proposalsSeeded} proposals (${spec.state})`
+    );
+  }
+  console.log(`[mixed] seeded ${totalVotes} votes total`);
+}
 
 await teardown();
 process.exit(0);
