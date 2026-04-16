@@ -30,13 +30,21 @@ import {
 } from "./common/ballotFactory.js";
 import { buildPrepareBody } from "./common/hydraPrepare.js";
 import { VOTERS } from "./common/fixtures.js";
+import { SYNTHETIC_VOTERS } from "./common/syntheticVoters.js";
 import { seedBallotVotes } from "./common/voteSeeder.js";
+import { allocateBallotPower } from "./common/votingPowerDistribution.js";
+
+// Combined demo cohort: real preprod voters (signing-capable, used for
+// E2E) plus a synthetic cohort that exists only to give result tallies
+// realistic distribution.
+const ALL_VOTERS = [...VOTERS, ...SYNTHETIC_VOTERS];
 import { User } from "../../schema/User.js";
 import { UserCache } from "../../schema/UserCache.js";
 import { Proposal } from "../../schema/Proposal.js";
 import { Ballot } from "../../schema/Ballot.js";
 import { Vote } from "../../schema/Vote.js";
 import { Result } from "../../schema/Result.js";
+import { VoterPowerSnapshot } from "../../schema/VoterPowerSnapshot.js";
 import { forEndpoint, HydraClientError } from "../../helper/hydraClient.js";
 
 const { flags } = parseArgs();
@@ -115,16 +123,18 @@ if (stale.length > 0) {
 }
 
 // ------------------------------------------------------------------
-// 1. Voter profiles
+// 1. Voter profiles (real preprod + synthetic demo cohort)
 // ------------------------------------------------------------------
-for (const v of VOTERS) {
+for (const v of ALL_VOTERS) {
   await User.updateOne(
     { _id: v.userId },
     { $set: { name: v.name, lastLogin: new Date() } },
     { upsert: true }
   );
 }
-console.log(`[mixed] seeded ${VOTERS.length} user profiles`);
+console.log(
+  `[mixed] seeded ${ALL_VOTERS.length} user profiles (${VOTERS.length} real preprod + ${SYNTHETIC_VOTERS.length} synthetic)`
+);
 
 // ------------------------------------------------------------------
 // 2. Legacy archive ballots
@@ -184,21 +194,38 @@ for (const spec of HYDRA_PLAN) {
 }
 
 // ------------------------------------------------------------------
-// 4. UserCache — validate per ballot based on flavor.eligibleGroups
-//    (not every voter on every ballot)
+// 4. UserCache — per ballot:
+//    - validate voters whose group ∈ flavor.eligibleGroups
+//    - allocate per-ballot voting power (lovelace) from a power-law
+//      distribution summing to ~40-60% of 45B ADA
+//    - non-eligible voters still get a UserCache row (validated:false,
+//      votingPower:0) so the frontend has a complete picture
 // ------------------------------------------------------------------
 const allBallots = [...legacyBallots, ...hydraBallots];
 let cacheRows = 0;
+let bnToNum = (b) => {
+  // votingPower is a Number in the schema. JS Number safely represents
+  // integers up to 2^53 — fine for any individual lovelace allocation
+  // here (whale shares stay well under 9e15). Per-ballot SUMs can
+  // approach the limit; the few-lovelace rounding is invisible at demo
+  // scale.
+  return Number(b);
+};
+
 for (const { ballot, spec } of allBallots) {
-  const eligible = new Set(VALIDATION_SCRIPTS[spec.flavor].eligibleGroups);
-  for (const v of VOTERS) {
-    const isEligible = eligible.has(v.voterGroup);
+  const eligibleGroups = new Set(VALIDATION_SCRIPTS[spec.flavor].eligibleGroups);
+  const eligibleVoters = ALL_VOTERS.filter((v) => eligibleGroups.has(v.voterGroup));
+  const allocations = allocateBallotPower(ballot._id.toString(), eligibleVoters);
+
+  for (const v of ALL_VOTERS) {
+    const isEligible = eligibleGroups.has(v.voterGroup);
+    const power = isEligible ? bnToNum(allocations.get(v.userId) ?? 0n) : 0;
     await UserCache.updateOne(
       { ballotId: ballot._id, userId: v.userId },
       {
         $set: {
           validated: isEligible && v.validated,
-          votingPower: v.votingPower,
+          votingPower: power,
           voterGroup: v.voterGroup,
         },
       },
@@ -208,8 +235,52 @@ for (const { ballot, spec } of allBallots) {
   }
 }
 console.log(
-  `[mixed] ${cacheRows} UserCache rows written across ${allBallots.length} ballots (per-flavor eligibility)`
+  `[mixed] ${cacheRows} UserCache rows written across ${allBallots.length} ballots (per-ballot power allocation)`
 );
+
+// ------------------------------------------------------------------
+// 4b. VoterPowerSnapshot — mirror the per-voter UserCache power into
+//     the new snapshot collection so the v0/v1 reader returns the
+//     same numbers without waiting on the 15min cron.
+//
+//     Skipped for ballots whose votingPowerSource has been set to
+//     "uploaded" by an admin — those are authoritative; the scaffold
+//     must not stomp them.
+// ------------------------------------------------------------------
+let snapshotRows = 0;
+for (const { ballot, spec } of allBallots) {
+  if (ballot.votingPowerSource?.type === "uploaded") {
+    console.log(
+      `[mixed] snapshot SKIP ${ballot.title} — source=uploaded (admin-authoritative)`
+    );
+    continue;
+  }
+  const eligibleGroups = new Set(VALIDATION_SCRIPTS[spec.flavor].eligibleGroups);
+  const eligibleVoters = ALL_VOTERS.filter((v) => eligibleGroups.has(v.voterGroup));
+  const allocations = allocateBallotPower(ballot._id.toString(), eligibleVoters);
+
+  // Atomic replace: drop existing snapshot rows for this ballot, write
+  // fresh ones from the same allocation we used for UserCache. Tag
+  // source: "snapshot" + computedBy: "scaffold" so it's clear these
+  // weren't produced by the cron.
+  await VoterPowerSnapshot.deleteMany({ ballotId: ballot._id });
+  const docs = eligibleVoters
+    .map((v) => ({
+      ballotId: ballot._id,
+      userId: v.userId,
+      voterGroup: v.voterGroup,
+      votingPower: Number(allocations.get(v.userId) ?? 0n),
+      source: "snapshot",
+      computedAt: new Date(),
+      computedBy: "scaffold:mixedDemoSet",
+    }))
+    .filter((d) => d.votingPower > 0);
+  if (docs.length > 0) {
+    await VoterPowerSnapshot.insertMany(docs, { ordered: true });
+  }
+  snapshotRows += docs.length;
+}
+console.log(`[mixed] ${snapshotRows} VoterPowerSnapshot rows written`);
 
 // ------------------------------------------------------------------
 // 5. Votes + results for closed and live ballots
@@ -221,9 +292,18 @@ if (skipVotes) {
   for (const { ballot, spec } of allBallots) {
     if (spec.state === "upcoming") continue;
     const proposals = await Proposal.find({ ballotId: ballot._id }).lean();
-    const eligibleVoters = VOTERS.filter((v) =>
-      VALIDATION_SCRIPTS[spec.flavor].eligibleGroups.includes(v.voterGroup)
-    );
+    const eligibleGroups = new Set(VALIDATION_SCRIPTS[spec.flavor].eligibleGroups);
+    // Look up each voter's per-ballot power from UserCache so the
+    // rollup matches what /api endpoints will compute via $lookup.
+    const cacheRows = await UserCache.find({ ballotId: ballot._id, validated: true })
+      .select("userId votingPower voterGroup")
+      .lean();
+    const eligibleVoters = cacheRows.map((c) => ({
+      userId: c.userId,
+      voterGroup: c.voterGroup,
+      votingPower: c.votingPower,
+    }));
+
     const { totalVotes: n, proposalsSeeded } = await seedBallotVotes({
       ballot,
       proposals,
@@ -232,7 +312,7 @@ if (skipVotes) {
     });
     totalVotes += n;
     console.log(
-      `[mixed] votes   ${ballot.title} — ${n} votes across ${proposalsSeeded} proposals (${spec.state})`
+      `[mixed] votes   ${ballot.title} — ${n} votes across ${proposalsSeeded} proposals (${spec.state}, eligible ${eligibleVoters.length})`
     );
   }
   console.log(`[mixed] seeded ${totalVotes} votes total`);

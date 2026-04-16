@@ -763,9 +763,12 @@ components:
       required: [title, voteOptions]
       properties:
         title: { type: string, maxLength: 200 }
-        description: { type: string }
-        categories: { type: array, items: { type: string } }
-        tags: { type: array, items: { type: string } }
+        # description was dropped — use summary (short pitch) and
+        # rationale (long-form argument) on externalProposal.snapshot.
+        # Importers ingesting legacy data should map description → summary.
+        # categories + tags were also dropped — declare per-ballot
+        # facets via Ballot.facets[] and supply per-proposal values
+        # via externalProposal.snapshot.facets.
         voteType:
           type: string
           enum: [default, budget, ranked, scale, preference]

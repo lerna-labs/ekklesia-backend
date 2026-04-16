@@ -54,6 +54,33 @@ const resultSchema = new Schema(
       type: Date,
       default: null,
     },
+    // Ballot-level participation snapshot taken at result-write time.
+    // Per-group sum of voting power AND voter count for everyone who
+    // cast at least one vote on ANY proposal in the parent ballot
+    // (not necessarily this proposal). The denominator authorities
+    // typically use for "X% of participating stake voted Yes" thresholds.
+    //
+    // Shape: {
+    //   totalVotingPower: { drep: <lovelace>, pool: <lovelace>, default: <lovelace> },
+    //   voterCount:       { drep: <int>,      pool: <int>,      default: <int>      }
+    // }
+    // Only present groups are included (per ballot-level convention).
+    ballotParticipation: {
+      type: Object,
+      default: null,
+    },
+    // Per-proposal participation snapshot taken at result-write time.
+    // Same shape as ballotParticipation but scoped to THIS proposal:
+    // distinct voters who cast at least one vote here. Frontends
+    // compute "X% of ballot voters engaged with this question" via
+    // proposalParticipation / ballotParticipation. Distinct from
+    // result.totalVotes / resultsByGroup[g].totalVotes which can
+    // over-count when a voter selects multiple targets in one vote
+    // (budget, ranked).
+    proposalParticipation: {
+      type: Object,
+      default: null,
+    },
     hydraEvidenceCid: {
       type: String,
       default: null,

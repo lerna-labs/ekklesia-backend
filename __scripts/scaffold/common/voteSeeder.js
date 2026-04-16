@@ -17,6 +17,16 @@
 import crypto from "node:crypto";
 import { Vote } from "../../../schema/Vote.js";
 import { Result } from "../../../schema/Result.js";
+import {
+  turnoutForBallot,
+  participates,
+} from "./votingPowerDistribution.js";
+import {
+  computeBallotParticipation,
+  computeProposalParticipation,
+} from "../../../helper/results/ballotParticipation.js";
+import { computeScaleStats, bucketScaleSamplesByGroup } from "../../../helper/results/scaleStats.js";
+import { computeRankedDistribution } from "../../../helper/results/rankedDistribution.js";
 
 /**
  * Stable 0..1 pseudo-random per (ballot, user, proposal, salt). Using
@@ -31,35 +41,134 @@ function prand(ballotId, userId, proposalId, salt = "") {
   return n / 0xffffffff;
 }
 
-function pickOption(proposal, r) {
+/**
+ * Per-ballot Yes/No/Abstain skew so archives don't all look the same.
+ *   yesMargin in [0.20, 0.85] — some ballots pass, some fail, some contested
+ *   abstainRate in [0.02, 0.18]
+ */
+function defaultSkew(ballotId) {
+  const a = prand(ballotId, "__skew", "yes");
+  const b = prand(ballotId, "__skew", "abstain");
+  return {
+    yesMargin: 0.2 + a * 0.65,
+    abstainRate: 0.02 + b * 0.16,
+  };
+}
+
+function pickOption(proposal, r, ballotId) {
   const opts = Array.isArray(proposal.voteOptions) ? proposal.voteOptions : [];
   if (opts.length === 0) return null;
-  // Skew slightly toward "Yes" for default ballots so archived demos
-  // have plausible outcomes rather than perfect 50/50 ties.
+
   if (proposal.voteType === "default" && opts.length >= 2) {
-    if (proposal.abstainAllowed && r < 0.08) return ["abstain"];
-    // 60% Yes, rest No — where option id 1 is canonical Yes in the factory.
-    return [r < 0.68 ? opts[0].id : opts[1].id];
+    const { yesMargin, abstainRate } = defaultSkew(ballotId);
+    if (proposal.abstainAllowed && r < abstainRate) return ["abstain"];
+    // After abstain bucket, normalize r into [0, 1) for the Yes/No
+    // split so the skew percentages stay accurate.
+    const r2 = (r - (proposal.abstainAllowed ? abstainRate : 0)) /
+      (1 - (proposal.abstainAllowed ? abstainRate : 0));
+    return [r2 < yesMargin ? opts[0].id : opts[1].id];
   }
+
   if (proposal.voteType === "scale") {
-    // Uniform over declared scale options.
-    return [opts[Math.floor(r * opts.length)].id];
+    if (proposal.abstainAllowed && r < 0.06) return ["abstain"];
+    // Spread votes across the FULL [min, max] range, snapped to the
+    // declared increment — declared anchor points (e.g. -100/0/100)
+    // are just the legal range boundaries, not the only legal votes.
+    // Without spreading, the histogram would have all votes stacked
+    // on three columns.
+    const numericIds = opts.map((o) => Number(o.id)).filter((n) => Number.isFinite(n));
+    const min = Math.min(...numericIds);
+    const max = Math.max(...numericIds);
+    const inc = Number(proposal.voteIncrement) || 1;
+    // Use a per-ballot Gaussian-ish skew so different scale proposals
+    // look distinct rather than all uniform.
+    const skewCenter = min + (max - min) * (0.3 + 0.4 * prand(ballotId, "scale", "center"));
+    // Box-Muller-ish: average two uniforms → triangular distribution
+    // centered on skewCenter.
+    const r2 = prand(ballotId, "scale", "second_" + r.toFixed(8));
+    const triangular = (r + r2) / 2; // [0, 1)
+    const span = max - min;
+    const drift = (triangular - 0.5) * span; // [-span/2, +span/2)
+    let value = skewCenter + drift;
+    if (value < min) value = min;
+    if (value > max) value = max;
+    // Snap to increment grid.
+    value = Math.round(value / inc) * inc;
+    return [value];
+  }
+  if (proposal.voteType === "ranked") {
+    if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
+    // Random permutation of option ids, deterministic per (proposal, voter).
+    const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
+    const sorted = ids
+      .map((id, i) => ({ id, sort: prand(ballotId, "ranked", `${id}_${i}_${r.toFixed(8)}`) }))
+      .sort((a, b) => a.sort - b.sort)
+      .map((x) => x.id);
+    // Some voters only rank a subset (random truncation [1, full]).
+    const depth = Math.max(1, Math.ceil(r * sorted.length));
+    return sorted.slice(0, depth);
+  }
+  if (proposal.voteType === "preference") {
+    if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
+    // Pick up to voterBudget (or 3 by default) selections. Deterministic
+    // per (proposal, voter, r). Each voter picks 1..N where N is the
+    // configured cap; popularity skew differs per option so the tally
+    // doesn't come out flat.
+    const cap = Math.max(1, Math.min(proposal.voterBudget || 3, opts.length));
+    const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
+    const ranked = ids
+      .map((id, i) => ({ id, sort: prand(ballotId, "preference", `${id}_${i}_${r.toFixed(8)}`) }))
+      .sort((a, b) => a.sort - b.sort)
+      .map((x) => x.id);
+    const n = pickInt(ballotId, r, 1, cap);
+    return ranked.slice(0, n);
   }
   if (proposal.voteType === "budget") {
-    // Pick a single option; budget logic isn't modeled in scaffolds.
-    return [opts[Math.floor(r * opts.length)].id];
+    if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
+    // Pick options whose summed `cost` fits the voter budget. Most
+    // scaffold-budget proposals use cost:1 per option, so this
+    // collapses to "pick up to voterBudget options."
+    const budget = Number(proposal.voterBudget) || 1;
+    const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
+    const ranked = ids
+      .map((id, i) => ({ id, sort: prand(ballotId, "budget", `${id}_${i}_${r.toFixed(8)}`) }))
+      .sort((a, b) => a.sort - b.sort);
+    const out = [];
+    let used = 0;
+    for (const { id } of ranked) {
+      const opt = opts.find((o) => o.id === id);
+      const cost = Number(opt?.cost) || 1;
+      if (used + cost > budget) continue;
+      out.push(id);
+      used += cost;
+    }
+    return out.length > 0 ? out : [ranked[0].id];
+  }
+  // For default with many options (e.g. CC election with 7 candidates)
+  // the existing >2 branch above only handles the 2-option Yes/No case.
+  // Fall through here for ≥3 options: pick exactly one, weighted by
+  // a per-option popularity coefficient so the tally doesn't come out
+  // perfectly uniform.
+  if (proposal.voteType === "default") {
+    if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
+    const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
+    // Build a cumulative-weight bucket over the options. Weights are
+    // deterministic per (proposal, option) so re-runs converge.
+    const weights = ids.map((id) => 1 + prand(ballotId, "popularity", id) * 4);
+    const sum = weights.reduce((s, w) => s + w, 0);
+    let target = r * sum;
+    for (let i = 0; i < ids.length; i++) {
+      target -= weights[i];
+      if (target <= 0) return [ids[i]];
+    }
+    return [ids[ids.length - 1]];
   }
   return [opts[Math.floor(r * opts.length)].id];
 }
 
-/**
- * Decide whether a voter participates on this ballot+proposal for a
- * "live" demo. Deterministic per (ballot, user) so a voter is
- * consistent across proposals within a live ballot.
- */
-function participates(ballotId, userId, turnout) {
-  const r = prand(ballotId, userId, "__turnout");
-  return r < turnout;
+function pickInt(ballotId, salt, min, max) {
+  const r = prand(ballotId, "pickInt", String(salt));
+  return Math.floor(r * (max - min + 1)) + min;
 }
 
 /**
@@ -68,7 +177,11 @@ function participates(ballotId, userId, turnout) {
  * @returns {{ results: Array, totalVotes: number,
  *             resultsByGroup: Object }}
  */
-function rollup(proposal, votes, votersByUserId) {
+function rollup(proposal, votes, votersByUserId, ballot) {
+  const isScale = proposal.voteType === "scale";
+  const isRanked = proposal.voteType === "ranked";
+  const isDiscrete = !isScale && !isRanked;
+
   const optionRow = (opt) => ({
     id: opt.id,
     label: opt.label,
@@ -81,8 +194,13 @@ function rollup(proposal, votes, votersByUserId) {
     count: 0,
     votingPower: 0,
   });
-
   const makeTally = () => {
+    if (!isDiscrete) {
+      // Scale/ranked don't have a meaningful per-option discrete tally;
+      // emit an abstain row only (when allowed) so the existing
+      // frontend code path doesn't choke on an empty array.
+      return proposal.abstainAllowed ? [abstainRow()] : [];
+    }
     const rows = proposal.voteOptions.map(optionRow);
     if (proposal.abstainAllowed) rows.push(abstainRow());
     return rows;
@@ -103,15 +221,29 @@ function rollup(proposal, votes, votersByUserId) {
     }
     const g = byGroup.get(group);
 
-    const targets = Array.isArray(v.vote) ? v.vote : [v.vote];
-    for (const t of targets) {
-      const row = overall.find((r) => r.id === t);
-      const gRow = g.results.find((r) => r.id === t);
-      if (!row || !gRow) continue;
-      row.count += 1;
-      row.votingPower += power;
-      gRow.count += 1;
-      gRow.votingPower += power;
+    if (isDiscrete) {
+      const targets = Array.isArray(v.vote) ? v.vote : [v.vote];
+      for (const t of targets) {
+        const row = overall.find((r) => r.id === t);
+        const gRow = g.results.find((r) => r.id === t);
+        if (!row || !gRow) continue;
+        row.count += 1;
+        row.votingPower += power;
+        gRow.count += 1;
+        gRow.votingPower += power;
+        totalOverall += 1;
+        g.totalVotes += 1;
+      }
+    } else {
+      // For scale/ranked, totalVotes counts voters (not per-target votes).
+      // Abstain still goes to the abstain row.
+      const first = Array.isArray(v.vote) ? v.vote[0] : v.vote;
+      if (first === "abstain") {
+        const ar = overall.find((r) => r.id === "abstain");
+        const gar = g.results.find((r) => r.id === "abstain");
+        if (ar) { ar.count += 1; ar.votingPower += power; }
+        if (gar) { gar.count += 1; gar.votingPower += power; }
+      }
       totalOverall += 1;
       g.totalVotes += 1;
     }
@@ -120,6 +252,29 @@ function rollup(proposal, votes, votersByUserId) {
   const resultsByGroup = {};
   for (const [group, payload] of byGroup.entries()) {
     resultsByGroup[group] = payload;
+  }
+
+  // Per-vote-type augmentations: scale stats, ranked distribution.
+  if (isScale) {
+    const samplesByGroup = bucketScaleSamplesByGroup(votes, votersByUserId);
+    for (const [group, samples] of samplesByGroup.entries()) {
+      if (!resultsByGroup[group]) continue;
+      resultsByGroup[group].scale = computeScaleStats({
+        proposal,
+        samples,
+        voteWeighted: !!ballot?.voteWeighted,
+      });
+    }
+  } else if (isRanked) {
+    const distByGroup = computeRankedDistribution({
+      proposal,
+      votes,
+      votersByUserId,
+    });
+    for (const [group, dist] of distByGroup.entries()) {
+      if (!resultsByGroup[group]) continue;
+      resultsByGroup[group].ranked = dist;
+    }
   }
 
   return {
@@ -140,7 +295,18 @@ function rollup(proposal, votes, votersByUserId) {
 async function seedProposal(ballot, proposal, voters, state) {
   if (state === "upcoming") return { votes: 0, result: null };
 
-  const turnout = state === "closed" ? 1.0 : 0.6;
+  // Per-ballot turnout — varies so Active/Total ratios look different
+  // across the demo set. Closed ballots end up roughly 60-95%; live
+  // somewhere in 20-70%.
+  const turnout = turnoutForBallot(ballot._id.toString(), state);
+
+  // Clear prior Vote docs for this proposal so re-runs converge
+  // exactly. Without this, voters who participated in a prior run but
+  // get filtered out by the new turnout draw leave orphan rows that
+  // the live API would still count even though our seeded Result
+  // ignores them.
+  await Vote.deleteMany({ proposalId: proposal._id });
+
   const now = new Date();
   // Spread submittedAt across a plausible window so the UI can render
   // "recent activity" timelines. Closed ballots get times in the past.
@@ -154,12 +320,20 @@ async function seedProposal(ballot, proposal, voters, state) {
       : new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
 
   const cast = [];
+  // Per-proposal engagement among ballot-participating voters: not
+  // every voter touches every question. ~75-90% of ballot-active
+  // voters engage with any given proposal — the remainder is
+  // skipped/abstained-by-omission. Deterministic per
+  // (proposal, voter) so re-runs converge.
+  const proposalEngagement = 0.75 + prand(ballot._id.toString(), proposal._id.toString(), "engagement") * 0.15;
   for (const voter of voters) {
-    if (state === "live" && !participates(ballot._id.toString(), voter.userId, turnout)) {
+    if (!participates(ballot._id.toString(), voter.userId, turnout)) {
       continue;
     }
+    const e = prand(ballot._id.toString(), voter.userId, proposal._id.toString(), "engage");
+    if (e > proposalEngagement) continue;
     const r = prand(ballot._id.toString(), voter.userId, proposal._id.toString(), "pick");
-    const vote = pickOption(proposal, r);
+    const vote = pickOption(proposal, r, ballot._id.toString());
     if (!vote) continue;
 
     const tOffset = prand(ballot._id.toString(), voter.userId, proposal._id.toString(), "t");
@@ -183,7 +357,22 @@ async function seedProposal(ballot, proposal, voters, state) {
   }
 
   const votersByUserId = new Map(voters.map((v) => [v.userId, v]));
-  const tally = rollup(proposal, cast, votersByUserId);
+  const tally = rollup(proposal, cast, votersByUserId, ballot);
+  const [ballotParticipation, proposalParticipation] = await Promise.all([
+    computeBallotParticipation(ballot._id),
+    computeProposalParticipation(proposal._id, ballot._id),
+  ]);
+
+  // Reconcile per-group totalVotes with distinct voter counts. The
+  // discrete rollup increments totalVotes per vote target, which
+  // over-counts ranked + budget. proposalParticipation.voterCount
+  // is the canonical distinct-voter count; same fix as the cron.
+  for (const groupKey of Object.keys(tally.resultsByGroup)) {
+    const distinct = proposalParticipation.voterCount?.[groupKey];
+    if (typeof distinct === "number") {
+      tally.resultsByGroup[groupKey].totalVotes = distinct;
+    }
+  }
 
   const resultDoc = {
     proposalId: proposal._id,
@@ -191,6 +380,8 @@ async function seedProposal(ballot, proposal, voters, state) {
     ballotSource: ballot.source || "legacy",
     results: tally.results,
     resultsByGroup: tally.resultsByGroup,
+    ballotParticipation,
+    proposalParticipation,
     source: state === "closed" ? "final" : "provisional",
     finalizedAt: state === "closed" ? now : null,
   };

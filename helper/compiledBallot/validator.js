@@ -150,9 +150,6 @@ function validateProposal(p, i, facetDefs, errors) {
   if (!isNonEmptyString(p.title, MAX.title)) {
     errors.push({ path: `${path}.title`, message: `required, ≤ ${MAX.title}` });
   }
-  if (p.description != null && typeof p.description !== "string") {
-    pushType(errors, `${path}.description`, "string");
-  }
   if (p.voteType != null && !VOTE_TYPES.has(p.voteType)) {
     errors.push({
       path: `${path}.voteType`,

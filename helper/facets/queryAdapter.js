@@ -63,6 +63,19 @@ function coerceScalar(raw, def) {
  */
 function buildFacetClause(def, rawValue) {
   const field = `externalProposal.snapshot.facets.${def.key}`;
+
+  // Numeric range syntax. Accepts:
+  //   filter[totalCost][min]=500&filter[totalCost][max]=2000  (object form)
+  //   filter[totalCost]=min:500,max:2000                       (csv form)
+  //   filter[totalCost]=gte:500                                (single op)
+  // Comparison operators: min/gte, max/lte, gt, lt, eq.
+  if (def.type === "number") {
+    const range = parseNumericRange(rawValue, def);
+    if (range === null) return null;
+    if (typeof range === "number") return { [field]: range };
+    return { [field]: range };
+  }
+
   const tokens = splitCsv(rawValue);
   if (tokens.length === 0) return null;
 
@@ -103,26 +116,120 @@ function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const RANGE_OPS = { min: "$gte", gte: "$gte", max: "$lte", lte: "$lte", gt: "$gt", lt: "$lt", eq: "$eq" };
+
+/**
+ * Parse a numeric filter value into either a Mongo range predicate
+ * ({ $gte, $lte, ... }) or a plain number for exact equality.
+ * Returns null when the input produces no usable filter.
+ */
+function parseNumericRange(raw, def) {
+  if (raw == null || raw === "") return null;
+
+  // Object form: filter[totalCost][min]=500&filter[totalCost][max]=2000
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    const out = {};
+    for (const [op, val] of Object.entries(raw)) {
+      const mongoOp = RANGE_OPS[op];
+      if (!mongoOp) continue;
+      const n = Number(val);
+      if (!Number.isFinite(n)) {
+        throw new FacetQueryError(
+          `filter[${def.key}].${op} must be a finite number`,
+          { path: `filter.${def.key}.${op}` }
+        );
+      }
+      out[mongoOp] = n;
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  }
+
+  const str = String(raw);
+
+  // CSV with operator prefixes: filter[totalCost]=min:500,max:2000
+  if (/^(min|max|gte?|lte?|gt|lt|eq):/i.test(str) || str.includes(",")) {
+    const parts = str.split(",").map((s) => s.trim()).filter(Boolean);
+    const out = {};
+    let plain = null;
+    for (const part of parts) {
+      const [op, val] = part.includes(":") ? part.split(":", 2) : [null, part];
+      if (op) {
+        const mongoOp = RANGE_OPS[op.toLowerCase()];
+        if (!mongoOp) {
+          throw new FacetQueryError(
+            `filter[${def.key}] unknown operator "${op}" (expected min/max/gte/lte/gt/lt/eq)`,
+            { path: `filter.${def.key}` }
+          );
+        }
+        const n = Number(val);
+        if (!Number.isFinite(n)) {
+          throw new FacetQueryError(
+            `filter[${def.key}] ${op}:${val} must be a finite number`,
+            { path: `filter.${def.key}` }
+          );
+        }
+        out[mongoOp] = n;
+      } else {
+        const n = Number(val);
+        if (!Number.isFinite(n)) {
+          throw new FacetQueryError(`filter[${def.key}] must be a finite number`, {
+            path: `filter.${def.key}`,
+          });
+        }
+        plain = plain == null ? [n] : [...plain, n];
+      }
+    }
+    if (plain && Object.keys(out).length === 0) {
+      // Multiple plain values → $in for parity with enum CSV semantics.
+      return plain.length === 1 ? plain[0] : { $in: plain };
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  }
+
+  // Plain single-value exact match.
+  const n = Number(str);
+  if (!Number.isFinite(n)) {
+    throw new FacetQueryError(`filter[${def.key}] must be a finite number`, {
+      path: `filter.${def.key}`,
+    });
+  }
+  return n;
+}
+
+// Built-in sort keys that are always available regardless of whether
+// the ballot declares them as facets. These map to native Proposal
+// fields (not facet dict entries) and default to ascending unless the
+// caller specifies otherwise.
+const BUILTIN_SORT_KEYS = {
+  title:     { field: "title",     defaultDir: 1  },
+  createdAt: { field: "createdAt", defaultDir: -1 },
+  updatedAt: { field: "updatedAt", defaultDir: -1 },
+};
+
 /**
  * Pick the sort spec. Priority:
- *   1. explicit ?sort=<key>&dir=<asc|desc>
+ *   1. explicit ?sort=<key>&dir=<asc|desc> — matches builtin or sortable facet
  *   2. facet.defaultSort
- *   3. createdAt:desc (stable default — proposals import order)
+ *   3. title ascending (natural alphabetical order)
  *
  * Throws FacetQueryError on unknown key or unsortable facet.
  */
 function resolveSort(sortKey, dir, facets) {
   if (sortKey) {
+    const builtin = BUILTIN_SORT_KEYS[sortKey];
+    if (builtin) {
+      const direction = dir === "asc" ? 1 : dir === "desc" ? -1 : builtin.defaultDir;
+      return {
+        spec: { [builtin.field]: direction },
+        applied: { key: sortKey, direction: direction === 1 ? "asc" : "desc" },
+      };
+    }
     const def = facets.find((f) => f.key === sortKey);
     if (!def) {
-      throw new FacetQueryError(`unknown sort key "${sortKey}"`, {
-        path: "sort",
-      });
+      throw new FacetQueryError(`unknown sort key "${sortKey}"`, { path: "sort" });
     }
     if (!def.sortable) {
-      throw new FacetQueryError(`facet "${sortKey}" is not sortable`, {
-        path: "sort",
-      });
+      throw new FacetQueryError(`facet "${sortKey}" is not sortable`, { path: "sort" });
     }
     const direction = dir === "asc" ? 1 : dir === "desc" ? -1 : -1;
     return {
@@ -138,7 +245,7 @@ function resolveSort(sortKey, dir, facets) {
       applied: { key: defaulted.key, direction: defaulted.defaultSort, source: "default" },
     };
   }
-  return { spec: { createdAt: -1 }, applied: { key: "createdAt", direction: "desc", source: "fallback" } };
+  return { spec: { title: 1 }, applied: { key: "title", direction: "asc", source: "fallback" } };
 }
 
 /**

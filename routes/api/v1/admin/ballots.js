@@ -26,6 +26,9 @@ import {
   HydraClientError,
 } from "../../../../helper/hydraClient.js";
 import { writeFinalResult } from "../../../../crons/10minAggregateVotes.js";
+import { VoterPowerSnapshot } from "../../../../schema/VoterPowerSnapshot.js";
+import { ImportedBallotPayload } from "../../../../schema/ImportedBallotPayload.js";
+import crypto from "node:crypto";
 
 const router = Router();
 
@@ -387,6 +390,139 @@ router.get("/:id/head-info", async (req, res) => {
     return res.json({ status: "success", hydra: data });
   } catch (err) {
     return handleHydraError(err, res);
+  }
+});
+
+// POST /:id/voting-power
+//
+// Upload an authoritative per-voter voting-power snapshot for a ballot.
+// Switches Ballot.votingPowerSource.type to "uploaded" — the cron
+// stops touching this ballot, and read endpoints serve the uploaded
+// rows as-is. Re-uploadable for corrections; each upload is archived
+// to ImportedBallotPayload.
+//
+// body: {
+//   epoch?: number,                 // Cardano epoch the snapshot was taken at
+//   snapshotMethod?: string,        // free-form description ("drep-stake-distribution", etc.)
+//   voters: Array<{ userId, voterGroup, votingPower }>,
+// }
+//
+// Atomic replace: deletes all existing VoterPowerSnapshot rows for the
+// ballot before inserting the uploaded set. Validation errors return
+// 400 with a per-row error list.
+router.post("/:id/voting-power", async (req, res) => {
+  const ballot = await Ballot.findById(req.params.id);
+  if (!ballot) {
+    return res.status(404).json({
+      status: "error",
+      code: "BALLOT_NOT_FOUND",
+      message: "Ballot not found",
+    });
+  }
+
+  const { voters, epoch, snapshotMethod } = req.body || {};
+  if (!Array.isArray(voters) || voters.length === 0) {
+    return res.status(400).json({
+      status: "error",
+      code: "BAD_INPUT",
+      message: "voters[] required (non-empty)",
+    });
+  }
+
+  const errors = [];
+  const seen = new Set();
+  voters.forEach((v, i) => {
+    if (!v || typeof v !== "object") {
+      errors.push({ path: `voters[${i}]`, message: "must be an object" });
+      return;
+    }
+    if (typeof v.userId !== "string" || v.userId.length === 0) {
+      errors.push({ path: `voters[${i}].userId`, message: "required string" });
+    }
+    if (typeof v.voterGroup !== "string" || v.voterGroup.length === 0) {
+      errors.push({ path: `voters[${i}].voterGroup`, message: "required string" });
+    }
+    if (typeof v.votingPower !== "number" || !Number.isFinite(v.votingPower) || v.votingPower < 0) {
+      errors.push({ path: `voters[${i}].votingPower`, message: "must be a non-negative finite number (lovelace)" });
+    }
+    if (v.userId && seen.has(v.userId)) {
+      errors.push({ path: `voters[${i}].userId`, message: `duplicate userId "${v.userId}"` });
+    }
+    if (v.userId) seen.add(v.userId);
+  });
+  if (errors.length > 0) {
+    return res.status(400).json({
+      status: "error",
+      code: "VALIDATION_FAILED",
+      message: "voting-power upload payload failed validation",
+      errors,
+    });
+  }
+
+  const now = new Date();
+  const adminId = req.auth?.userId || "admin";
+
+  const checksum = crypto
+    .createHash("sha256")
+    .update(JSON.stringify(req.body))
+    .digest("hex");
+
+  // Atomic replace. No Mongo transaction (dev/standalone friendliness;
+  // matches compiledBallot writer). Failure between delete and
+  // insertMany would leave the ballot empty, which the snapshot reader
+  // handles gracefully (returns zeros).
+  try {
+    await VoterPowerSnapshot.deleteMany({ ballotId: ballot._id });
+    const docs = voters.map((v) => ({
+      ballotId: ballot._id,
+      userId: v.userId,
+      voterGroup: v.voterGroup,
+      votingPower: v.votingPower,
+      source: "uploaded",
+      computedAt: now,
+      computedBy: `admin:${adminId}`,
+    }));
+    await VoterPowerSnapshot.insertMany(docs, { ordered: true });
+
+    ballot.votingPowerSource = {
+      type: "uploaded",
+      scriptName: ballot.votingPowerSource?.scriptName || ballot.voterValidationScript || null,
+      uploadedAt: now,
+      uploadedBy: adminId,
+      uploadCid: ballot.votingPowerSource?.uploadCid || null,
+    };
+    await ballot.save();
+
+    // Audit row in the ImportedBallotPayload table — re-using the audit
+    // surface from the proposal-import work. importMethod tagged as
+    // "upload" since it's the same shape (admin JWT push).
+    await ImportedBallotPayload.create({
+      ballotId: ballot._id,
+      schemaVersion: "voting-power-1",
+      importMethod: "upload",
+      importedBy: adminId,
+      source: {
+        moduleId: "voting-power",
+        externalBallotId: ballot._id.toString(),
+        version: epoch ? `epoch:${epoch}` : null,
+      },
+      checksum,
+      payload: { epoch, snapshotMethod, voters },
+    });
+
+    return res.status(201).json({
+      status: "success",
+      ballotId: ballot._id.toString(),
+      votersWritten: docs.length,
+      uploadedAt: now,
+    });
+  } catch (err) {
+    console.error("[admin/voting-power] upload failed:", err);
+    return res.status(500).json({
+      status: "error",
+      code: "INTERNAL",
+      message: err.message || "Server error",
+    });
   }
 });
 

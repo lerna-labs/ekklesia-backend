@@ -93,8 +93,11 @@ router.get("/ballots", isAuthenticated, async (req, res) => {
     // get the ballot
     const ballot = await Ballot.findById(ballotId);
 
-    const { validateVoter } = await import(
-      "../../../config/" + ballot.voterValidationScript
+    const { loadValidationScript } = await import(
+      "../../../helper/loadValidationScript.js"
+    );
+    const { validateVoter } = await loadValidationScript(
+      ballot.voterValidationScript
     );
     // validate voter against ballot
     const isValidVoter = await validateVoter(userId, ballotId);

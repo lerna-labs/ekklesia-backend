@@ -3,6 +3,15 @@ import { UserCache } from "../schema/UserCache.js";
 import { Proposal } from "../schema/Proposal.js";
 import { Ballot } from "../schema/Ballot.js";
 import { Result } from "../schema/Result.js";
+import {
+  computeBallotParticipation,
+  computeProposalParticipation,
+} from "../helper/results/ballotParticipation.js";
+import {
+  computeScaleStats,
+  bucketScaleSamplesByGroup,
+} from "../helper/results/scaleStats.js";
+import { computeRankedDistribution } from "../helper/results/rankedDistribution.js";
 
 // Runs every ~10 minutes (see crons/10min.js wiring). Produces provisional
 // tallies for every proposal that has recent activity.
@@ -221,12 +230,80 @@ export async function aggregateVotes() {
       }
     }
 
+    // Augment per-group results with scale/ranked sub-objects and
+    // ballot-level participation. Pulls the raw Vote rows once and
+    // joins against UserCache for voterGroup + votingPower; the
+    // existing aggregations above don't expose enough structure for
+    // the helpers (which want per-voter rows, not pre-grouped tallies).
+    if (proposal.voteType === "scale" || proposal.voteType === "ranked") {
+      const rawVotes = await Vote.find({
+        proposalId,
+        submittedAt: { $ne: null },
+      })
+        .select("userId vote submittedVote")
+        .lean();
+      const voterIds = rawVotes.map((v) => v.userId);
+      const voterRows = await UserCache.find({
+        ballotId: ballot._id,
+        userId: { $in: voterIds },
+      })
+        .select("userId voterGroup votingPower")
+        .lean();
+      const votersByUserId = new Map(voterRows.map((v) => [v.userId, v]));
+      const votesForHelpers = rawVotes.map((v) => ({
+        userId: v.userId,
+        vote: Array.isArray(v.submittedVote) ? v.submittedVote : v.vote,
+      }));
+
+      if (proposal.voteType === "scale") {
+        const samplesByGroup = bucketScaleSamplesByGroup(votesForHelpers, votersByUserId);
+        for (const [group, samples] of samplesByGroup.entries()) {
+          if (!resultsByGroup[group]) continue;
+          resultsByGroup[group].scale = computeScaleStats({
+            proposal,
+            samples,
+            voteWeighted: !!ballot.voteWeighted,
+          });
+        }
+      } else {
+        const distByGroup = computeRankedDistribution({
+          proposal,
+          votes: votesForHelpers,
+          votersByUserId,
+        });
+        for (const [group, dist] of distByGroup.entries()) {
+          if (!resultsByGroup[group]) continue;
+          resultsByGroup[group].ranked = dist;
+        }
+      }
+    }
+
+    const [ballotParticipation, proposalParticipation] = await Promise.all([
+      computeBallotParticipation(ballot._id),
+      computeProposalParticipation(proposalId, ballot._id),
+    ]);
+
+    // Reconcile per-group totalVotes with distinct voter counts. The
+    // $unwind + $sum:1 aggregation above counts vote *targets*, which
+    // over-counts ranked (N rank slots per voter) and budget (M
+    // selections per voter). proposalParticipation.voterCount is the
+    // canonical distinct-voter count, so use that everywhere
+    // totalVotes appears for consistency with the field's name.
+    for (const groupKey of Object.keys(resultsByGroup)) {
+      const distinct = proposalParticipation.voterCount?.[groupKey];
+      if (typeof distinct === "number") {
+        resultsByGroup[groupKey].totalVotes = distinct;
+      }
+    }
+
     await Result.updateOne(
       { proposalId },
       {
         $set: {
           results: resultsWithLabels,
           resultsByGroup,
+          ballotParticipation,
+          proposalParticipation,
           source: "provisional",
           ballotSource: ballot.source,
           ballotId: ballot._id,

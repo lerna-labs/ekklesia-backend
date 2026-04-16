@@ -71,15 +71,24 @@ function buildProposalDoc(p, ballotId) {
     ballotId,
     ipfsHash: p.ipfsHash ?? null,
     title: p.title,
-    description: p.description ?? "",
-    categories: p.categories ?? [],
-    tags: p.tags ?? [],
     data: p.data ?? undefined,
     voteType: p.voteType ?? "default",
     voteIncrement: p.voteIncrement ?? 1,
     voterBudget: p.voterBudget ?? 1,
     voteOptions: p.voteOptions,
     abstainAllowed: p.abstainAllowed ?? true,
+    // Promote upstream snapshot fields into first-class Proposal
+    // fields so display code reads from one canonical place. The
+    // raw snapshot is still archived under externalProposal for
+    // audit / drift detection.
+    summary: p.externalProposal?.snapshot?.summary ?? "",
+    rationale: p.externalProposal?.snapshot?.rationale ?? "",
+    authors: Array.isArray(p.externalProposal?.snapshot?.authors)
+      ? p.externalProposal.snapshot.authors.map((name) =>
+          typeof name === "string" ? { name } : name
+        )
+      : [],
+    version: p.externalProposal?.snapshot?.version ?? null,
     externalProposal: p.externalProposal
       ? {
           id: p.externalProposal.id,

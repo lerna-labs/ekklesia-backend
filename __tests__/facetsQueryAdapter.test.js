@@ -41,10 +41,30 @@ const ballot = {
 };
 
 describe("buildFacetQuery — sort", () => {
-  test("empty query falls back to createdAt desc when no defaultSort", () => {
+  test("empty query falls back to title asc when no defaultSort", () => {
     const r = buildFacetQuery({ facets: [] }, {});
-    expect(r.sort).toEqual({ createdAt: -1 });
+    expect(r.sort).toEqual({ title: 1 });
     expect(r.applied.sort.source).toBe("fallback");
+  });
+
+  test("title is a built-in sort key even when not declared as a facet", () => {
+    const r = buildFacetQuery({ facets: [] }, { sort: "title" });
+    expect(r.sort).toEqual({ title: 1 });
+    expect(r.applied.sort.key).toBe("title");
+    expect(r.applied.sort.direction).toBe("asc");
+  });
+
+  test("title sort respects explicit dir", () => {
+    const r = buildFacetQuery({ facets: [] }, { sort: "title", dir: "desc" });
+    expect(r.sort).toEqual({ title: -1 });
+    expect(r.applied.sort.direction).toBe("desc");
+  });
+
+  test("createdAt/updatedAt are built-in sort keys", () => {
+    const r1 = buildFacetQuery({ facets: [] }, { sort: "createdAt" });
+    expect(r1.sort).toEqual({ createdAt: -1 });
+    const r2 = buildFacetQuery({ facets: [] }, { sort: "updatedAt", dir: "asc" });
+    expect(r2.sort).toEqual({ updatedAt: 1 });
   });
 
   test("uses defaultSort from facet when no explicit sort", () => {

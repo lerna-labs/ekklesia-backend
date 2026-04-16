@@ -37,6 +37,10 @@ const app = express();
 const PORT = process.env.SERVER_PORT || 3000;
 
 // Middleware
+// Extended query parser so `?filter[key]=value` nests into
+// req.query.filter.key — Express 5's default "simple" parser leaves
+// those keys as literal strings.
+app.set("query parser", "extended");
 app.use(express.json()); // json parser
 app.use(express.urlencoded({ extended: true })); // urlencoded parser
 app.use(cookieParser()); // cookie parser

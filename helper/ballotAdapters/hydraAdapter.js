@@ -77,6 +77,12 @@ export function toUnified(doc) {
     provisionalResultsEnabled: doc.provisionalResultsEnabled ?? false,
     proposalSource: doc.proposalSource?.moduleId ? doc.proposalSource : null,
     facets: Array.isArray(doc.facets) ? doc.facets : [],
+    votingPowerSource: doc.votingPowerSource
+      ? {
+          type: doc.votingPowerSource.type || "snapshot",
+          uploadedAt: doc.votingPowerSource.uploadedAt || null,
+        }
+      : null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };

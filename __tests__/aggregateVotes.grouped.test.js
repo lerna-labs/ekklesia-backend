@@ -253,7 +253,9 @@ runDescribe("aggregateVotes grouped results", () => {
 
     const drep = result.resultsByGroup.drep;
     expect(drep).toBeDefined();
-    expect(drep.totalVotes).toBe(5);
+    // totalVotes counts distinct PARTICIPATING voters (non-abstain).
+    // 5 drep voters total, 1 abstained → 4 participate.
+    expect(drep.totalVotes).toBe(4);
     const drepAbstain = drep.results.find((r) => r.id === "abstain");
     expect(drepAbstain).toEqual({ id: "abstain", label: "Abstain", count: 1, votingPower: 10 });
 
@@ -264,6 +266,9 @@ runDescribe("aggregateVotes grouped results", () => {
     expect(poolAbstain).toBeDefined();
     expect(poolAbstain.count).toBe(0);
     expect(poolAbstain.votingPower).toBe(0);
+
+    // proposalParticipation excludes the drep abstainer.
+    expect(result.proposalParticipation.voterCount).toEqual({ drep: 4, pool: 5 });
   });
 
   maybeTest("default group: voter with no group appears in default group", async () => {

@@ -6,6 +6,103 @@
 
 import { Ballot } from "../../../schema/Ballot.js";
 import { Proposal } from "../../../schema/Proposal.js";
+import {
+  describe,
+  loremText,
+  authorList,
+  pickInt,
+  pickOne,
+  snapshotTitle,
+  SIZE_BUCKETS,
+} from "./loremGenerator.js";
+
+const SAMPLE_CATEGORIES = [
+  "Education", "Infrastructure", "Health", "Governance", "Treasury",
+  "Research", "Community", "Tooling", "Outreach",
+];
+const SAMPLE_TAGS = [
+  "longterm", "urgent", "audited", "experimental", "v2", "iteration",
+  "compliance", "scaling", "developer", "voter-led",
+];
+const SAMPLE_REGIONS = ["LATAM", "EU", "APAC", "AFRICA", "NA"];
+
+// Pool of possible facets. Each ballot picks a deterministic subset
+// so the demo set exercises varied filter UIs rather than stamping
+// the same columns everywhere (which makes them look structural).
+const ALL_SCAFFOLD_FACETS = [
+  {
+    key: "category",
+    label: "Category",
+    type: "enum",
+    multi: true,
+    options: SAMPLE_CATEGORIES,
+    sortable: false,
+    filterable: true,
+  },
+  {
+    key: "region",
+    label: "Region",
+    type: "enum",
+    multi: true,
+    options: SAMPLE_REGIONS,
+    sortable: false,
+    filterable: true,
+  },
+  {
+    key: "totalCost",
+    label: "Total cost",
+    type: "number",
+    unit: "ADA",
+    sortable: true,
+    filterable: true,
+    defaultSort: "desc",
+  },
+  {
+    key: "tags",
+    label: "Tags",
+    type: "enum",
+    multi: true,
+    options: SAMPLE_TAGS,
+    sortable: false,
+    filterable: true,
+  },
+];
+
+// Pre-built combinations: each ballot gets one of these sets
+// deterministically. Ensures variety — some ballots have category
+// + cost (budget-style), others have region + tags, some have only
+// one facet, some have all four.
+const FACET_COMBOS = [
+  ["category", "totalCost"],                    // budget ballot: filter by category, sort by cost
+  ["region", "tags"],                           // geography + tags
+  ["category", "region", "totalCost"],          // treasury-style
+  ["tags"],                                     // minimal: just tags
+  ["category", "region", "totalCost", "tags"],  // everything
+  ["category"],                                 // single enum
+  ["totalCost", "tags"],                        // cost-focused + tags
+  ["region"],                                   // geography only
+];
+
+function facetsForBallot(ballotTitle) {
+  const idx = Math.floor(hashFloat(`${ballotTitle}|facetcombo`) * FACET_COMBOS.length);
+  const keys = new Set(FACET_COMBOS[idx]);
+  return ALL_SCAFFOLD_FACETS.filter((f) => keys.has(f.key));
+}
+
+function pickN(seed, pool, n) {
+  const sorted = pool
+    .map((v, i) => ({ v, sort: hashFloat(`${seed}|${i}|${v}`) }))
+    .sort((a, b) => a.sort - b.sort);
+  return sorted.slice(0, n).map((x) => x.v);
+}
+
+function hashFloat(s) {
+  // Tiny inline hash → [0,1). Avoids importing crypto here just for
+  // the picker; loremGenerator already does the heavy lifting.
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return (h % 1_000_000) / 1_000_000;
+}
 
 // Each flavor declares (a) which on-chain validation script applies and
 // (b) which voter groups the scaffold should validate in UserCache when
@@ -164,32 +261,291 @@ function simulatedHydraIds(title) {
   };
 }
 
-function defaultProposals(ballotId) {
+/**
+ * Build the externalProposal.snapshot field with realistic governance-
+ * proposal content. Mirrors what an upstream proposals module would
+ * push via /api/v1/admin/ballots/import, so the scaffold exercises the
+ * same downstream rendering paths.
+ *
+ * Sized varies per proposal so the demo set covers tiny → limit-length
+ * descriptions across ballots.
+ */
+function buildSnapshot(seed, options) {
+  const summary = describe(`${seed}|summary`);
+  const rationale = describe(`${seed}|rationale`, "long");
+  const authors = authorList(`${seed}|authors`, pickInt(`${seed}|n`, 1, 4));
+  const version = pickOne(`${seed}|ver`, ["v1", "v1.1", "v2", "v2.3", "draft"]);
+
+  // Only emit facet values for keys declared on this ballot's facets.
+  // Caller passes the set of active keys so snapshot.facets doesn't
+  // carry orphans that the ballot's filter UI wouldn't know about.
+  const activeKeys = options?.facetKeys || new Set(["category", "region", "totalCost", "tags"]);
+  const facets = {};
+  if (activeKeys.has("category")) {
+    const categories = pickN(`${seed}|cat`, SAMPLE_CATEGORIES, pickInt(`${seed}|cn`, 1, 3));
+    facets.category = categories.join(",");
+  }
+  if (activeKeys.has("region")) {
+    const region = pickN(`${seed}|region`, SAMPLE_REGIONS, pickInt(`${seed}|rn`, 1, 3)).join(",");
+    facets.region = region;
+  }
+  if (activeKeys.has("totalCost")) {
+    facets.totalCost = pickInt(`${seed}|cost`, 5_000, 2_500_000) * 1_000_000;
+  }
+  if (activeKeys.has("tags") && hashFloat(`${seed}|tagsroll`) < 0.6) {
+    const tags = pickN(`${seed}|tags`, SAMPLE_TAGS, pickInt(`${seed}|tn`, 1, 4));
+    facets.tags = tags.join(",");
+  }
+
+  return {
+    title: snapshotTitle(seed),
+    summary: summary.text,
+    rationale: rationale.text,
+    authors,
+    version,
+    facets,
+    ...(options?.extra || {}),
+  };
+}
+
+// Build the first-class proposal-level fields (summary, rationale,
+// authors, version) for a scaffold seed. Same content the snapshot
+// carries — but populated as canonical Proposal fields rather than
+// buried under externalProposal.snapshot.
+function buildProposalAuthorship(seed) {
+  return {
+    summary: describe(`${seed}|summary`).text,
+    rationale: describe(`${seed}|rationale`, "long").text,
+    authors: authorList(`${seed}|authors`, pickInt(`${seed}|n`, 1, 4)).map((name) => ({ name })),
+    version: pickOne(`${seed}|ver`, ["v1", "v1.1", "v2", "v2.3", "draft"]),
+  };
+}
+
+// Candidate roster used by the single-pick-from-many and multi-pick
+// proposal templates below. Each entry exercises the optional
+// per-option metadata fields (description, referenceUrl, imageUrl,
+// platform), which the schema accepts because voteOptions is typed as
+// Array (no inner shape constraint).
+const CC_CANDIDATES = [
+  {
+    id: 1,
+    label: "Dr. Amara Okeke",
+    description: "Constitutional law scholar, 12 years on chain governance committees.",
+    referenceUrl: "https://example.test/cc/amara-okeke",
+    imageUrl: "https://example.test/img/cc/amara.png",
+    platform: "Strong process safeguards, conservative interpretation of the constitution.",
+  },
+  {
+    id: 2,
+    label: "Marco Chen",
+    description: "Open-source engineer; led three protocol upgrades and the original tooling working group.",
+    referenceUrl: "https://example.test/cc/marco-chen",
+    imageUrl: "https://example.test/img/cc/marco.png",
+    platform: "Engineering rigor, fast feedback loops, defer to ecosystem builders on technical questions.",
+  },
+  {
+    id: 3,
+    label: "Priya Singh",
+    description: "Treasury auditor and former regulator. Public records of independent action against three governance proposals.",
+    referenceUrl: "https://example.test/cc/priya-singh",
+    imageUrl: "https://example.test/img/cc/priya.png",
+    platform: "Treasury accountability, audit-first decisions, mandatory disclosures.",
+  },
+  {
+    id: 4,
+    label: "Jonas Bergström",
+    description: "Long-time validator operator (4y stake top-50). Active in pool governance.",
+    referenceUrl: "https://example.test/cc/jonas-bergstrom",
+    imageUrl: "https://example.test/img/cc/jonas.png",
+    platform: "Operator experience, decentralization-first, push back on protocol creep.",
+  },
+  {
+    id: 5,
+    label: "Dr. Lina Rossi",
+    description: "Researcher specializing in mechanism design and on-chain incentive systems.",
+    referenceUrl: "https://example.test/cc/lina-rossi",
+    imageUrl: "https://example.test/img/cc/lina.png",
+    platform: "Evidence-based mechanism reform, formal models for treasury allocation.",
+  },
+  {
+    id: 6,
+    label: "Tomas Alvarez",
+    description: "Community organizer; founded LATAM stakeholder collective with 8k members.",
+    referenceUrl: "https://example.test/cc/tomas-alvarez",
+    imageUrl: "https://example.test/img/cc/tomas.png",
+    platform: "Inclusive process, multilingual outreach, lower the barrier for small voters.",
+  },
+  {
+    id: 7,
+    label: "Sarah Kim",
+    description: "Cryptography researcher; co-author of the staking-pool proof framework.",
+    referenceUrl: "https://example.test/cc/sarah-kim",
+    imageUrl: "https://example.test/img/cc/sarah.png",
+    platform: "Verifiable governance — every constitutional decision must produce a public audit artifact.",
+  },
+];
+
+const FUNDING_TRACKS = [
+  {
+    id: 1,
+    label: "Education & onboarding",
+    description: "Curriculum, workshops, and translated documentation for new participants.",
+    referenceUrl: "https://example.test/tracks/education",
+  },
+  {
+    id: 2,
+    label: "Infrastructure resilience",
+    description: "Mirror nodes, monitoring, and cross-region redundancy for core services.",
+    referenceUrl: "https://example.test/tracks/infrastructure",
+  },
+  {
+    id: 3,
+    label: "Tooling & developer experience",
+    description: "Libraries, CLIs, IDE integrations, and reference implementations.",
+    referenceUrl: "https://example.test/tracks/tooling",
+  },
+  {
+    id: 4,
+    label: "Treasury audit & oversight",
+    description: "Independent audits, on-chain disclosure tooling, post-funding reporting.",
+    referenceUrl: "https://example.test/tracks/audit",
+  },
+  {
+    id: 5,
+    label: "Research & mechanism design",
+    description: "Peer-reviewed publications on consensus, incentives, and governance design.",
+    referenceUrl: "https://example.test/tracks/research",
+  },
+  {
+    id: 6,
+    label: "Community outreach",
+    description: "Regional ambassador programs, conferences, and on-the-ground events.",
+    referenceUrl: "https://example.test/tracks/outreach",
+  },
+];
+
+function defaultProposals(ballotId, ballotTitle) {
+  // buildProposalAuthorship handles summary + rationale — there's no
+  // separate `description` field anymore.
+  const externalIdFor = (type) => `scaffold-${ballotTitle.replace(/[^a-zA-Z0-9]/g, "-")}-${type}`;
+  // Pass the ballot's active facet keys so snapshot.facets only
+  // carries values for declared facets (no orphan keys).
+  const activeFacetKeys = new Set(facetsForBallot(ballotTitle).map((f) => f.key));
+  const snapshotOpts = { facetKeys: activeFacetKeys };
+
   return [
     {
       ballotId,
       title: "Default Proposal: Yes/No/Abstain",
-      description: "A default proposal with a yes/no/abstain vote.",
+      ...buildProposalAuthorship(`${ballotTitle}|default`),
       abstainAllowed: true,
       voteType: "default",
-      voteBudget: 1,
+      voterBudget: 1,
       voteOptions: [
         { id: 1, cost: 1, label: "Yes" },
         { id: 2, cost: 1, label: "No" },
       ],
+      data: {
+        submittedBy: authorList(`${ballotTitle}|default|sub`, 1)[0],
+        fundingRequested: false,
+      },
+      externalProposal: {
+        id: externalIdFor("default"),
+        url: `https://proposals.example.test/p/${externalIdFor("default")}`,
+        snapshot: buildSnapshot(`${ballotTitle}|default`, snapshotOpts),
+      },
     },
     {
       ballotId,
       title: "Scale Proposal",
-      description: "A scale proposal from -100 to 100, step 1, abstain allowed.",
+      ...buildProposalAuthorship(`${ballotTitle}|scale`),
       abstainAllowed: true,
       voteType: "scale",
       voteIncrement: 1,
       voteOptions: [
-        { id: -100, label: "-100", cost: 1 },
-        { id: 0, label: "0", cost: 1 },
-        { id: 100, label: "100", cost: 1 },
+        { id: -100, label: "Strongly oppose", cost: 1 },
+        { id: 0, label: "Neutral", cost: 1 },
+        { id: 100, label: "Strongly support", cost: 1 },
       ],
+      data: {
+        submittedBy: authorList(`${ballotTitle}|scale|sub`, 1)[0],
+        scaleAnchors: { min: -100, mid: 0, max: 100 },
+      },
+      externalProposal: {
+        id: externalIdFor("scale"),
+        url: `https://proposals.example.test/p/${externalIdFor("scale")}`,
+        snapshot: buildSnapshot(`${ballotTitle}|scale`, snapshotOpts),
+      },
+    },
+    {
+      ballotId,
+      title: "Ranked Choice Proposal",
+      ...buildProposalAuthorship(`${ballotTitle}|ranked`),
+      abstainAllowed: true,
+      voteType: "ranked",
+      voteOptions: [
+        { id: 1, label: "Alice Reyes", cost: 1 },
+        { id: 2, label: "Bob Tanaka", cost: 1 },
+        { id: 3, label: "Carol Okafor", cost: 1 },
+        { id: 4, label: "Dave Lindgren", cost: 1 },
+      ],
+      data: {
+        submittedBy: authorList(`${ballotTitle}|ranked|sub`, 1)[0],
+        candidatePool: ["Alice Reyes", "Bob Tanaka", "Carol Okafor", "Dave Lindgren"],
+      },
+      externalProposal: {
+        id: externalIdFor("ranked"),
+        url: `https://proposals.example.test/p/${externalIdFor("ranked")}`,
+        snapshot: buildSnapshot(`${ballotTitle}|ranked`, snapshotOpts),
+      },
+    },
+    // Single-pick from many — Constitutional-Committee-style election.
+    // voteType "default" works here: one selection from the option list.
+    // Each option carries name + description + referenceUrl + imageUrl
+    // + platform so the frontend can render a candidate card (not just
+    // a label).
+    {
+      ballotId,
+      title: "Single Choice: Elect a CC Member",
+      ...buildProposalAuthorship(`${ballotTitle}|ccelect`),
+      abstainAllowed: true,
+      voteType: "default",
+      voterBudget: 1,
+      voteOptions: CC_CANDIDATES.map((c) => ({ ...c, cost: 1 })),
+      data: {
+        submittedBy: authorList(`${ballotTitle}|ccelect|sub`, 1)[0],
+        seatsAvailable: 1,
+        electionRound: pickInt(`${ballotTitle}|ccelect|round`, 1, 4),
+      },
+      externalProposal: {
+        id: externalIdFor("cc-elect"),
+        url: `https://proposals.example.test/p/${externalIdFor("cc-elect")}`,
+        snapshot: buildSnapshot(`${ballotTitle}|ccelect`, snapshotOpts),
+      },
+    },
+    // Multi-pick (up to 3) from a list of funding tracks. Modeled as
+    // voteType "preference" with voterBudget = 3 and per-option cost 1
+    // (frontend should enforce the picks-up-to-N invariant; backend
+    // accepts whatever the broker submits and tallies per-option). Per-
+    // option metadata exercises the same render path as the CC ballot.
+    {
+      ballotId,
+      title: "Multi Select: Fund up to 3 Tracks",
+      ...buildProposalAuthorship(`${ballotTitle}|fundtracks`),
+      abstainAllowed: true,
+      voteType: "preference",
+      voterBudget: 3,
+      voteOptions: FUNDING_TRACKS.map((t) => ({ ...t, cost: 1 })),
+      data: {
+        submittedBy: authorList(`${ballotTitle}|fundtracks|sub`, 1)[0],
+        maxSelections: 3,
+        totalFundingPool: pickInt(`${ballotTitle}|fundtracks|pool`, 1_000_000, 25_000_000) * 1_000_000,
+      },
+      externalProposal: {
+        id: externalIdFor("fund-tracks"),
+        url: `https://proposals.example.test/p/${externalIdFor("fund-tracks")}`,
+        snapshot: buildSnapshot(`${ballotTitle}|fundtracks`, snapshotOpts),
+      },
     },
   ];
 }
@@ -219,11 +575,23 @@ export async function upsertScaffoldBallot({
   const title = `${titlePrefix}/${source}/${flavor}/${state}#${String(index).padStart(3, "0")}`;
   const window = windowForState(state, source, simulated);
 
+  const ballotDesc = describe(`${title}|ballot`);
+  const voterDescBucket = SIZE_BUCKETS.modest;
   const setFields = {
     title,
-    description: `Scaffolded ${source} ballot (${flavor}, ${state}).`,
+    description: ballotDesc.text,
     voterType: flavorCfg.voterType,
-    voterDescription: `Scaffold voters — ${flavor}`,
+    voterDescription: loremText(`${title}|voterDesc`, voterDescBucket.chars, 1),
+    facets: facetsForBallot(title),
+    proposalSource: {
+      moduleId: "scaffold-mixed-demo",
+      moduleUrl: "https://proposals.example.test/",
+      externalBallotId: title,
+      version: "scaffold-v1",
+      importedAt: new Date(),
+      importMethod: "upload",
+      importedBy: "scaffold",
+    },
     voteWeighted: true,
     voteFilters: true,
     voteAuthorityId: `scaffold-authority`,
@@ -266,7 +634,7 @@ export async function upsertScaffoldBallot({
   );
 
   // Proposals: upsert-by-title-within-ballot for idempotence.
-  for (const p of defaultProposals(ballot._id)) {
+  for (const p of defaultProposals(ballot._id, title)) {
     await Proposal.updateOne(
       { ballotId: ballot._id, title: p.title },
       { $set: p },

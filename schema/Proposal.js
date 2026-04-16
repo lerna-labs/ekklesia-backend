@@ -9,9 +9,10 @@ const { Schema } = mongoose;
  * @property {ObjectId} ballotId - The ID of the ballot this proposal belongs to (references Ballot)
  * @property {String} ipfsHash - IPFS hash of the proposal metadata (optional, null if not stored on IPFS)
  * @property {String} title - The title of the proposal
- * @property {String} description - Detailed description of the proposal content (default: empty string)
- * @property {Array<String>} categories - Array of category labels for organizing proposals (default: empty array)
- * @property {Array<String>} tags - Array of tag labels for filtering and searching proposals (default: empty array)
+ * @property {String} summary - Short pitch shown in lists and summary cards (max 2000 chars)
+ * @property {String} rationale - Long-form argument for the proposal (max 10000 chars)
+ * @property {Array<{name: String}>} authors - Proposer / submitter display names (max 20 entries, 120 chars each)
+ * @property {String} version - Source-system version tag (e.g. "v2.3", "draft")
  * @property {Object} data - Additional structured data related to the proposal (optional, format varies by proposal type)
  * @property {String} voteType - Type of voting system: "default", "budget", "ranked", "scale", or "preference" (default: "default")
  * @property {Number} voteIncrement - Increment value for scale votes (default: 1, e.g., 1 for integer scale, 0.5 for half-point scale)
@@ -48,21 +49,52 @@ const proposalSchema = new Schema(
       type: String,
       required: true,
     },
-    description: {
+    // Short pitch shown in proposal lists / summary cards. Pairs with
+    // `rationale` (the long-form case for the proposal). The legacy
+    // `description` field was dropped — if you need to ingest legacy
+    // data, copy description → summary at the import boundary.
+    summary: {
       type: String,
       required: false,
       default: "",
+      maxlength: 2000,
     },
-    categories: {
-      type: Array,
+    // Long-form argument for the proposal — typically the section a
+    // voter reads before deciding. Capped per CompiledBallot
+    // MAX.rationale (10k chars) to keep proposal docs bounded.
+    rationale: {
+      type: String,
       required: false,
-      default: [],
+      default: "",
+      maxlength: 10000,
     },
-    tags: {
-      type: Array,
+    // Proposer / submitter names. Each entry is a free-form display
+    // string (no relation to userId). Capped at 20 authors × 120
+    // chars each per CompiledBallot MAX.
+    authors: {
+      type: [
+        {
+          _id: false,
+          name: { type: String, required: true, maxlength: 120 },
+        },
+      ],
+      default: [],
+      validate: [(arr) => arr.length <= 20, "authors: max 20 entries"],
+    },
+    // Source-system version tag (e.g. "v2.3", "draft"). Useful for
+    // showing "updated since import" badges when a snapshot drifts.
+    version: {
+      type: String,
       required: false,
-      default: [],
+      default: null,
+      maxlength: 40,
     },
+    // categories + tags were dropped — per-ballot Ballot.facets[]
+    // serves the same purpose with stronger typing (enum/number/etc),
+    // is declared once per ballot rather than free-form per proposal,
+    // and avoids the "ballot has no use for categories" mismatch.
+    // Per-proposal facet values live on
+    // externalProposal.snapshot.facets keyed by Ballot.facets[].key.
     data: {
       type: Object,
       required: false,
@@ -97,12 +129,16 @@ const proposalSchema = new Schema(
     },
     // Back-reference to the originating proposal in an upstream
     // proposals module (populated by the compiled-ballot importer).
-    // Null for scaffold-created / legacy proposals. The `snapshot`
-    // carries a whitelisted, length-capped copy of upstream display
-    // fields so the voting UX can render without live-fetching the
-    // proposals module — and cannot be broken by arbitrary upstream
-    // data shapes. `snapshot.facets` is a dict keyed by
-    // `Ballot.facets[].key`; multi-value enums use CSV strings.
+    // Null for fully local proposals.
+    //
+    // `snapshot` is a frozen-at-import copy of the upstream payload —
+    // useful for drift detection ("source has updated since import")
+    // and audit. The local first-class fields (title, description,
+    // summary, rationale, authors, version) are the canonical source
+    // for display; snapshot is for audit only.
+    //
+    // `snapshot.facets` is a dict keyed by Ballot.facets[].key;
+    // multi-value enums use CSV strings.
     externalProposal: {
       type: {
         _id: false,

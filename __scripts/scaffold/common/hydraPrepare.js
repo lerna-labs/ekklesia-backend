@@ -29,7 +29,10 @@ function proposalToQuestion(proposal) {
   const base = {
     questionId: proposal._id.toString(),
     question: proposal.title,
-    description: proposal.description || "",
+    // Hydra's BallotQuestion `description` field is the short voter-
+    // facing blurb — map from Proposal.summary now that the legacy
+    // top-level description field has been dropped.
+    description: proposal.summary || "",
   };
 
   switch (proposal.voteType) {

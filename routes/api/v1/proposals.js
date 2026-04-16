@@ -1,7 +1,7 @@
-// v1 proposal endpoints. Presently exposes a ballot-scoped listing
-// with facet-driven sort + filter. Per-proposal detail / results
-// continue to live under /api/v0/proposals until we have a reason
-// to re-shape them here.
+// v1 proposal endpoints.
+//
+//   GET /api/v1/proposals/:proposalId
+//     Single proposal detail + parent ballot sidecar (facets, status, etc.)
 //
 //   GET /api/v1/proposals/ballot/:ballotId
 //     ?sort=<facetKey>&dir=<asc|desc>
@@ -59,7 +59,27 @@ router.get("/ballot/:ballotId", async (req, res) => {
     100
   );
 
-  const filter = { ballotId: ballot._id, ...queryPlan.filter };
+  // Free-text search across title + summary + authors.name. Case-
+  // insensitive regex — good enough for demo/governance scale; a
+  // proper $text index can be added later if it becomes a bottleneck.
+  // Rationale is deliberately excluded (too long, causes false
+  // positives on common words).
+  const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+  const searchClause = search
+    ? {
+        $or: [
+          { title: { $regex: escapeRegex(search), $options: "i" } },
+          { summary: { $regex: escapeRegex(search), $options: "i" } },
+          { "authors.name": { $regex: escapeRegex(search), $options: "i" } },
+        ],
+      }
+    : null;
+
+  const filter = {
+    ballotId: ballot._id,
+    ...queryPlan.filter,
+    ...(searchClause || {}),
+  };
   const [data, total] = await Promise.all([
     Proposal.find(filter)
       .sort(queryPlan.sort)
@@ -73,7 +93,33 @@ router.get("/ballot/:ballotId", async (req, res) => {
     status: "success",
     data,
     pagination: { total, page, limit },
-    applied: queryPlan.applied,
+    applied: { ...queryPlan.applied, search: search || null },
+  });
+});
+
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// GET /:proposalId — single proposal detail. Returns the full doc
+// plus the parent ballot's facets[] so the detail page can render
+// facet labels without a separate ballot fetch.
+router.get("/:proposalId", async (req, res) => {
+  const proposal = await Proposal.findById(req.params.proposalId).lean();
+  if (!proposal) {
+    return res.status(404).json({
+      status: "error",
+      code: "PROPOSAL_NOT_FOUND",
+      message: "Proposal not found",
+    });
+  }
+  const ballot = await Ballot.findById(proposal.ballotId)
+    .select("_id title facets status source voterType voteWeighted")
+    .lean();
+  return res.json({
+    status: "success",
+    data: proposal,
+    ballot: ballot || null,
   });
 });
 

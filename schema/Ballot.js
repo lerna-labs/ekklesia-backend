@@ -200,6 +200,36 @@ const ballotSchema = new Schema(
       default: null,
     },
 
+    // Authority for this ballot's per-voter voting power. See
+    // .claude/plans/violet-clever-noether.md for the full design.
+    //
+    //   "script"    — recompute live on every read (small ballots only)
+    //   "snapshot"  — cron writes per-voter rows by calling the script.
+    //                 Provisional / best-effort. Default for new ballots.
+    //   "uploaded"  — admin uploaded an authoritative per-voter snapshot.
+    //                 Scripts are no longer called for this ballot.
+    //
+    // Transition to "uploaded" via POST /api/v1/admin/ballots/:id/voting-power.
+    // Re-uploadable for corrections; each upload is archived to
+    // ImportedBallotPayload.
+    votingPowerSource: {
+      type: new Schema(
+        {
+          type: {
+            type: String,
+            enum: ["script", "snapshot", "uploaded"],
+            default: "snapshot",
+          },
+          scriptName: { type: String, default: null },
+          uploadedAt: { type: Date, default: null },
+          uploadedBy: { type: String, default: null },
+          uploadCid: { type: String, default: null },
+        },
+        { _id: false }
+      ),
+      default: () => ({ type: "snapshot" }),
+    },
+
     // Origin of the ballot definition when imported from a proposals
     // module (push via API key) or uploaded as a compiled JSON file by
     // an admin. Null for scaffold-created or legacy ballots.

@@ -24,8 +24,6 @@ export const MAX = Object.freeze({
   options: 100,
   proposals: 500,
   voteOptions: 50,
-  tags: 40,
-  categories: 40,
 });
 
 /**
@@ -90,9 +88,6 @@ export const COMPILED_BALLOT_SHAPE = Object.freeze({
         },
       },
       title: `string ≤ ${MAX.title}`,
-      description: "string",
-      categories: `string[] ≤ ${MAX.categories}`,
-      tags: `string[] ≤ ${MAX.tags}`,
       voteType: '"default" | "budget" | "ranked" | "scale" | "preference"',
       voteIncrement: "number",
       voterBudget: "number",

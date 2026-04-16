@@ -60,8 +60,11 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   }
 
   // validate the voter against the ballot
-  const { validateVoter } = await import(
-    "../../../config/" + ballot.voterValidationScript
+  const { loadValidationScript } = await import(
+    "../../../helper/loadValidationScript.js"
+  );
+  const { validateVoter } = await loadValidationScript(
+    ballot.voterValidationScript
   );
   // validate voter
   const isValidVoter = await validateVoter(userId, ballot._id);
