@@ -367,6 +367,141 @@ router.get("/:ballotId/packages", async (req, res) => {
   });
 });
 
+// GET /:ballotId/mine — wallet-reconnect rehydration source.
+//
+// CRITICAL SEMANTIC: Hydra treats every submitted vote payload as the
+// voter's COMPLETE final state for the ballot — it does NOT merge
+// with prior submissions. If a voter previously voted Yes on
+// Proposals 2/3/4 and now submits a payload containing only their
+// vote on Proposal 5, the Hydra head erases the 2/3/4 votes. The
+// voter's recorded state becomes "{ Proposal 5: <selection> }" only.
+//
+// To AMEND votes (add a new one, change one) the frontend MUST
+// rehydrate the existing confirmed votes and include them alongside
+// the new/changed ones in the next /draft call. This endpoint
+// surfaces exactly what's needed for that.
+//
+// Response shape — the split is intentional:
+//
+//   confirmed   The latest hydra-confirmed package's votes — the
+//               source of truth for what's on-chain right now. The
+//               frontend should pre-populate the selection state from
+//               here. To preserve any of these votes, they MUST be
+//               included in the next /draft submission.
+//
+//   inFlight    Packages still in flight (awaiting signatures,
+//               awaiting submission, draft, or failed). Newest first.
+//               When one of these submits successfully it REPLACES
+//               the confirmed state above. UI should surface these
+//               (especially multisig packages waiting on cosigner
+//               signatures) and warn the voter before they create a
+//               new draft that would supersede an in-flight one.
+//
+//   {
+//     status: "success",
+//     ballotId: "...",
+//     confirmed: {
+//       packageId, nonce, submittedAt, hydraTxId,
+//       votes: { "<proposalId>": <selection>, ... }
+//     } | null,
+//     inFlight: [
+//       { packageId, status, nonce, createdAt, votes: {...},
+//         multisig?: { signaturesCollected, signaturesNeeded, satisfied } }
+//     ],
+//     summary: { confirmed, awaitingSignatures, awaitingSubmission,
+//                draft, failed }
+//   }
+router.get("/:ballotId/mine", async (req, res) => {
+  const session = requireSession(req, res);
+  if (!session) return;
+  const ballot = await requireHydraBallot(req, res);
+  if (!ballot) return;
+
+  const packages = await VotePackage.find({
+    ballotId: ballot._id,
+    userId: session.userId,
+  })
+    .sort({ nonce: -1 })
+    .lean();
+
+  const summary = {
+    confirmed: 0,
+    awaitingSignatures: 0,
+    awaitingSubmission: 0,
+    draft: 0,
+    failed: 0,
+  };
+
+  // Pluck per-package vote map { proposalId: selection } from the
+  // signing payload. Hydra's payload uses `questionId`; older shapes
+  // sometimes had `proposalId`. Normalize either way.
+  const extractVotes = (pkg) => {
+    const out = {};
+    for (const a of pkg.signingPayload?.votes || []) {
+      const pid = a.questionId || a.proposalId;
+      if (!pid) continue;
+      out[String(pid)] = a.vote ?? a.choice ?? null;
+    }
+    return out;
+  };
+
+  let confirmed = null;
+  const inFlight = [];
+
+  for (const pkg of packages) {
+    if (pkg.status === "hydra-confirmed") summary.confirmed++;
+    else if (pkg.status === "awaiting-signatures") summary.awaitingSignatures++;
+    else if (pkg.status === "awaiting-submission") summary.awaitingSubmission++;
+    else if (pkg.status === "draft") summary.draft++;
+    else if (pkg.status === "failed") summary.failed++;
+
+    if (pkg.status === "hydra-confirmed") {
+      // Latest-confirmed-wins. Packages are sorted by nonce desc, so
+      // the first confirmed we see IS the latest.
+      if (!confirmed) {
+        confirmed = {
+          packageId: pkg._id.toString(),
+          nonce: pkg.nonce,
+          submittedAt: pkg.confirmedAt || null,
+          hydraTxId: pkg.hydraTxId || null,
+          votes: extractVotes(pkg),
+        };
+      }
+      continue;
+    }
+
+    // Anything not yet on Hydra is in flight (or failed and retryable).
+    const entry = {
+      packageId: pkg._id.toString(),
+      status: pkg.status,
+      nonce: pkg.nonce,
+      createdAt: pkg.createdAt || null,
+      votes: extractVotes(pkg),
+    };
+    if (pkg.nativeScript) {
+      try {
+        const s = multisigStatus(pkg.nativeScript, pkg.signatures || []);
+        entry.multisig = {
+          signaturesCollected: (pkg.signatures || []).length,
+          signaturesNeeded: s.required,
+          satisfied: s.satisfied,
+        };
+      } catch {
+        // malformed nativeScript — skip the multisig hint
+      }
+    }
+    inFlight.push(entry);
+  }
+
+  return res.json({
+    status: "success",
+    ballotId: ballot._id.toString(),
+    confirmed,
+    inFlight,
+    summary,
+  });
+});
+
 async function currentPackageView(id) {
   const pkg = await VotePackage.findById(id).lean();
   return enrichPackageView(pkg);

@@ -277,6 +277,91 @@ paths:
         "409": { description: Package in terminal state }
         "502": { description: Hydra submission failed }
 
+  /votes/{ballotId}/mine:
+    get:
+      tags: [Votes (v1)]
+      summary: Rehydrate voter's current state on this ballot
+      description: |
+        **CRITICAL SEMANTIC**: Hydra treats every submitted vote payload as the
+        voter's COMPLETE final state — it does NOT merge with prior submissions.
+        If a voter previously voted on Proposals 2/3/4 and now submits a payload
+        containing only Proposal 5, the Hydra head erases the 2/3/4 votes.
+
+        To amend or add votes, the frontend rehydrates from
+        `confirmed.votes`, lets the user edit the selection set, then sends
+        the COMPLETE ballot to `/draft`. Whatever's in the votes array IS the
+        full final state — removing a prior vote is simply omitting it.
+        The backend does not merge; the frontend owns the composition.
+
+        `confirmed` is the latest hydra-confirmed package (the on-chain source
+        of truth). `inFlight` lists packages still awaiting signatures,
+        submission, or that failed — when one of these submits it REPLACES the
+        confirmed state.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - in: path
+          name: ballotId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Voter's per-ballot state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  ballotId: { type: string }
+                  confirmed:
+                    nullable: true
+                    description: |
+                      Latest hydra-confirmed package. The rehydration source.
+                      `votes` is { proposalId: selection }. Null if the voter
+                      has never successfully submitted on this ballot.
+                    type: object
+                    properties:
+                      packageId: { type: string }
+                      nonce: { type: integer }
+                      submittedAt: { type: string, format: date-time, nullable: true }
+                      hydraTxId: { type: string, nullable: true }
+                      votes:
+                        type: object
+                        additionalProperties: true
+                  inFlight:
+                    type: array
+                    description: |
+                      Packages not yet confirmed, newest first. Includes
+                      awaiting-signatures (multisig), awaiting-submission,
+                      draft, and failed.
+                    items:
+                      type: object
+                      properties:
+                        packageId: { type: string }
+                        status: { type: string, enum: [draft, awaiting-signatures, awaiting-submission, failed] }
+                        nonce: { type: integer }
+                        createdAt: { type: string, format: date-time }
+                        votes:
+                          type: object
+                          additionalProperties: true
+                        multisig:
+                          nullable: true
+                          type: object
+                          properties:
+                            signaturesCollected: { type: integer }
+                            signaturesNeeded: { type: integer }
+                            satisfied: { type: boolean }
+                  summary:
+                    type: object
+                    properties:
+                      confirmed: { type: integer }
+                      awaitingSignatures: { type: integer }
+                      awaitingSubmission: { type: integer }
+                      draft: { type: integer }
+                      failed: { type: integer }
+        "401": { description: Auth required }
+        "404": { description: Ballot not found or not Hydra-backed }
+
   /votes/{ballotId}/submit:
     post:
       tags: [Votes (v1)]
