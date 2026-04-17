@@ -102,12 +102,27 @@ const proposalSchema = new Schema(
     voteType: {
       type: String,
       required: true,
-      default: "default",// default, budget, ranked, scale, preference
+      // default, budget (knapsack: Σ cost ≤ voterBudget, maps to Hydra
+      // multi-choice), weighted (point allocation: Σ value = voterBudget,
+      // maps to Hydra weighted), ranked, scale, preference, likert
+      default: "default",
     },
     voteIncrement: {
       type: Number,
       required: false,
       default: 1,
+    },
+    // For likert vote type: the valid rating range for each option.
+    // Voters rate every option independently within [min, max], snapped
+    // to `step` (defaults to 1 — e.g. 1..5 by 1). Non-unit steps enable
+    // coarse grids like 0..100 by 5. Hydra enforces
+    // (max - min) % step === 0 at /prepare time.
+    ratingRange: {
+      type: new Schema(
+        { min: Number, max: Number, step: { type: Number, default: 1 } },
+        { _id: false }
+      ),
+      default: null,
     },
     voterBudget: {
       type: Number,

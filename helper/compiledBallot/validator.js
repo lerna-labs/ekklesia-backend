@@ -9,7 +9,15 @@ import {
 } from "../facets/validate.js";
 
 const VOTER_TYPES = new Set(["stake", "drep", "pool", "cc", "any"]);
-const VOTE_TYPES = new Set(["default", "budget", "ranked", "scale", "preference"]);
+const VOTE_TYPES = new Set([
+  "default",
+  "budget",
+  "weighted",
+  "ranked",
+  "scale",
+  "preference",
+  "likert",
+]);
 
 function isNonEmptyString(v, max) {
   return typeof v === "string" && v.length > 0 && (max == null || v.length <= max);

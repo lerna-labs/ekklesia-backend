@@ -547,6 +547,92 @@ function defaultProposals(ballotId, ballotTitle) {
         snapshot: buildSnapshot(`${ballotTitle}|fundtracks`, snapshotOpts),
       },
     },
+    // Knapsack budget: pick a subset of projects whose summed cost
+    // fits the voter's budget. Maps to Hydra multi-choice; backend
+    // enforces the cost cap at /draft.
+    {
+      ballotId,
+      title: "Budget: Fund projects within 6 months of capacity",
+      ...buildProposalAuthorship(`${ballotTitle}|budget`),
+      abstainAllowed: true,
+      voteType: "budget",
+      voterBudget: 6,
+      voteOptions: [
+        { id: 1, label: "Voter-education campaign", cost: 1 },
+        { id: 2, label: "Translation + localization push", cost: 2 },
+        { id: 3, label: "Independent treasury audit", cost: 3 },
+        { id: 4, label: "Validator resilience mirrors", cost: 2 },
+        { id: 5, label: "Mechanism-design research paper", cost: 4 },
+        { id: 6, label: "Community ambassador program", cost: 1 },
+      ],
+      data: {
+        submittedBy: authorList(`${ballotTitle}|budget|sub`, 1)[0],
+        capacityUnits: "engineer-months",
+        capacityCap: 6,
+      },
+      externalProposal: {
+        id: externalIdFor("budget"),
+        url: `https://proposals.example.test/p/${externalIdFor("budget")}`,
+        snapshot: buildSnapshot(`${ballotTitle}|budget`, snapshotOpts),
+      },
+    },
+    // Weighted allocation: distribute 100 points across funding
+    // categories. Maps to Hydra method:"weighted"; backend and Hydra
+    // both enforce Σ value = voterBudget.
+    {
+      ballotId,
+      title: "Weighted: Allocate 100% across treasury categories",
+      ...buildProposalAuthorship(`${ballotTitle}|weighted`),
+      abstainAllowed: true,
+      voteType: "weighted",
+      voterBudget: 100,
+      voteOptions: [
+        { id: 1, label: "Protocol development" },
+        { id: 2, label: "Ecosystem grants" },
+        { id: 3, label: "Operations & infrastructure" },
+        { id: 4, label: "Education & onboarding" },
+        { id: 5, label: "Governance tooling" },
+        { id: 6, label: "Reserve / contingency" },
+      ],
+      data: {
+        submittedBy: authorList(`${ballotTitle}|weighted|sub`, 1)[0],
+        allocationUnit: "percent",
+        allocationCap: 100,
+      },
+      externalProposal: {
+        id: externalIdFor("weighted"),
+        url: `https://proposals.example.test/p/${externalIdFor("weighted")}`,
+        snapshot: buildSnapshot(`${ballotTitle}|weighted`, snapshotOpts),
+      },
+    },
+    // Likert: rate each option independently on a 1-5 scale.
+    // Produces per-option distribution + Majority Judgment ranking.
+    {
+      ballotId,
+      title: "Likert: Rate Budget Thresholds",
+      ...buildProposalAuthorship(`${ballotTitle}|likert`),
+      abstainAllowed: true,
+      voteType: "likert",
+      ratingRange: { min: 1, max: 5 },
+      voteOptions: [
+        { id: 1, label: "Greater than 2500", cost: 1 },
+        { id: 2, label: "2500", cost: 1 },
+        { id: 3, label: "2000", cost: 1 },
+        { id: 4, label: "1000", cost: 1 },
+        { id: 5, label: "750", cost: 1 },
+        { id: 6, label: "500", cost: 1 },
+        { id: 7, label: "Less than 500", cost: 1 },
+      ],
+      data: {
+        submittedBy: authorList(`${ballotTitle}|likert|sub`, 1)[0],
+        ratingLabels: { 1: "Least Preferred", 5: "Most Preferred" },
+      },
+      externalProposal: {
+        id: externalIdFor("likert"),
+        url: `https://proposals.example.test/p/${externalIdFor("likert")}`,
+        snapshot: buildSnapshot(`${ballotTitle}|likert`, snapshotOpts),
+      },
+    },
   ];
 }
 

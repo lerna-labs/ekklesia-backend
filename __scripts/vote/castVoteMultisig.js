@@ -11,7 +11,8 @@
 // Flags:
 //   --ballotId            required
 //   --questionId          required
-//   --selection / --ranking / --weights   see castVote.js
+//   --selection           see castVote.js (unified v2 shape: integers
+//                         OR option:value pairs)
 //   --voter               fixture name (default: multisig)
 //   --cosigners           how many keys to sign with (default = script.required)
 //   --backend             backend URL (default http://localhost:3000)
@@ -54,31 +55,37 @@ if (count > keyPaths.length) {
   process.exit(1);
 }
 
-const selection = [];
-for (const raw of [].concat(flags.selection || [])) {
-  if (raw === true) continue;
-  for (const v of String(raw).split(",")) selection.push(Number(v));
+// Unified v2 selection parsing — see castVote.js for format notes.
+function parseSelection(rawFlags) {
+  const tokens = [];
+  for (const raw of [].concat(rawFlags || [])) {
+    if (raw === true) continue;
+    for (const t of String(raw).split(",")) {
+      const trimmed = t.trim();
+      if (trimmed) tokens.push(trimmed);
+    }
+  }
+  if (tokens.length === 0) return null;
+  const hasPair = tokens.some((t) => t.includes(":"));
+  if (hasPair && !tokens.every((t) => t.includes(":"))) {
+    console.error("--selection: mixed shapes; use all integers OR all option:value pairs");
+    process.exit(1);
+  }
+  if (hasPair) {
+    return tokens.map((t) => {
+      const [option, value] = t.split(":").map(Number);
+      return { option, value };
+    });
+  }
+  return tokens.map(Number);
 }
-const ranking = [];
-for (const raw of [].concat(flags.ranking || [])) {
-  if (raw === true) continue;
-  for (const v of String(raw).split(",")) ranking.push(Number(v));
-}
-let weights;
-if (flags.weights) {
-  weights = String(flags.weights).split(",").map((pair) => {
-    const [option, weight] = pair.split(":").map(Number);
-    return { option, weight };
-  });
-}
-const voteSelection = { questionId: String(flags.questionId) };
-if (selection.length) voteSelection.selection = selection;
-if (ranking.length) voteSelection.ranking = ranking;
-if (weights) voteSelection.weights = weights;
-if (!voteSelection.selection && !voteSelection.ranking && !voteSelection.weights) {
-  console.error("Pass one of --selection / --ranking / --weights");
+
+const selection = parseSelection(flags.selection);
+if (!selection) {
+  console.error("Pass --selection (integers, or option:value pairs for weighted/likert)");
   process.exit(1);
 }
+const voteSelection = { questionId: String(flags.questionId), selection };
 
 const backend = flags.backend || "http://localhost:3000";
 const secret = process.env.JWT_SECRET;

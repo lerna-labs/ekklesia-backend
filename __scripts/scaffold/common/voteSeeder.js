@@ -27,6 +27,8 @@ import {
 } from "../../../helper/results/ballotParticipation.js";
 import { computeScaleStats, bucketScaleSamplesByGroup } from "../../../helper/results/scaleStats.js";
 import { computeRankedDistribution } from "../../../helper/results/rankedDistribution.js";
+import { computeLikertStats, bucketLikertVotesByGroup } from "../../../helper/results/likertStats.js";
+import { computeWeightedStats, bucketWeightedVotesByGroup } from "../../../helper/results/weightedStats.js";
 
 /**
  * Stable 0..1 pseudo-random per (ballot, user, proposal, salt). Using
@@ -108,6 +110,23 @@ function pickOption(proposal, r, ballotId) {
     const depth = Math.max(1, Math.ceil(r * sorted.length));
     return sorted.slice(0, depth);
   }
+  if (proposal.voteType === "likert") {
+    if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
+    const range = proposal.ratingRange || { min: 1, max: 5, step: 1 };
+    const step = Number(range.step) || 1;
+    const steps = Math.floor((range.max - range.min) / step) + 1;
+    const opts = proposal.voteOptions?.filter((o) => o.id !== "abstain") || [];
+    // Hydra v2 unified shape: {option, value} — value = rating snapped
+    // to the ratingRange grid. Matches the wire format the backend
+    // sends on /draft, so Vote.vote mirrors Hydra's selection[].
+    return opts.map((o) => ({
+      option: o.id,
+      value:
+        range.min +
+        Math.floor(prand(ballotId, `likert_${o.id}`, r.toFixed(8)) * steps) *
+          step,
+    }));
+  }
   if (proposal.voteType === "preference") {
     if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
     // Pick up to voterBudget (or 3 by default) selections. Deterministic
@@ -125,9 +144,8 @@ function pickOption(proposal, r, ballotId) {
   }
   if (proposal.voteType === "budget") {
     if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
-    // Pick options whose summed `cost` fits the voter budget. Most
-    // scaffold-budget proposals use cost:1 per option, so this
-    // collapses to "pick up to voterBudget options."
+    // Knapsack: pick options whose summed `cost` ≤ voterBudget. Emits
+    // number[] (multi-choice shape) — matches Hydra method:"multi-choice".
     const budget = Number(proposal.voterBudget) || 1;
     const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
     const ranked = ids
@@ -143,6 +161,35 @@ function pickOption(proposal, r, ballotId) {
       used += cost;
     }
     return out.length > 0 ? out : [ranked[0].id];
+  }
+  if (proposal.voteType === "weighted") {
+    if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
+    // Point allocation: distribute voterBudget integer points across
+    // options with deterministic per-option popularity skew. Emits
+    // [{option, value}] summing EXACTLY to voterBudget — matches
+    // Hydra method:"weighted". Uses largest-remainder rounding so the
+    // sum lands precisely even when pure weighting would round off.
+    const budget = Math.max(1, Math.floor(Number(proposal.voterBudget) || 100));
+    const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
+    const weights = ids.map((id) =>
+      0.1 + prand(ballotId, "weighted", `${id}_${r.toFixed(8)}`) * 0.9
+    );
+    const totalWeight = weights.reduce((s, w) => s + w, 0);
+    const raw = weights.map((w) => (w / totalWeight) * budget);
+    const floors = raw.map((v) => Math.floor(v));
+    let remainder = budget - floors.reduce((s, v) => s + v, 0);
+    // Distribute the remainder to options with the largest fractional parts.
+    const order = raw
+      .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+      .sort((a, b) => b.frac - a.frac);
+    const final = floors.slice();
+    for (let k = 0; k < remainder; k++) {
+      final[order[k % order.length].i] += 1;
+    }
+    // Emit one entry per option (zero-value entries included) so the
+    // wire shape is uniform and Σ value === voterBudget is obvious
+    // across all voters.
+    return ids.map((id, i) => ({ option: id, value: final[i] }));
   }
   // For default with many options (e.g. CC election with 7 candidates)
   // the existing >2 branch above only handles the 2-option Yes/No case.
@@ -180,7 +227,9 @@ function pickInt(ballotId, salt, min, max) {
 function rollup(proposal, votes, votersByUserId, ballot) {
   const isScale = proposal.voteType === "scale";
   const isRanked = proposal.voteType === "ranked";
-  const isDiscrete = !isScale && !isRanked;
+  const isLikert = proposal.voteType === "likert";
+  const isWeighted = proposal.voteType === "weighted";
+  const isDiscrete = !isScale && !isRanked && !isLikert && !isWeighted;
 
   const optionRow = (opt) => ({
     id: opt.id,
@@ -274,6 +323,28 @@ function rollup(proposal, votes, votersByUserId, ballot) {
     for (const [group, dist] of distByGroup.entries()) {
       if (!resultsByGroup[group]) continue;
       resultsByGroup[group].ranked = dist;
+    }
+  } else if (isLikert) {
+    const votesByGroup = bucketLikertVotesByGroup(votes, votersByUserId);
+    for (const [group, groupVotes] of votesByGroup.entries()) {
+      if (!resultsByGroup[group]) continue;
+      resultsByGroup[group].likert = computeLikertStats({
+        proposal,
+        votes: groupVotes,
+        votersByUserId,
+        voteWeighted: !!ballot?.voteWeighted,
+      });
+    }
+  } else if (isWeighted) {
+    const votesByGroup = bucketWeightedVotesByGroup(votes, votersByUserId);
+    for (const [group, groupVotes] of votesByGroup.entries()) {
+      if (!resultsByGroup[group]) continue;
+      resultsByGroup[group].weighted = computeWeightedStats({
+        proposal,
+        votes: groupVotes,
+        votersByUserId,
+        voteWeighted: !!ballot?.voteWeighted,
+      });
     }
   }
 

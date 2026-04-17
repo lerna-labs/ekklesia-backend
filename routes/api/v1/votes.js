@@ -36,6 +36,7 @@ import {
   buildDraft,
   BrokerError,
 } from "../../../helper/voteBroker.js";
+import { validateVotesForBallot } from "../../../helper/voteValidation.js";
 import {
   status as multisigStatus,
   dedupeSignatures,
@@ -135,6 +136,20 @@ router.post("/:ballotId/draft", async (req, res) => {
   let nativeScript = req.body?.nativeScript || null;
   if (!Array.isArray(votes) || votes.length === 0) {
     return res.status(400).json({ status: "error", code: ERROR_CODES.BAD_INPUT, message: "votes[] required" });
+  }
+
+  // Shape + per-method constraint validation (friendly pre-flight so
+  // voters don't round-trip to Hydra for known-bad payloads; also
+  // enforces the knapsack cost-cap on budget proposals, which Hydra
+  // multi-choice does not natively check).
+  const vv = await validateVotesForBallot(votes, ballot._id);
+  if (!vv.ok) {
+    return res.status(400).json({
+      status: "error",
+      code: ERROR_CODES.BAD_INPUT,
+      message: vv.error.message,
+      path: vv.error.path,
+    });
   }
 
   // Eligibility gate (L1 validation)
@@ -637,8 +652,8 @@ async function syncVoteRecords(pkg, ballot) {
       userId: pkg.userId,
       ballotId: ballot._id,
       proposalId: answer.questionId,
-      vote: answer.selection || answer.ranking || answer.weights || [],
-      submittedVote: answer.selection || answer.ranking || answer.weights || [],
+      vote: answer.selection || [],
+      submittedVote: answer.selection || [],
       submittedAt: new Date(),
       nonce: pkg.nonce,
       voteHash: pkg.voteHash,

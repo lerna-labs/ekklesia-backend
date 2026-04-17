@@ -12,6 +12,8 @@ import {
   bucketScaleSamplesByGroup,
 } from "../helper/results/scaleStats.js";
 import { computeRankedDistribution } from "../helper/results/rankedDistribution.js";
+import { computeLikertStats, bucketLikertVotesByGroup } from "../helper/results/likertStats.js";
+import { computeWeightedStats, bucketWeightedVotesByGroup } from "../helper/results/weightedStats.js";
 
 // Runs every ~10 minutes (see crons/10min.js wiring). Produces provisional
 // tallies for every proposal that has recent activity.
@@ -235,7 +237,12 @@ export async function aggregateVotes() {
     // joins against UserCache for voterGroup + votingPower; the
     // existing aggregations above don't expose enough structure for
     // the helpers (which want per-voter rows, not pre-grouped tallies).
-    if (proposal.voteType === "scale" || proposal.voteType === "ranked") {
+    if (
+      proposal.voteType === "scale" ||
+      proposal.voteType === "ranked" ||
+      proposal.voteType === "likert" ||
+      proposal.voteType === "weighted"
+    ) {
       const rawVotes = await Vote.find({
         proposalId,
         submittedAt: { $ne: null },
@@ -265,7 +272,7 @@ export async function aggregateVotes() {
             voteWeighted: !!ballot.voteWeighted,
           });
         }
-      } else {
+      } else if (proposal.voteType === "ranked") {
         const distByGroup = computeRankedDistribution({
           proposal,
           votes: votesForHelpers,
@@ -274,6 +281,28 @@ export async function aggregateVotes() {
         for (const [group, dist] of distByGroup.entries()) {
           if (!resultsByGroup[group]) continue;
           resultsByGroup[group].ranked = dist;
+        }
+      } else if (proposal.voteType === "likert") {
+        const votesByGroup = bucketLikertVotesByGroup(votesForHelpers, votersByUserId);
+        for (const [group, groupVotes] of votesByGroup.entries()) {
+          if (!resultsByGroup[group]) continue;
+          resultsByGroup[group].likert = computeLikertStats({
+            proposal,
+            votes: groupVotes,
+            votersByUserId,
+            voteWeighted: !!ballot.voteWeighted,
+          });
+        }
+      } else if (proposal.voteType === "weighted") {
+        const votesByGroup = bucketWeightedVotesByGroup(votesForHelpers, votersByUserId);
+        for (const [group, groupVotes] of votesByGroup.entries()) {
+          if (!resultsByGroup[group]) continue;
+          resultsByGroup[group].weighted = computeWeightedStats({
+            proposal,
+            votes: groupVotes,
+            votersByUserId,
+            voteWeighted: !!ballot.voteWeighted,
+          });
         }
       }
     }

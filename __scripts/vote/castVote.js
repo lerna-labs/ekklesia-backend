@@ -12,9 +12,13 @@
 //   --ballotId     required
 //   --voter        fixture name in VOTERS_BY_NAME (default: drep01)
 //   --questionId   required — Proposal _id on the ballot
-//   --selection    integer (repeatable; single-choice, multi, binary)
-//   --ranking      integer (repeatable; ranked-choice)
-//   --weights      "option:weight,option:weight,…" (weighted)
+//   --selection    Ballot-schema-v2 unified selection. Two shapes accepted:
+//                    - integers: "1" or "1,3" (binary / single / multi /
+//                      range; ranked passes in preference order)
+//                    - option:value pairs: "1:5,2:3,3:1" for weighted
+//                      (value = points, must sum to budget) or likert
+//                      (value = rating on ratingRange grid)
+//                  Repeatable; repeats flatten into one selection array.
 //   --skeyPath     override the fixture's keyPath
 //   --backend      backend base URL (default http://localhost:3000)
 
@@ -52,33 +56,40 @@ if (fixture.kind === "script") {
 const voterId = fixture.userId;
 const backend = flags.backend || "http://localhost:3000";
 
-// Build the VoteSelection for the request body.
-const selection = [];
-for (const raw of [].concat(flags.selection || [])) {
-  if (raw === true) continue;
-  for (const v of String(raw).split(",")) selection.push(Number(v));
-}
-const ranking = [];
-for (const raw of [].concat(flags.ranking || [])) {
-  if (raw === true) continue;
-  for (const v of String(raw).split(",")) ranking.push(Number(v));
-}
-let weights;
-if (flags.weights) {
-  weights = String(flags.weights).split(",").map((pair) => {
-    const [option, weight] = pair.split(":").map(Number);
-    return { option, weight };
-  });
+// Parse --selection into Hydra v2 unified selection (number[] or
+// SelectionEntry[]). An entry is {option,value} when the token contains
+// a colon, plain integer otherwise. Mixing shapes inside one --selection
+// is rejected — Hydra's validator enforces one shape per method.
+function parseSelection(rawFlags) {
+  const tokens = [];
+  for (const raw of [].concat(rawFlags || [])) {
+    if (raw === true) continue;
+    for (const t of String(raw).split(",")) {
+      const trimmed = t.trim();
+      if (trimmed) tokens.push(trimmed);
+    }
+  }
+  if (tokens.length === 0) return null;
+  const hasPair = tokens.some((t) => t.includes(":"));
+  if (hasPair && !tokens.every((t) => t.includes(":"))) {
+    console.error("--selection: mixed shapes; use all integers OR all option:value pairs");
+    process.exit(1);
+  }
+  if (hasPair) {
+    return tokens.map((t) => {
+      const [option, value] = t.split(":").map(Number);
+      return { option, value };
+    });
+  }
+  return tokens.map(Number);
 }
 
-const voteSelection = { questionId: String(flags.questionId) };
-if (selection.length) voteSelection.selection = selection;
-if (ranking.length) voteSelection.ranking = ranking;
-if (weights) voteSelection.weights = weights;
-if (!voteSelection.selection && !voteSelection.ranking && !voteSelection.weights) {
-  console.error("Pass one of --selection / --ranking / --weights");
+const selection = parseSelection(flags.selection);
+if (!selection) {
+  console.error("Pass --selection (integers, or option:value pairs for weighted/likert)");
   process.exit(1);
 }
+const voteSelection = { questionId: String(flags.questionId), selection };
 
 // Mint voter JWT.
 const secret = process.env.JWT_SECRET;

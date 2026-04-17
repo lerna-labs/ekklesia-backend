@@ -50,6 +50,28 @@ function proposalToQuestion(proposal) {
       };
     }
     case "budget": {
+      // Knapsack: voter picks a subset whose summed option.cost ≤
+      // voterBudget. Maps to Hydra multi-choice — Hydra only enforces
+      // [min, max] count bounds. The cost-cap is backend-validated at
+      // /draft (helper/voteValidation.js) since Hydra multi-choice has
+      // no cost awareness.
+      const options = (proposal.voteOptions || []).map((o) => ({
+        label: o.label,
+        value: Number(o.id),
+      }));
+      const minSelections = proposal.abstainAllowed ? 0 : 1;
+      return {
+        ...base,
+        method: "multi-choice",
+        options,
+        minSelections,
+        maxSelections: options.length,
+      };
+    }
+    case "weighted": {
+      // Point allocation: voter distributes voterBudget points across
+      // options. Σ values must equal voterBudget exactly. Hydra validates
+      // shape + sum at /vote time (see HYDRA_VOTE_VALIDATION TRD).
       const options = (proposal.voteOptions || []).map((o) => ({
         label: o.label,
         value: Number(o.id),
@@ -58,7 +80,7 @@ function proposalToQuestion(proposal) {
         ...base,
         method: "weighted",
         options,
-        budget: proposal.voterBudget || 1,
+        budget: proposal.voterBudget || 100,
       };
     }
     case "ranked": {
@@ -80,10 +102,31 @@ function proposalToQuestion(proposal) {
           `Scale proposal ${proposal._id} needs at least two options for valueRange`
         );
       }
+      const min = Math.min(...ids);
+      const max = Math.max(...ids);
+      const step = Number(proposal.voteIncrement) || 1;
       return {
         ...base,
         method: "range",
-        valueRange: { min: Math.min(...ids), max: Math.max(...ids) },
+        valueRange: { min, max, step },
+      };
+    }
+    case "likert": {
+      const options = (proposal.voteOptions || []).map((o) => ({
+        label: o.label,
+        value: Number(o.id),
+      }));
+      const src = proposal.ratingRange || { min: 1, max: 5 };
+      const ratingRange = {
+        min: src.min,
+        max: src.max,
+        step: Number(src.step) || 1,
+      };
+      return {
+        ...base,
+        method: "likert",
+        options,
+        ratingRange,
       };
     }
     default:
