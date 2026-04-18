@@ -19,6 +19,10 @@
 //                      (value = points, must sum to budget) or likert
 //                      (value = rating on ratingRange grid)
 //                  Repeatable; repeats flatten into one selection array.
+//                  Mutually exclusive with --abstain.
+//   --abstain      Submits { questionId, abstain: true } — the voter
+//                  skips this question without expressing a preference.
+//                  Proposal must have abstainAllowed: true.
 //   --skeyPath     override the fixture's keyPath
 //   --backend      backend base URL (default http://localhost:3000)
 
@@ -84,12 +88,21 @@ function parseSelection(rawFlags) {
   return tokens.map(Number);
 }
 
+const wantsAbstain = flags.abstain === true || String(flags.abstain) === "true";
 const selection = parseSelection(flags.selection);
-if (!selection) {
-  console.error("Pass --selection (integers, or option:value pairs for weighted/likert)");
+
+if (wantsAbstain && selection) {
+  console.error("--abstain and --selection are mutually exclusive");
   process.exit(1);
 }
-const voteSelection = { questionId: String(flags.questionId), selection };
+if (!wantsAbstain && !selection) {
+  console.error("Pass --selection (integers, or option:value pairs for weighted/likert) or --abstain");
+  process.exit(1);
+}
+
+const voteSelection = wantsAbstain
+  ? { questionId: String(flags.questionId), abstain: true }
+  : { questionId: String(flags.questionId), selection };
 
 // Mint voter JWT.
 const secret = process.env.JWT_SECRET;

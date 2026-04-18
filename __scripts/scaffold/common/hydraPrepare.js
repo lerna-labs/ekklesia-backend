@@ -33,6 +33,16 @@ function proposalToQuestion(proposal) {
     // facing blurb — map from Proposal.summary now that the legacy
     // top-level description field has been dropped.
     description: proposal.summary || "",
+    // Hydra uses `requireAnswer` (default false = abstain allowed).
+    // Our internal Proposal.abstainAllowed has inverted polarity —
+    // translate at the wire boundary. Only proposals that explicitly
+    // set `abstainAllowed: false` force an answer.
+    //
+    // Abstaining voters submit { questionId, abstain: true }; Hydra
+    // routes them to the tally's abstainedByRole counter. Distinct
+    // from "include an Abstain option among the voteOptions" — those
+    // selections end up in the per-option tally.
+    requireAnswer: proposal.abstainAllowed === false,
   };
 
   switch (proposal.voteType) {
@@ -53,18 +63,20 @@ function proposalToQuestion(proposal) {
       // Knapsack: voter picks a subset whose summed option.cost ≤
       // voterBudget. Maps to Hydra multi-choice — Hydra only enforces
       // [min, max] count bounds. The cost-cap is backend-validated at
-      // /draft (helper/voteValidation.js) since Hydra multi-choice has
-      // no cost awareness.
+      // /draft since Hydra multi-choice has no cost awareness.
+      //
+      // minSelections is always >= 1 — voters who want to skip submit
+      // { abstain: true } instead of an empty selection. Hydra rejects
+      // minSelections = 0 at /prepare.
       const options = (proposal.voteOptions || []).map((o) => ({
         label: o.label,
         value: Number(o.id),
       }));
-      const minSelections = proposal.abstainAllowed ? 0 : 1;
       return {
         ...base,
         method: "multi-choice",
         options,
-        minSelections,
+        minSelections: 1,
         maxSelections: options.length,
       };
     }

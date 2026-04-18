@@ -648,12 +648,18 @@ async function submitPackage(pkg, ballot) {
  */
 async function syncVoteRecords(pkg, ballot) {
   for (const answer of pkg.signingPayload.votes || []) {
+    // Translate Hydra v2 wire shape to the internal Vote.vote
+    // sentinel: { abstain: true } → ["abstain"]; selection → selection.
+    // Keeping ["abstain"] as the internal marker lets the existing
+    // rollup / aggregation code keep pattern-matching on first === "abstain"
+    // without a wider refactor.
+    const stored = answer.abstain === true ? ["abstain"] : (answer.selection || []);
     const base = {
       userId: pkg.userId,
       ballotId: ballot._id,
       proposalId: answer.questionId,
-      vote: answer.selection || [],
-      submittedVote: answer.selection || [],
+      vote: stored,
+      submittedVote: stored,
       submittedAt: new Date(),
       nonce: pkg.nonce,
       voteHash: pkg.voteHash,

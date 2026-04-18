@@ -12,7 +12,10 @@
 //   --ballotId            required
 //   --questionId          required
 //   --selection           see castVote.js (unified v2 shape: integers
-//                         OR option:value pairs)
+//                         OR option:value pairs). Mutually exclusive
+//                         with --abstain.
+//   --abstain             Submits { questionId, abstain: true }. Proposal
+//                         must have abstainAllowed: true.
 //   --voter               fixture name (default: multisig)
 //   --cosigners           how many keys to sign with (default = script.required)
 //   --backend             backend URL (default http://localhost:3000)
@@ -80,12 +83,21 @@ function parseSelection(rawFlags) {
   return tokens.map(Number);
 }
 
+const wantsAbstain = flags.abstain === true || String(flags.abstain) === "true";
 const selection = parseSelection(flags.selection);
-if (!selection) {
-  console.error("Pass --selection (integers, or option:value pairs for weighted/likert)");
+
+if (wantsAbstain && selection) {
+  console.error("--abstain and --selection are mutually exclusive");
   process.exit(1);
 }
-const voteSelection = { questionId: String(flags.questionId), selection };
+if (!wantsAbstain && !selection) {
+  console.error("Pass --selection (integers, or option:value pairs for weighted/likert) or --abstain");
+  process.exit(1);
+}
+
+const voteSelection = wantsAbstain
+  ? { questionId: String(flags.questionId), abstain: true }
+  : { questionId: String(flags.questionId), selection };
 
 const backend = flags.backend || "http://localhost:3000";
 const secret = process.env.JWT_SECRET;

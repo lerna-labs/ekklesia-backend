@@ -58,16 +58,33 @@ export function validateVoteSelections(votes, proposals) {
     const proposal = byId.get(qid);
     if (!proposal) err("questionId not on this ballot", `${path}.questionId`);
 
-    if (!Array.isArray(v.selection)) {
-      err("selection must be an array", `${path}.selection`);
-    }
+    // Abstain is a top-level flag, mutually exclusive with selection.
+    // Matches Hydra v2: { questionId, abstain: true } routes to the
+    // tally's abstainedByRole counter, never to MethodTally aggregates.
+    const hasAbstain = v.abstain === true;
+    const hasSelection = Object.prototype.hasOwnProperty.call(v, "selection");
 
-    // Abstain: selection === ["abstain"]. Allowed when the proposal says so.
-    if (v.selection.length === 1 && v.selection[0] === "abstain") {
-      if (!proposal.abstainAllowed) {
-        err("abstain not allowed on this proposal", `${path}.selection`);
+    if (hasAbstain) {
+      if (v.abstain !== true) {
+        err("abstain must be exactly true", `${path}.abstain`);
+      }
+      // abstain is allowed by default — only reject when the proposal
+      // has explicitly disabled it. Missing / undefined / true all
+      // mean "voters may abstain."
+      if (proposal.abstainAllowed === false) {
+        err("abstain not allowed on this proposal", `${path}.abstain`);
+      }
+      if (hasSelection) {
+        err("abstain and selection are mutually exclusive", path);
       }
       continue;
+    }
+
+    if (!hasSelection) {
+      err("selection or abstain:true required", path);
+    }
+    if (!Array.isArray(v.selection)) {
+      err("selection must be an array", `${path}.selection`);
     }
 
     validatePerMethod(v.selection, proposal, `${path}.selection`);
