@@ -89,7 +89,7 @@ export function voteHash(evidence) {
  * @param {Object} input
  * @param {string} input.ballotId
  * @param {string} input.voterId        — bech32
- * @param {string} input.credentialHrp  — "drep"|"stake"|"pool"|"addr_vkh"
+ * @param {string} input.credentialHrp  — "drep"|"stake"|"pool"|"calidus"
  * @param {Array} input.votes           — VoteSelection[]
  * @param {string} [input.responderRole]
  * @param {Object} [input.merkleProof]  — supplied when the caller has it

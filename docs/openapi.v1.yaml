@@ -693,6 +693,23 @@ components:
         description: { type: string }
         status: { type: string, enum: [upcoming, live, closed] }
         voterType: { type: string }
+        voterGroups:
+          type: array
+          description: >
+            Per-group eligibility + power-source declaration. Each entry
+            pairs a role key (drep/pool/stake) with a Hydra
+            RoleWeighting value (CredentialBased, StakeBased, or
+            PledgeBased). Translated directly into Hydra's roleWeighting
+            object at /prepare. Valid combinations:
+            drep→CredentialBased|StakeBased;
+            pool→CredentialBased|StakeBased|PledgeBased;
+            stake→StakeBased.
+          items:
+            type: object
+            required: [group, powerSource]
+            properties:
+              group: { type: string, enum: [drep, pool, stake] }
+              powerSource: { type: string, enum: [CredentialBased, StakeBased, PledgeBased] }
         voterDescription: { type: string }
         voteWeighted: { type: boolean }
         votePeriodStart: { type: string, format: date-time }
@@ -786,7 +803,23 @@ components:
             description: { type: string, maxLength: 2000 }
             voterType:
               type: string
-              enum: [stake, drep, pool, cc, any]
+              enum: [stake, drep, pool, any]
+              description: Human-readable label. Authoritative role + power-source declaration lives in `voterGroups`.
+            voterGroups:
+              type: array
+              description: >
+                Per-group eligibility + power-source declaration,
+                translated directly into Hydra's `roleWeighting`.
+                Valid combinations:
+                drep→CredentialBased|StakeBased;
+                pool→CredentialBased|StakeBased|PledgeBased;
+                stake→StakeBased.
+              items:
+                type: object
+                required: [group, powerSource]
+                properties:
+                  group: { type: string, enum: [drep, pool, stake] }
+                  powerSource: { type: string, enum: [CredentialBased, StakeBased, PledgeBased] }
             voterDescription: { type: string }
             voteWeighted: { type: boolean }
             voteFilters: { type: boolean }
@@ -856,19 +889,46 @@ components:
         # via externalProposal.snapshot.facets.
         voteType:
           type: string
-          enum: [default, budget, ranked, scale, preference]
+          enum: [choice, multi-choice, budget, weighted, ranked, scale, likert]
         voteIncrement: { type: number }
         voterBudget: { type: number }
-        abstainAllowed: { type: boolean }
+        requireAnswer:
+          type: boolean
+          default: false
+          description: >
+            When true, voters must submit a selection — `{ abstain: true }` is
+            rejected. Default false (permissive): abstain is allowed.
         voteOptions:
           type: array
           minItems: 1
           items:
             type: object
+            required: [id, label]
             properties:
-              id: { oneOf: [{ type: number }, { type: string }] }
-              cost: { type: number }
-              label: { type: string }
+              id:
+                oneOf: [{ type: integer }, { type: string, enum: ["abstain"] }]
+                description: Integer option id; the string "abstain" is a legacy sentinel retained for back-compat only.
+              label: { type: string, maxLength: 120 }
+              cost:
+                type: number
+                minimum: 0
+                default: 1
+                description: Per-option cost; only meaningful for voteType "budget". Defaults to 1.
+              description:
+                type: string
+                maxLength: 1000
+                description: Optional voter-facing blurb rendered alongside the option label.
+              referenceUrl:
+                type: string
+                maxLength: 500
+                description: Optional canonical "learn more" link for this specific option.
+              imageUrl:
+                type: string
+                maxLength: 500
+                description: Optional thumbnail / portrait URL (e.g. candidate headshot).
+              metadata:
+                type: object
+                description: Free-form one-off attributes the frontend understands (e.g. candidate platform). No schema contract.
         data: { type: object }
         ipfsHash: { type: string, nullable: true }
         externalProposal:

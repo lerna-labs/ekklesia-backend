@@ -58,7 +58,7 @@ async function rollupVoters(ballotIdObj, distinctUserIds) {
   for (const userId of distinctUserIds) {
     const r = byUserSnap.get(userId) || byUserCache.get(userId);
     if (!r) continue;
-    const g = r.voterGroup || "default";
+    const g = r.voterGroup || "stake";
     totalVotingPower[g] = (totalVotingPower[g] || 0) + (Number(r.votingPower) || 0);
     voterCount[g] = (voterCount[g] || 0) + 1;
   }

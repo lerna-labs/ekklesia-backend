@@ -68,11 +68,10 @@ export function validateVoteSelections(votes, proposals) {
       if (v.abstain !== true) {
         err("abstain must be exactly true", `${path}.abstain`);
       }
-      // abstain is allowed by default — only reject when the proposal
-      // has explicitly disabled it. Missing / undefined / true all
-      // mean "voters may abstain."
-      if (proposal.abstainAllowed === false) {
-        err("abstain not allowed on this proposal", `${path}.abstain`);
+      // abstain is allowed by default; only rejected when the proposal
+      // sets requireAnswer: true. Missing / undefined / false all allow.
+      if (proposal.requireAnswer === true) {
+        err("this question requires an answer — abstain is not allowed", `${path}.abstain`);
       }
       if (hasSelection) {
         err("abstain and selection are mutually exclusive", path);
@@ -99,10 +98,27 @@ function validatePerMethod(selection, proposal, path) {
   );
 
   switch (proposal.voteType) {
-    case "default":
-    case "preference":
+    case "choice":
       validateNumberArray(selection, optionIds, path);
+      if (selection.length !== 1) err("choice expects exactly one option", path);
       break;
+
+    case "multi-choice": {
+      validateNumberArray(selection, optionIds, path);
+      if (new Set(selection).size !== selection.length) {
+        err("multi-choice selection must not repeat options", path);
+      }
+      const min = Number.isFinite(Number(proposal.minSelections))
+        ? Number(proposal.minSelections)
+        : 1;
+      const max = Number.isFinite(Number(proposal.maxSelections))
+        ? Number(proposal.maxSelections)
+        : (proposal.voteOptions || []).length;
+      if (selection.length < min || selection.length > max) {
+        err(`multi-choice requires ${min}..${max} selections (got ${selection.length})`, path);
+      }
+      break;
+    }
 
     case "scale":
       validateNumberArray(selection, null, path);

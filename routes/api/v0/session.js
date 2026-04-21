@@ -479,7 +479,7 @@ router.put("/", sessionVerificationLimiter, validateSessionRequest, async (req, 
   try {
     if (req.signType === "drep") {
       userName = await fetchDrepName(addressBech32);
-    } else if (req.signType === "stake" || req.signType === "addr") {
+    } else if (req.signType === "stake") {
       userName = await fetchHandle(addressBech32);
     }
   } catch (error) {

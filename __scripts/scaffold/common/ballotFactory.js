@@ -6,6 +6,7 @@
 
 import { Ballot } from "../../../schema/Ballot.js";
 import { Proposal } from "../../../schema/Proposal.js";
+import { ensureProposalContentHashes } from "../../../helper/proposalContent.js";
 import {
   describe,
   loremText,
@@ -110,9 +111,15 @@ function hashFloat(s) {
 // to decide who can vote; Ballot.voterType is display-only.
 //
 // Groups correspond to VOTERS[*].voterGroup in ./fixtures.js:
-//   "drep"    — DReps
-//   "pool"    — SPOs
-//   "default" — Stakeholders
+//   "drep"  — DReps
+//   "pool"  — SPOs
+//   "stake" — Stakeholders
+//
+// `voterGroups` declares the eligibility + power-source pair that
+// hydraPrepare.js translates into Hydra's `roleWeighting` object:
+//   drep  → CredentialBased | StakeBased
+//   pool  → CredentialBased | StakeBased | PledgeBased
+//   stake → StakeBased
 const VALIDATION_SCRIPTS = {
   // Single-group flavors
   dreps: {
@@ -120,30 +127,39 @@ const VALIDATION_SCRIPTS = {
     voterType: "DReps",
     startup: "startupBallot.js",
     eligibleGroups: ["drep"],
+    voterGroups: [{ group: "drep", powerSource: "StakeBased" }],
   },
   stake: {
     script: "voterValidationStake.js",
     voterType: "Stake",
     startup: "startupBallot.js",
-    eligibleGroups: ["default"],
+    eligibleGroups: ["stake"],
+    voterGroups: [{ group: "stake", powerSource: "StakeBased" }],
   },
   poolPledge: {
     script: "voterValidationPoolsPledge.js",
     voterType: "SPOs (Pledge based)",
     startup: "startupPledgeBasedVoting.js",
     eligibleGroups: ["pool"],
+    voterGroups: [{ group: "pool", powerSource: "PledgeBased" }],
   },
   poolStake: {
     script: "voterValidationPoolsStake.js",
     voterType: "SPOs (Stake based)",
     startup: "startupStakeBasedVoting.js",
     eligibleGroups: ["pool"],
+    voterGroups: [{ group: "pool", powerSource: "StakeBased" }],
   },
   alwaysTrue: {
     script: "voterValidationAlwaysTrue.js",
     voterType: "All Voters",
     startup: "startupBallot.js",
-    eligibleGroups: ["drep", "pool", "default"],
+    eligibleGroups: ["drep", "pool", "stake"],
+    voterGroups: [
+      { group: "drep", powerSource: "StakeBased" },
+      { group: "pool", powerSource: "StakeBased" },
+      { group: "stake", powerSource: "StakeBased" },
+    ],
   },
   // Combined-group flavors — scaffold-only. The real voter-validation
   // scripts don't natively take unions; these rely on alwaysTrue +
@@ -154,24 +170,43 @@ const VALIDATION_SCRIPTS = {
     voterType: "DReps + SPOs",
     startup: "startupBallot.js",
     eligibleGroups: ["drep", "pool"],
+    // RSS-v2-style heterogeneous power sources: DReps by delegated
+    // voting power, SPOs by pledge.
+    voterGroups: [
+      { group: "drep", powerSource: "StakeBased" },
+      { group: "pool", powerSource: "PledgeBased" },
+    ],
   },
   drepsStake: {
     script: "voterValidationAlwaysTrue.js",
     voterType: "DReps + Stakeholders",
     startup: "startupBallot.js",
-    eligibleGroups: ["drep", "default"],
+    eligibleGroups: ["drep", "stake"],
+    voterGroups: [
+      { group: "drep", powerSource: "StakeBased" },
+      { group: "stake", powerSource: "StakeBased" },
+    ],
   },
   poolsStake: {
     script: "voterValidationAlwaysTrue.js",
     voterType: "SPOs + Stakeholders",
     startup: "startupBallot.js",
-    eligibleGroups: ["pool", "default"],
+    eligibleGroups: ["pool", "stake"],
+    voterGroups: [
+      { group: "pool", powerSource: "StakeBased" },
+      { group: "stake", powerSource: "StakeBased" },
+    ],
   },
   allGroups: {
     script: "voterValidationAlwaysTrue.js",
     voterType: "DReps + SPOs + Stakeholders",
     startup: "startupBallot.js",
-    eligibleGroups: ["drep", "pool", "default"],
+    eligibleGroups: ["drep", "pool", "stake"],
+    voterGroups: [
+      { group: "drep", powerSource: "StakeBased" },
+      { group: "pool", powerSource: "StakeBased" },
+      { group: "stake", powerSource: "StakeBased" },
+    ],
   },
 };
 
@@ -322,66 +357,85 @@ function buildProposalAuthorship(seed) {
 }
 
 // Candidate roster used by the single-pick-from-many and multi-pick
-// proposal templates below. Each entry exercises the optional
-// per-option metadata fields (description, referenceUrl, imageUrl,
-// platform), which the schema accepts because voteOptions is typed as
-// Array (no inner shape constraint).
+// proposal templates below. Exercises the full typed VoteOption shape:
+//   required: id, label
+//   optional: description, referenceUrl, imageUrl
+//   free-form: metadata.* (platform here — it's candidate-election-
+//   specific, not a universal option field)
+// imageUrl uses https://picsum.photos/id/<id>/400/400 — picsum resolves
+// the same photo for the same id every time, so rescaffold runs keep
+// the contentHash byte-stable. 400x400 square is a reasonable portrait
+// fetch; frontends can resize by replacing the dimensions.
 const CC_CANDIDATES = [
   {
     id: 1,
     label: "Dr. Amara Okeke",
     description: "Constitutional law scholar, 12 years on chain governance committees.",
     referenceUrl: "https://example.test/cc/amara-okeke",
-    imageUrl: "https://example.test/img/cc/amara.png",
-    platform: "Strong process safeguards, conservative interpretation of the constitution.",
+    imageUrl: "https://picsum.photos/id/64/400/400",
+    metadata: {
+      platform: "Strong process safeguards, conservative interpretation of the constitution.",
+    },
   },
   {
     id: 2,
     label: "Marco Chen",
     description: "Open-source engineer; led three protocol upgrades and the original tooling working group.",
     referenceUrl: "https://example.test/cc/marco-chen",
-    imageUrl: "https://example.test/img/cc/marco.png",
-    platform: "Engineering rigor, fast feedback loops, defer to ecosystem builders on technical questions.",
+    imageUrl: "https://picsum.photos/id/342/400/400",
+    metadata: {
+      platform: "Engineering rigor, fast feedback loops, defer to ecosystem builders on technical questions.",
+    },
   },
   {
     id: 3,
     label: "Priya Singh",
     description: "Treasury auditor and former regulator. Public records of independent action against three governance proposals.",
     referenceUrl: "https://example.test/cc/priya-singh",
-    imageUrl: "https://example.test/img/cc/priya.png",
-    platform: "Treasury accountability, audit-first decisions, mandatory disclosures.",
+    imageUrl: "https://picsum.photos/id/91/400/400",
+    metadata: {
+      platform: "Treasury accountability, audit-first decisions, mandatory disclosures.",
+    },
   },
   {
     id: 4,
     label: "Jonas Bergström",
     description: "Long-time validator operator (4y stake top-50). Active in pool governance.",
     referenceUrl: "https://example.test/cc/jonas-bergstrom",
-    imageUrl: "https://example.test/img/cc/jonas.png",
-    platform: "Operator experience, decentralization-first, push back on protocol creep.",
+    imageUrl: "https://picsum.photos/id/177/400/400",
+    metadata: {
+      platform: "Operator experience, decentralization-first, push back on protocol creep.",
+    },
   },
   {
     id: 5,
     label: "Dr. Lina Rossi",
     description: "Researcher specializing in mechanism design and on-chain incentive systems.",
     referenceUrl: "https://example.test/cc/lina-rossi",
-    imageUrl: "https://example.test/img/cc/lina.png",
-    platform: "Evidence-based mechanism reform, formal models for treasury allocation.",
+    imageUrl: "https://picsum.photos/id/823/400/400",
+    metadata: {
+      platform: "Evidence-based mechanism reform, formal models for treasury allocation.",
+    },
   },
   {
     id: 6,
     label: "Tomas Alvarez",
     description: "Community organizer; founded LATAM stakeholder collective with 8k members.",
     referenceUrl: "https://example.test/cc/tomas-alvarez",
-    imageUrl: "https://example.test/img/cc/tomas.png",
-    platform: "Inclusive process, multilingual outreach, lower the barrier for small voters.",
+    imageUrl: "https://picsum.photos/id/577/400/400",
+    metadata: {
+      platform: "Inclusive process, multilingual outreach, lower the barrier for small voters.",
+    },
   },
   {
     id: 7,
     label: "Sarah Kim",
     description: "Cryptography researcher; co-author of the staking-pool proof framework.",
     referenceUrl: "https://example.test/cc/sarah-kim",
-    imageUrl: "https://example.test/img/cc/sarah.png",
-    platform: "Verifiable governance — every constitutional decision must produce a public audit artifact.",
+    imageUrl: "https://picsum.photos/id/1005/400/400",
+    metadata: {
+      platform: "Verifiable governance — every constitutional decision must produce a public audit artifact.",
+    },
   },
 ];
 
@@ -438,12 +492,11 @@ function defaultProposals(ballotId, ballotTitle) {
       ballotId,
       title: "Default Proposal: Yes/No/Abstain",
       ...buildProposalAuthorship(`${ballotTitle}|default`),
-      abstainAllowed: true,
-      voteType: "default",
+      voteType: "choice",
       voterBudget: 1,
       voteOptions: [
-        { id: 1, cost: 1, label: "Yes" },
-        { id: 2, cost: 1, label: "No" },
+        { id: 1, label: "Yes" },
+        { id: 2, label: "No" },
       ],
       data: {
         submittedBy: authorList(`${ballotTitle}|default|sub`, 1)[0],
@@ -459,13 +512,12 @@ function defaultProposals(ballotId, ballotTitle) {
       ballotId,
       title: "Scale Proposal",
       ...buildProposalAuthorship(`${ballotTitle}|scale`),
-      abstainAllowed: true,
       voteType: "scale",
       voteIncrement: 1,
       voteOptions: [
-        { id: -100, label: "Strongly oppose", cost: 1 },
-        { id: 0, label: "Neutral", cost: 1 },
-        { id: 100, label: "Strongly support", cost: 1 },
+        { id: -100, label: "Strongly oppose" },
+        { id: 0, label: "Neutral" },
+        { id: 100, label: "Strongly support" },
       ],
       data: {
         submittedBy: authorList(`${ballotTitle}|scale|sub`, 1)[0],
@@ -481,13 +533,15 @@ function defaultProposals(ballotId, ballotTitle) {
       ballotId,
       title: "Ranked Choice Proposal",
       ...buildProposalAuthorship(`${ballotTitle}|ranked`),
-      abstainAllowed: true,
+      // Mandatory answer — voter may not abstain on the ranked-choice
+      // proposal. Exercises the requireAnswer:true opt-out path.
+      requireAnswer: true,
       voteType: "ranked",
       voteOptions: [
-        { id: 1, label: "Alice Reyes", cost: 1 },
-        { id: 2, label: "Bob Tanaka", cost: 1 },
-        { id: 3, label: "Carol Okafor", cost: 1 },
-        { id: 4, label: "Dave Lindgren", cost: 1 },
+        { id: 1, label: "Alice Reyes" },
+        { id: 2, label: "Bob Tanaka" },
+        { id: 3, label: "Carol Okafor" },
+        { id: 4, label: "Dave Lindgren" },
       ],
       data: {
         submittedBy: authorList(`${ballotTitle}|ranked|sub`, 1)[0],
@@ -500,7 +554,7 @@ function defaultProposals(ballotId, ballotTitle) {
       },
     },
     // Single-pick from many — Constitutional-Committee-style election.
-    // voteType "default" works here: one selection from the option list.
+    // voteType "choice" works here: one selection from the option list.
     // Each option carries name + description + referenceUrl + imageUrl
     // + platform so the frontend can render a candidate card (not just
     // a label).
@@ -508,10 +562,9 @@ function defaultProposals(ballotId, ballotTitle) {
       ballotId,
       title: "Single Choice: Elect a CC Member",
       ...buildProposalAuthorship(`${ballotTitle}|ccelect`),
-      abstainAllowed: true,
-      voteType: "default",
+      voteType: "choice",
       voterBudget: 1,
-      voteOptions: CC_CANDIDATES.map((c) => ({ ...c, cost: 1 })),
+      voteOptions: CC_CANDIDATES,
       data: {
         submittedBy: authorList(`${ballotTitle}|ccelect|sub`, 1)[0],
         seatsAvailable: 1,
@@ -524,21 +577,18 @@ function defaultProposals(ballotId, ballotTitle) {
       },
     },
     // Multi-pick (up to 3) from a list of funding tracks. Modeled as
-    // voteType "preference" with voterBudget = 3 and per-option cost 1
-    // (frontend should enforce the picks-up-to-N invariant; backend
-    // accepts whatever the broker submits and tallies per-option). Per-
-    // option metadata exercises the same render path as the CC ballot.
+    // voteType "multi-choice" with minSelections: 1, maxSelections: 3.
+    // Per-option metadata exercises the same render path as the CC ballot.
     {
       ballotId,
       title: "Multi Select: Fund up to 3 Tracks",
       ...buildProposalAuthorship(`${ballotTitle}|fundtracks`),
-      abstainAllowed: true,
-      voteType: "preference",
-      voterBudget: 3,
-      voteOptions: FUNDING_TRACKS.map((t) => ({ ...t, cost: 1 })),
+      voteType: "multi-choice",
+      minSelections: 1,
+      maxSelections: 3,
+      voteOptions: FUNDING_TRACKS,
       data: {
         submittedBy: authorList(`${ballotTitle}|fundtracks|sub`, 1)[0],
-        maxSelections: 3,
         totalFundingPool: pickInt(`${ballotTitle}|fundtracks|pool`, 1_000_000, 25_000_000) * 1_000_000,
       },
       externalProposal: {
@@ -554,7 +604,6 @@ function defaultProposals(ballotId, ballotTitle) {
       ballotId,
       title: "Budget: Fund projects within 6 months of capacity",
       ...buildProposalAuthorship(`${ballotTitle}|budget`),
-      abstainAllowed: true,
       voteType: "budget",
       voterBudget: 6,
       voteOptions: [
@@ -583,7 +632,6 @@ function defaultProposals(ballotId, ballotTitle) {
       ballotId,
       title: "Weighted: Allocate 100% across treasury categories",
       ...buildProposalAuthorship(`${ballotTitle}|weighted`),
-      abstainAllowed: true,
       voteType: "weighted",
       voterBudget: 100,
       voteOptions: [
@@ -611,17 +659,16 @@ function defaultProposals(ballotId, ballotTitle) {
       ballotId,
       title: "Likert: Rate Budget Thresholds",
       ...buildProposalAuthorship(`${ballotTitle}|likert`),
-      abstainAllowed: true,
       voteType: "likert",
       ratingRange: { min: 1, max: 5 },
       voteOptions: [
-        { id: 1, label: "Greater than 2500", cost: 1 },
-        { id: 2, label: "2500", cost: 1 },
-        { id: 3, label: "2000", cost: 1 },
-        { id: 4, label: "1000", cost: 1 },
-        { id: 5, label: "750", cost: 1 },
-        { id: 6, label: "500", cost: 1 },
-        { id: 7, label: "Less than 500", cost: 1 },
+        { id: 1, label: "Greater than 2500" },
+        { id: 2, label: "2500" },
+        { id: 3, label: "2000" },
+        { id: 4, label: "1000" },
+        { id: 5, label: "750" },
+        { id: 6, label: "500" },
+        { id: 7, label: "Less than 500" },
       ],
       data: {
         submittedBy: authorList(`${ballotTitle}|likert|sub`, 1)[0],
@@ -667,6 +714,7 @@ export async function upsertScaffoldBallot({
     title,
     description: ballotDesc.text,
     voterType: flavorCfg.voterType,
+    voterGroups: flavorCfg.voterGroups || [],
     voterDescription: loremText(`${title}|voterDesc`, voterDescBucket.chars, 1),
     facets: facetsForBallot(title),
     proposalSource: {
@@ -727,6 +775,10 @@ export async function upsertScaffoldBallot({
       { upsert: true }
     );
   }
+
+  // Stamp contentHash on every proposal after they land. Runs on every
+  // scaffold invocation so the hash tracks any edit to proposal content.
+  await ensureProposalContentHashes(ballot._id);
 
   return ballot;
 }

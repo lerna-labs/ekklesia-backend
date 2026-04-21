@@ -39,6 +39,7 @@ const voterPowerSnapshotSchema = new Schema(
     },
     voterGroup: {
       type: String,
+      enum: ["drep", "pool", "stake"],
       required: true,
     },
     votingPower: {

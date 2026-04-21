@@ -8,14 +8,25 @@ import {
   validateProposalFacetValues,
 } from "../facets/validate.js";
 
-const VOTER_TYPES = new Set(["stake", "drep", "pool", "cc", "any"]);
+const VOTER_TYPES = new Set(["stake", "drep", "pool", "any"]);
+
+const VOTER_GROUPS = new Set(["drep", "pool", "stake"]);
+const POWER_SOURCES = new Set(["CredentialBased", "StakeBased", "PledgeBased"]);
+// Hydra's RoleWeighting type constrains which power sources are valid
+// for each group. Enforced at /prepare too, but we pre-flight here for
+// friendly authoring errors.
+const VALID_POWER_SOURCES_BY_GROUP = {
+  drep: new Set(["CredentialBased", "StakeBased"]),
+  pool: new Set(["CredentialBased", "StakeBased", "PledgeBased"]),
+  stake: new Set(["StakeBased"]),
+};
 const VOTE_TYPES = new Set([
-  "default",
+  "choice",
+  "multi-choice",
   "budget",
   "weighted",
   "ranked",
   "scale",
-  "preference",
   "likert",
 ]);
 
@@ -51,6 +62,52 @@ function validateSource(src, errors) {
   }
 }
 
+function validateVoterGroups(groups, errors) {
+  // voterGroups is optional (omitted ballots fall back to voterType-
+  // based inference in hydraPrepare). When present, each entry must
+  // declare a valid group + a power-source that's admissible for that
+  // group per Hydra's RoleWeighting type.
+  if (groups == null) return;
+  if (!Array.isArray(groups)) {
+    errors.push({ path: "ballot.voterGroups", message: "must be an array when present" });
+    return;
+  }
+  const seen = new Set();
+  for (let i = 0; i < groups.length; i++) {
+    const g = groups[i];
+    const path = `ballot.voterGroups[${i}]`;
+    if (!g || typeof g !== "object") {
+      errors.push({ path, message: "must be an object" });
+      continue;
+    }
+    if (!VOTER_GROUPS.has(g.group)) {
+      errors.push({
+        path: `${path}.group`,
+        message: `must be one of ${[...VOTER_GROUPS].join(", ")}`,
+      });
+      continue;
+    }
+    if (seen.has(g.group)) {
+      errors.push({ path: `${path}.group`, message: `duplicate group "${g.group}"` });
+    }
+    seen.add(g.group);
+    if (!POWER_SOURCES.has(g.powerSource)) {
+      errors.push({
+        path: `${path}.powerSource`,
+        message: `must be one of ${[...POWER_SOURCES].join(", ")}`,
+      });
+      continue;
+    }
+    const allowed = VALID_POWER_SOURCES_BY_GROUP[g.group];
+    if (!allowed.has(g.powerSource)) {
+      errors.push({
+        path: `${path}.powerSource`,
+        message: `not valid for group "${g.group}" (allowed: ${[...allowed].join(", ")})`,
+      });
+    }
+  }
+}
+
 function validateBallot(b, errors) {
   if (!b || typeof b !== "object") {
     errors.push({ path: "ballot", message: "required object" });
@@ -74,6 +131,7 @@ function validateBallot(b, errors) {
   if (!isNonEmptyString(b.voterDescription)) {
     pushMissing(errors, "ballot.voterDescription");
   }
+  validateVoterGroups(b.voterGroups, errors);
   ["voteWeighted", "voteFilters"].forEach((k) => {
     if (typeof b[k] !== "boolean") pushType(errors, `ballot.${k}`, "boolean");
   });
@@ -149,6 +207,75 @@ function validateSnapshot(snap, path, facetDefs, errors) {
   }
 }
 
+const VOTE_OPTION_MAX = Object.freeze({
+  label: 120,
+  description: 1000,
+  url: 500,
+});
+
+function validateVoteOptions(options, path, errors) {
+  const seenIds = new Set();
+  for (let i = 0; i < options.length; i++) {
+    const o = options[i];
+    const p = `${path}[${i}]`;
+    if (!o || typeof o !== "object" || Array.isArray(o)) {
+      errors.push({ path: p, message: "must be an object" });
+      continue;
+    }
+    // id — Number.isInteger OR the legacy "abstain" sentinel. Reject
+    // anything else (strings that aren't "abstain", floats, etc.).
+    const validId =
+      Number.isInteger(o.id) || o.id === "abstain";
+    if (!validId) {
+      errors.push({
+        path: `${p}.id`,
+        message: 'must be an integer (or the legacy "abstain" sentinel)',
+      });
+    } else if (seenIds.has(o.id)) {
+      errors.push({ path: `${p}.id`, message: `duplicate option id ${JSON.stringify(o.id)}` });
+    }
+    seenIds.add(o.id);
+    if (!isNonEmptyString(o.label, VOTE_OPTION_MAX.label)) {
+      errors.push({
+        path: `${p}.label`,
+        message: `required, ≤ ${VOTE_OPTION_MAX.label}`,
+      });
+    }
+    if (o.cost != null) {
+      if (typeof o.cost !== "number" || !Number.isFinite(o.cost) || o.cost < 0) {
+        errors.push({ path: `${p}.cost`, message: "must be a non-negative number" });
+      }
+    }
+    if (o.description != null) {
+      if (typeof o.description !== "string" || o.description.length > VOTE_OPTION_MAX.description) {
+        errors.push({
+          path: `${p}.description`,
+          message: `optional string, ≤ ${VOTE_OPTION_MAX.description}`,
+        });
+      }
+    }
+    if (o.referenceUrl != null) {
+      if (typeof o.referenceUrl !== "string" || o.referenceUrl.length > VOTE_OPTION_MAX.url) {
+        errors.push({
+          path: `${p}.referenceUrl`,
+          message: `optional string, ≤ ${VOTE_OPTION_MAX.url}`,
+        });
+      }
+    }
+    if (o.imageUrl != null) {
+      if (typeof o.imageUrl !== "string" || o.imageUrl.length > VOTE_OPTION_MAX.url) {
+        errors.push({
+          path: `${p}.imageUrl`,
+          message: `optional string, ≤ ${VOTE_OPTION_MAX.url}`,
+        });
+      }
+    }
+    if (o.metadata != null && (typeof o.metadata !== "object" || Array.isArray(o.metadata))) {
+      errors.push({ path: `${p}.metadata`, message: "optional object (free-form)" });
+    }
+  }
+}
+
 function validateProposal(p, i, facetDefs, errors) {
   const path = `proposals[${i}]`;
   if (!p || typeof p !== "object") {
@@ -171,6 +298,8 @@ function validateProposal(p, i, facetDefs, errors) {
       path: `${path}.voteOptions`,
       message: `too many options (max ${MAX.voteOptions})`,
     });
+  } else {
+    validateVoteOptions(p.voteOptions, `${path}.voteOptions`, errors);
   }
 
   if (p.externalProposal != null) {

@@ -37,7 +37,7 @@ function baseValid() {
     proposals: [
       {
         title: "Libraries for everyone",
-        voteType: "default",
+        voteType: "choice",
         voteOptions: [
           { id: 1, cost: 1, label: "Yes" },
           { id: 2, cost: 1, label: "No" },

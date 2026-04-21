@@ -31,10 +31,26 @@ export const VOTERS = [
     // stake01 when needed for COSE-signing tests.
     userId: "stake_test1uq7s0crsqzp7qnltc8nu2w9lpv8xqpxyvxgjncgnqlwg8yswk2msf",
     name: "Scaffold Stakeholder 01",
-    voterGroup: "default",
+    voterGroup: "stake",
     votingPower: 250,
     validated: true,
     kind: "key",
+  },
+  {
+    // Frontend voter-history test subject — real preprod stake credential
+    // the operator logs in with to exercise "my past votes" and
+    // voting-power display UX. No signing-key material bundled; scaffold
+    // votes are unsigned demo data. `forceParticipate: true` bypasses
+    // the seeder's random turnout draw so this voter has votes on every
+    // stake-eligible ballot (closed + live). Per-proposal engagement is
+    // also forced, so they vote on every question within each ballot.
+    userId: "stake_test1ur97k8x2dkedxscjls0z2leux34yuz30hngsg6nylyjs7fgkxjnv2",
+    name: "Frontend Test Voter",
+    voterGroup: "stake",
+    votingPower: 750,
+    validated: true,
+    kind: "key",
+    forceParticipate: true,
   },
   {
     // Real 2-of-3 multisig DRep registered on preprod. Keys live at
@@ -82,5 +98,6 @@ export const VOTERS_BY_NAME = {
   drep01: VOTERS[0],
   pool01: VOTERS[1],
   stake01: VOTERS[2],
-  multisig: VOTERS[3],
+  stake02: VOTERS[3],
+  multisig: VOTERS[4],
 };

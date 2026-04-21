@@ -123,7 +123,7 @@ export function bucketWeightedVotesByGroup(votes, votersByUserId) {
     if (!voter) continue;
     const first = Array.isArray(v.vote) ? v.vote[0] : v.vote;
     if (first === "abstain") continue;
-    const group = voter.voterGroup || "default";
+    const group = voter.voterGroup || "stake";
     if (!out.has(group)) out.set(group, []);
     out.get(group).push(v);
   }

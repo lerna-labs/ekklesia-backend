@@ -33,20 +33,29 @@ function proposalToQuestion(proposal) {
     // facing blurb — map from Proposal.summary now that the legacy
     // top-level description field has been dropped.
     description: proposal.summary || "",
-    // Hydra uses `requireAnswer` (default false = abstain allowed).
-    // Our internal Proposal.abstainAllowed has inverted polarity —
-    // translate at the wire boundary. Only proposals that explicitly
-    // set `abstainAllowed: false` force an answer.
-    //
-    // Abstaining voters submit { questionId, abstain: true }; Hydra
-    // routes them to the tally's abstainedByRole counter. Distinct
-    // from "include an Abstain option among the voteOptions" — those
-    // selections end up in the per-option tally.
-    requireAnswer: proposal.abstainAllowed === false,
+    // requireAnswer (Hydra field, default false = abstain allowed).
+    // Backend and Hydra use the same field name and polarity now —
+    // pass through verbatim. Abstaining voters submit
+    // { questionId, abstain: true }; Hydra routes them to the tally's
+    // abstainedByRole counter. Distinct from "include an Abstain
+    // option among the voteOptions" — those selections end up in the
+    // per-option tally.
+    requireAnswer: proposal.requireAnswer === true,
+    // blake2b_256 of the canonical per-proposal content blob. Hydra
+    // accepts this optional field on BallotQuestion (per the
+    // HYDRA_PROPOSAL_CONTENT_HASH TRD, landed upstream 2026-04-20)
+    // and folds it into `ekklesia.merkleRoot`, committing voter-
+    // facing content (descriptions, images, option metadata) on-
+    // chain. undefined when absent so canonicalization doesn't emit
+    // the key and ballots without a computed hash still validate.
+    contentHash: proposal.contentHash || undefined,
   };
 
   switch (proposal.voteType) {
-    case "default": {
+    case "choice": {
+      // Single-pick. Exactly one option selected per voter. Hydra
+      // distinguishes binary (2 options) from single-choice (≥3) at
+      // the method level; both accept `selection: [optId]`.
       const options = (proposal.voteOptions || []).map((o) => ({
         label: o.label,
         value: Number(o.id),
@@ -57,6 +66,30 @@ function proposalToQuestion(proposal) {
         options,
         minSelections: 1,
         maxSelections: 1,
+      };
+    }
+    case "multi-choice": {
+      // Pick min..max from a list. Uses the proposal's explicit
+      // minSelections / maxSelections when set; otherwise defaults to
+      // 1 and options.length respectively. Hydra's `multi-choice`
+      // method only enforces count bounds — no cost awareness (see
+      // `budget` voteType for knapsack semantics).
+      const options = (proposal.voteOptions || []).map((o) => ({
+        label: o.label,
+        value: Number(o.id),
+      }));
+      const min = Number.isFinite(Number(proposal.minSelections))
+        ? Number(proposal.minSelections)
+        : 1;
+      const max = Number.isFinite(Number(proposal.maxSelections))
+        ? Number(proposal.maxSelections)
+        : options.length;
+      return {
+        ...base,
+        method: "multi-choice",
+        options,
+        minSelections: min,
+        maxSelections: max,
       };
     }
     case "budget": {
@@ -147,23 +180,50 @@ function proposalToQuestion(proposal) {
 }
 
 /**
- * Map a voterType string (e.g. "DReps", "Stake", "SPOs (Pledge based)") into
- * a CIP-179 roleWeighting object. Only include roles that are actually
- * eligible for this ballot — must align with `acceptedCredentialsFor` below.
+ * Build the CIP-179 `roleWeighting` object for Hydra's /prepare body.
+ *
+ * Prefers `ballot.voterGroups[]` (the authoritative declaration). When
+ * voterGroups is empty/absent, falls back to the legacy voterType
+ * display-string inference so pre-voterGroups ballots keep working.
  */
-function roleWeightingFor(voterType) {
-  const v = (voterType || "").toLowerCase();
-  if (v.includes("drep")) return { DRep: "StakeBased" };
-  if (v.includes("pledge")) return { SPO: "PledgeBased" };
-  if (v.includes("spo") || v.includes("pool")) return { SPO: "StakeBased" };
-  return { Stakeholder: "StakeBased" };
+function roleWeightingFor(ballot) {
+  const groups = Array.isArray(ballot?.voterGroups) ? ballot.voterGroups : [];
+  if (groups.length > 0) {
+    const out = {};
+    for (const g of groups) {
+      if (!g?.group || !g?.powerSource) continue;
+      out[g.group] = g.powerSource;
+    }
+    if (Object.keys(out).length > 0) return out;
+  }
+  // Legacy fallback — infer role + power source from the voterType
+  // display string. Keeps hand-curated ballots without voterGroups
+  // importable during the migration window.
+  const v = (ballot?.voterType || "").toLowerCase();
+  if (v.includes("drep")) return { drep: "StakeBased" };
+  if (v.includes("pledge")) return { pool: "PledgeBased" };
+  if (v.includes("spo") || v.includes("pool")) return { pool: "StakeBased" };
+  return { stake: "StakeBased" };
 }
 
 /**
- * Map a voterType into bech32 HRPs accepted as voter credentials.
+ * Build the bech32-HRP list accepted as voter credentials for this
+ * ballot. Derived from voterGroups when present; legacy voterType
+ * inference otherwise. `pool`-eligible ballots also accept `calidus`
+ * (hot-key representation of the same SPO).
  */
-function acceptedCredentialsFor(voterType) {
-  const v = (voterType || "").toLowerCase();
+function acceptedCredentialsFor(ballot) {
+  const groups = Array.isArray(ballot?.voterGroups) ? ballot.voterGroups : [];
+  if (groups.length > 0) {
+    const out = new Set();
+    for (const g of groups) {
+      if (g?.group === "drep") out.add("drep");
+      else if (g?.group === "pool") { out.add("pool"); out.add("calidus"); }
+      else if (g?.group === "stake") out.add("stake");
+    }
+    if (out.size > 0) return [...out];
+  }
+  const v = (ballot?.voterType || "").toLowerCase();
   if (v.includes("drep")) return ["drep"];
   if (v.includes("pool") || v.includes("spo") || v.includes("pledge"))
     return ["pool", "calidus"];
@@ -192,13 +252,13 @@ export async function buildPrepareBody(ballot, opts = {}) {
     title: ballot.title,
     description: ballot.description,
     questions: proposals.map(proposalToQuestion),
-    roleWeighting: roleWeightingFor(ballot.voterType),
+    roleWeighting: roleWeightingFor(ballot),
     endEpoch,
     ekklesia: {
       namespace,
       votingAuthority: opts.votingAuthority || ballot.voteAuthorityAddress || "",
       context: "hydra-head",
-      acceptedCredentials: acceptedCredentialsFor(ballot.voterType),
+      acceptedCredentials: acceptedCredentialsFor(ballot),
       merkleRoot: "", // filled by Hydra
       ballotIpfsCid: "", // filled by Hydra
       votingWindow: {

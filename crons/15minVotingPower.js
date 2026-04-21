@@ -81,7 +81,7 @@ export async function snapshotVotingPower() {
         { ballotId: ballot._id, userId: r.userId },
         {
           $set: {
-            voterGroup: r.voterGroup || "default",
+            voterGroup: r.voterGroup || "stake",
             votingPower: Number(r.votingPower) || 0,
             source: "snapshot",
             computedAt: now,

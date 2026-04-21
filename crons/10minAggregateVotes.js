@@ -143,7 +143,7 @@ export async function aggregateVotes() {
       };
     });
 
-    if (proposal.abstainAllowed !== false) {
+    if (proposal.requireAnswer !== true) {
       const abstain = voteAggregation.find((r) => String(r._id) === "abstain");
       resultsWithLabels.push({
         id: "abstain",
@@ -214,7 +214,7 @@ export async function aggregateVotes() {
       });
       resultsByGroup[groupKey].totalVotes += row.count;
     }
-    if (proposal.abstainAllowed) {
+    if (proposal.requireAnswer !== true) {
       for (const groupKey of Object.keys(resultsByGroup)) {
         const hasAbstain = resultsByGroup[groupKey].results.some((r) => r.id === "abstain");
         if (!hasAbstain) {

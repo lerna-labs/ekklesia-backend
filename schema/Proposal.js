@@ -14,13 +14,19 @@ const { Schema } = mongoose;
  * @property {Array<{name: String}>} authors - Proposer / submitter display names (max 20 entries, 120 chars each)
  * @property {String} version - Source-system version tag (e.g. "v2.3", "draft")
  * @property {Object} data - Additional structured data related to the proposal (optional, format varies by proposal type)
- * @property {String} voteType - Type of voting system: "default", "budget", "ranked", "scale", or "preference" (default: "default")
+ * @property {String} voteType - Type of voting system: "choice" (single-pick), "multi-choice" (pick min..max), "budget" (knapsack), "weighted" (point allocation), "ranked", "scale", or "likert" (default: "choice")
  * @property {Number} voteIncrement - Increment value for scale votes (default: 1, e.g., 1 for integer scale, 0.5 for half-point scale)
  * @property {Number} voterBudget - Budget limit for voters in budget vote type (default: 1, total cost cannot exceed this)
- * @property {Boolean} abstainAllowed - Whether voters can select an "abstain" option (default: true, abstain cannot be combined with other votes)
+ * @property {Boolean} requireAnswer - When true, voters MAY NOT submit { abstain: true } on this question (they must pick a selection). Default false means abstain is allowed. Inverted from the legacy `abstainAllowed` field (dropped).
  * @property {Array<Object>} voteOptions - Available voting options for this proposal
  *                                        Default: [{id: 1, cost: 1, label: "Yes"}, {id: 2, cost: 1, label: "No"}]
- *                                        Each option has: id (number or "abstain" string), cost (number), label (string)
+ *                                        Required: id (integer), label (string ≤ 120).
+ *                                        Optional: cost (number, default 1),
+ *                                        description (string ≤ 1000 — voter-facing blurb),
+ *                                        referenceUrl (string ≤ 500 — "learn more" link),
+ *                                        imageUrl (string ≤ 500 — optional thumbnail),
+ *                                        metadata (Object — free-form for one-off attributes
+ *                                        the frontend understands, e.g. candidate platform).
  * @property {Date} createdAt - Timestamp when the proposal was created (immutable)
  * @property {Date} updatedAt - Timestamp when the proposal was last updated
  *
@@ -102,10 +108,12 @@ const proposalSchema = new Schema(
     voteType: {
       type: String,
       required: true,
-      // default, budget (knapsack: Σ cost ≤ voterBudget, maps to Hydra
-      // multi-choice), weighted (point allocation: Σ value = voterBudget,
-      // maps to Hydra weighted), ranked, scale, preference, likert
-      default: "default",
+      // choice (single-pick — binary when 2 opts, single-choice otherwise),
+      // multi-choice (pick min..max; uses minSelections/maxSelections),
+      // budget (knapsack: Σ cost ≤ voterBudget, maps to Hydra multi-choice),
+      // weighted (point allocation: Σ value = voterBudget, maps to Hydra
+      // weighted), ranked, scale, likert.
+      default: "choice",
     },
     voteIncrement: {
       type: Number,
@@ -129,18 +137,78 @@ const proposalSchema = new Schema(
       required: false,
       default: 1,
     },
+    // Count bounds for voteType:"multi-choice". minSelections defaults
+    // to 1 (empty submissions rejected — voters use abstain to skip);
+    // maxSelections defaults to voteOptions.length when unset. Ignored
+    // for other voteTypes.
+    minSelections: {
+      type: Number,
+      required: false,
+      default: null,
+    },
+    maxSelections: {
+      type: Number,
+      required: false,
+      default: null,
+    },
+    // Typed option subschema. `id` is Mixed to preserve backward
+    // compatibility with the legacy `"abstain"` string sentinel;
+    // production-authored ballots should use integer ids exclusively
+    // (the abstain-as-option pattern has been superseded by the
+    // top-level `abstain: true` flag at /draft).
     voteOptions: {
-      type: Array,
+      type: [
+        new Schema(
+          {
+            id: { type: Schema.Types.Mixed, required: true },
+            label: { type: String, required: true, maxlength: 120 },
+            // Only meaningful for voteType: "budget" (knapsack —
+            // Σ cost ≤ voterBudget). Absent on every other voteType.
+            // No default: we don't want to inject cost: 1 on every
+            // choice / multi-choice / likert / etc. option.
+            cost: { type: Number },
+            description: { type: String, maxlength: 1000 },
+            referenceUrl: { type: String, maxlength: 500 },
+            imageUrl: { type: String, maxlength: 500 },
+            metadata: { type: Schema.Types.Mixed },
+          },
+          { _id: false }
+        ),
+      ],
       required: true,
       default: [
         { id: 1, cost: 1, label: "Yes" },
         { id: 2, cost: 1, label: "No" },
       ],
     },
-    abstainAllowed: {
+    // When true, voters MUST submit a selection — { abstain: true } is
+    // rejected. Default false (permissive): abstain is allowed. This
+    // replaces the legacy `abstainAllowed` field with opposite polarity
+    // so the common case (abstain-allowed) needs no flag.
+    requireAnswer: {
       type: Boolean,
-      required: true,
-      default: true,
+      default: false,
+    },
+    // blake2b_256 hex of the canonical per-proposal content blob. Set by
+    // `helper/proposalContent.js:ensureProposalContentHash()` whenever
+    // the proposal is written/updated. Anchors the voter-facing content
+    // (title, summary, rationale, options, images, URLs) so auditors
+    // can cryptographically verify the proposal hasn't drifted since
+    // ballot-prepare time. Exposed via
+    // `GET /api/v1/ballots/:id/questions/:qid/content` and the archive
+    // bundle; will be included in Hydra's BallotQuestion once the
+    // middleware ships contentHash support.
+    contentHash: {
+      type: String,
+      default: null,
+    },
+    // IPFS CID of the pinned content blob. Stays null until the IPFS
+    // permanence track lands (see .claude/plans/ballot-content-permanence.md,
+    // Track A). Content is still verifiable via contentHash + the
+    // backend archive endpoint without a CID.
+    contentCid: {
+      type: String,
+      default: null,
     },
     // Back-reference to the originating proposal in an upstream
     // proposals module (populated by the compiled-ballot importer).

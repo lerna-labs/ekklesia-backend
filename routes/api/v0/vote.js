@@ -16,7 +16,7 @@ import { isAuthenticated, getProposal } from "../../../helper/middleWare.js";
  *
  * @param {string} req.params.proposalId - MongoDB ObjectId of the proposal to vote on
  * @param {Object} req.body
- * @param {Array<number|string>} req.body.vote - Array of vote option IDs (numbers) or "abstain" string. Must be one of the allowed values for the proposal. Duplicates are automatically removed. If abstainAllowed is true and "abstain" is included, no other votes are allowed.
+ * @param {Array<number|string>} req.body.vote - Array of vote option IDs (numbers) or "abstain" string. Must be one of the allowed values for the proposal. Duplicates are automatically removed. Abstain is allowed by default; proposals with `requireAnswer: true` reject it. When allowed, "abstain" must be the sole entry (cannot be combined with other votes).
  *
  * @returns {Object} 200 - The saved vote object containing:
  *   - _id: MongoDB ObjectId of the vote
@@ -33,7 +33,7 @@ import { isAuthenticated, getProposal } from "../../../helper/middleWare.js";
  *   - Vote data is missing, not an array, or empty
  *   - Ballot status is not "live"
  *   - Vote value(s) are not allowed for this proposal
- *   - Abstain is combined with other votes (when abstainAllowed is true)
+ *   - Abstain is combined with other votes
  *   - Total cost exceeds voterBudget (for budget vote type)
  * @returns {Object} 401 - Unauthorized if not authenticated (handled by isAuthenticated middleware)
  * @returns {Object} 403 - Error if voter is not registered/validated for the ballot
@@ -89,12 +89,23 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   // Remove duplicate votes
   const uniqueVotes = [...new Set(vote)];
 
-  // Invalidate vote submission if abstainAllowed and abstain as well as other votes are present
-  if (proposal.abstainAllowed && uniqueVotes.includes("abstain") && uniqueVotes.length > 1) {
-    return res.status(400).json({
-      status: "error",
-      message: "Invalid vote - Abstain does not allow other votes",
-    });
+  // Abstain rules:
+  //   - Proposals with requireAnswer: true reject any "abstain" entry.
+  //   - Otherwise, "abstain" must be the only entry (cannot be combined
+  //     with other votes).
+  if (uniqueVotes.includes("abstain")) {
+    if (proposal.requireAnswer === true) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid vote - this question requires an answer",
+      });
+    }
+    if (uniqueVotes.length > 1) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid vote - Abstain does not allow other votes",
+      });
+    }
   }
 
   // Get allowed option IDs from proposal.voteOptions
@@ -107,8 +118,8 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
     allowedOptionIds = Array.from({ length: (upperBound - lowerBound) / proposal.voteIncrement + 1 }, (_, i) => lowerBound + i * proposal.voteIncrement);
   }
 
-  // Add abstain if proposal.abstainAllowed = true
-  if (proposal.abstainAllowed) {
+  // Abstain is allowed by default unless the proposal sets requireAnswer: true.
+  if (proposal.requireAnswer !== true) {
     allowedOptionIds.push("abstain");
   }
 

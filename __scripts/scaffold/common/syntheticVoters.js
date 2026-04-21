@@ -9,12 +9,12 @@
 // IDs are deterministic per-group and per-index so re-runs converge:
 //   drep_synth_NNN  → drep group
 //   pool_synth_NNN  → pool group
-//   stake_synth_NNN → default group (stakeholders)
+//   stake_synth_NNN → stake group (stakeholders)
 
 const ID_PREFIX = {
   drep: "drep_synth_",
   pool: "pool_synth_",
-  default: "stake_synth_",
+  stake: "stake_synth_",
 };
 
 const NAME_POOL = {
@@ -27,7 +27,7 @@ const NAME_POOL = {
     "Skylight Pool", "Granite Pool", "Tundra Pool", "Mariner Pool", "Stellar Pool",
     "Quartz Pool", "Cobalt Pool", "Radon Pool",
   ],
-  default: [
+  stake: [
     "ADA Holder Α", "ADA Holder Β", "ADA Holder Γ", "ADA Holder Δ", "ADA Holder Ε",
     "ADA Holder Ζ", "ADA Holder Η", "ADA Holder Θ", "ADA Holder Ι", "ADA Holder Κ",
     "ADA Holder Λ", "ADA Holder Μ",
@@ -56,5 +56,5 @@ function makeCohort(group, count) {
 export const SYNTHETIC_VOTERS = [
   ...makeCohort("drep", 12),
   ...makeCohort("pool", 8),
-  ...makeCohort("default", 12),
+  ...makeCohort("stake", 12),
 ];

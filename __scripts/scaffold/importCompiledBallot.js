@@ -79,7 +79,7 @@ const SAMPLE_PAYLOAD = {
   proposals: [
     {
       title: "Libraries for LATAM",
-      voteType: "default",
+      voteType: "choice",
       voteOptions: [
         { id: 1, cost: 1, label: "Yes" },
         { id: 2, cost: 1, label: "No" },
@@ -103,7 +103,7 @@ const SAMPLE_PAYLOAD = {
     },
     {
       title: "Rural health network",
-      voteType: "default",
+      voteType: "choice",
       voteOptions: [
         { id: 1, cost: 1, label: "Yes" },
         { id: 2, cost: 1, label: "No" },
@@ -127,7 +127,7 @@ const SAMPLE_PAYLOAD = {
     },
     {
       title: "Governance toolkit",
-      voteType: "default",
+      voteType: "choice",
       voteOptions: [
         { id: 1, cost: 1, label: "Yes" },
         { id: 2, cost: 1, label: "No" },

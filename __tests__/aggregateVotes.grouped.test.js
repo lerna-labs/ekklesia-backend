@@ -76,9 +76,12 @@ function makeProposal(ballotId, options = {}) {
     ballotId,
     title: "Test proposal",
     description: "Test",
-    voteType: "default",
+    voteType: "choice",
     voteOptions: voteOptions || defaultOptions,
-    abstainAllowed,
+    // Legacy test helper kept its `abstainAllowed` input; translate to
+    // the v2 schema's inverted flag. abstainAllowed=false (the default
+    // here) means the question requires an answer.
+    requireAnswer: abstainAllowed === false,
   };
 }
 
@@ -271,7 +274,7 @@ runDescribe("aggregateVotes grouped results", () => {
     expect(result.proposalParticipation.voterCount).toEqual({ drep: 4, pool: 5 });
   });
 
-  maybeTest("default group: voter with no group appears in default group", async () => {
+  maybeTest("stake group: voter in stake group appears in stake bucket", async () => {
     const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + " default"));
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
 
@@ -285,8 +288,8 @@ runDescribe("aggregateVotes grouped results", () => {
       voterGroup: "pool",
       votingPower: power,
     }));
-    const defaultVoter = { userId: "voter-default-1", voterGroup: "default", votingPower: 7 };
-    await UserCache.insertMany(makeUserCaches(ballot._id, [...drepVoters, ...poolVoters, defaultVoter]));
+    const stakeVoter = { userId: "voter-stake-1", voterGroup: "stake", votingPower: 7 };
+    await UserCache.insertMany(makeUserCaches(ballot._id, [...drepVoters, ...poolVoters, stakeVoter]));
 
     const votes = [
       { userId: "voter-drep-1", submittedVote: [1], vote: [1] },
@@ -299,7 +302,7 @@ runDescribe("aggregateVotes grouped results", () => {
       { userId: "voter-pool-3", submittedVote: [2], vote: [2] },
       { userId: "voter-pool-4", submittedVote: [2], vote: [2] },
       { userId: "voter-pool-5", submittedVote: [2], vote: [2] },
-      { userId: "voter-default-1", submittedVote: [1], vote: [1] },
+      { userId: "voter-stake-1", submittedVote: [1], vote: [1] },
     ].map((v) => ({
       ballotId: ballot._id,
       proposalId: proposal._id,
@@ -319,10 +322,10 @@ runDescribe("aggregateVotes grouped results", () => {
     expect(no.count).toBe(5);
     expect(no.votingPower).toBe(102);
 
-    expect(result.resultsByGroup.default).toBeDefined();
-    const defaultGroup = result.resultsByGroup.default;
-    expect(defaultGroup.totalVotes).toBe(1);
-    expect(defaultGroup.results.find((r) => r.id === 1)).toEqual({ id: 1, label: "Yes", count: 1, votingPower: 7 });
+    expect(result.resultsByGroup.stake).toBeDefined();
+    const stakeGroup = result.resultsByGroup.stake;
+    expect(stakeGroup.totalVotes).toBe(1);
+    expect(stakeGroup.results.find((r) => r.id === 1)).toEqual({ id: 1, label: "Yes", count: 1, votingPower: 7 });
 
     const drep = result.resultsByGroup.drep;
     expect(drep.results.find((r) => r.id === 1)).toEqual({ id: 1, label: "Yes", count: 3, votingPower: 60 });

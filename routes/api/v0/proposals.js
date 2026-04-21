@@ -170,7 +170,7 @@ router.get("/:proposalId/results/grouped", getProposal, async (req, res) => {
     {
       $addFields: {
         votingPower: { $ifNull: [{ $arrayElemAt: ["$voterData.votingPower", 0] }, 1] },
-        voterGroup: { $ifNull: [{ $arrayElemAt: ["$voterData.voterGroup", 0] }, "default"] },
+        voterGroup: { $ifNull: [{ $arrayElemAt: ["$voterData.voterGroup", 0] }, "stake"] },
       },
     },
     { $unwind: { path: "$submittedVote", preserveNullAndEmptyArrays: false } },
@@ -196,7 +196,7 @@ router.get("/:proposalId/results/grouped", getProposal, async (req, res) => {
     });
     groups[groupKey].totalVotes += row.count;
   }
-  if (proposal.abstainAllowed) {
+  if (proposal.requireAnswer !== true) {
     for (const groupKey of Object.keys(groups)) {
       if (!groups[groupKey].results.some((r) => r.value === "abstain")) {
         const abstainRow = byGroupAggregation.find(
@@ -307,7 +307,7 @@ router.get("/:proposalId/results", getProposal, async (req, res) => {
   // Include the abstain bucket explicitly when the proposal allows it
   // — the aggregation produces `_id: "abstain"` rows but voteOptions
   // doesn't list them, so they were getting dropped.
-  if (proposal.abstainAllowed) {
+  if (proposal.requireAnswer !== true) {
     const abstainAgg = voteAggregation.find((r) => r._id === "abstain");
     resultsWithLabels.push({
       id: "abstain",

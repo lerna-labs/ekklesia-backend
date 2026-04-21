@@ -276,6 +276,18 @@ export function validateSessionRequest(req, res, next) {
     });
   }
 
+  // Payment-address logins are blocked at the session layer — the
+  // Hydra role space contracted to drep / pool / stake. Voters with
+  // an addr1... / addr_test1... must register via their stake
+  // credential instead.
+  if (signType === "addr" || signType === "addr_test") {
+    return res.status(400).json({
+      status: "error",
+      message:
+        "Payment addresses are not accepted. Use your stake credential (stake1... or stake_test1...) or one of: drep, pool.",
+    });
+  }
+
   // Validate address format
   let addressBech32 = validateAddress(signerAddress.trim(), signType);
   // console.log("Address validation in validateSessionRequest MW", addressBech32);

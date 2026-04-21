@@ -73,6 +73,8 @@ const HYDRA_PLAN = [
   { flavor: "dreps", state: "upcoming", index: 1 },
   { flavor: "poolPledge", state: "upcoming", index: 1 },
   { flavor: "drepsPools", state: "upcoming", index: 1 },
+  { flavor: "stake", state: "upcoming", index: 1 },
+  { flavor: "allGroups", state: "upcoming", index: 1 },
   // Live
   { flavor: "dreps", state: "live", index: 1 },
   { flavor: "stake", state: "live", index: 1 },
@@ -298,10 +300,18 @@ if (skipVotes) {
     const cacheRows = await UserCache.find({ ballotId: ballot._id, validated: true })
       .select("userId votingPower voterGroup")
       .lean();
+    // Re-stamp `forceParticipate` from the fixture list — UserCache
+    // doesn't persist that flag, so without this cross-reference the
+    // frontend voter-history test subject would roll the normal
+    // participation dice and miss some ballots.
+    const forcedIds = new Set(
+      ALL_VOTERS.filter((v) => v.forceParticipate === true).map((v) => v.userId)
+    );
     const eligibleVoters = cacheRows.map((c) => ({
       userId: c.userId,
       voterGroup: c.voterGroup,
       votingPower: c.votingPower,
+      forceParticipate: forcedIds.has(c.userId),
     }));
 
     const { totalVotes: n, proposalsSeeded } = await seedBallotVotes({

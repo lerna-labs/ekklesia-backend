@@ -7,9 +7,26 @@
 import { Router } from "express";
 import validator from "validator";
 import mongoose from "mongoose";
+import crypto from "node:crypto";
+import blake from "blakejs";
 import { listUnified, getUnified } from "../../../helper/ballotAdapters/index.js";
+import { Ballot } from "../../../schema/Ballot.js";
+import { Proposal } from "../../../schema/Proposal.js";
+import {
+  buildProposalContentBlob,
+  canonicalContentBytes,
+} from "../../../helper/proposalContent.js";
+import { canonicalBytes } from "../../../helper/canonicalJson.js";
 
 const router = Router();
+
+function blake2b256Hex(bytes) {
+  return Buffer.from(blake.blake2b(bytes, null, 32)).toString("hex");
+}
+
+function sha256Hex(bytes) {
+  return crypto.createHash("sha256").update(bytes).digest("hex");
+}
 
 /**
  * State-aware cache TTL (seconds). Results are served separately via
@@ -136,6 +153,159 @@ router.get("/:id", async (req, res) => {
       status: "error",
       message: "Server error while fetching ballot",
     });
+  }
+});
+
+// ----------------------------------------------------------------------
+// Audit endpoints (public, unauthenticated) — long-term auditability
+// requires no gate. Chain of custody:
+//   on-chain (600) datum → ekklesia.merkleRoot
+//     → IPFS-pinned ballot JSON (hash covers BallotQuestion.contentHash[n])
+//        → per-proposal content blob (hash = Proposal.contentHash)
+// ----------------------------------------------------------------------
+
+/**
+ * Per-proposal canonical content bytes. Byte-identical to what
+ * `Proposal.contentHash` was computed over. Auditors re-hash these
+ * bytes with blake2b_256 to verify the proposal hasn't drifted since
+ * ballot-prepare time.
+ */
+router.get("/:id/questions/:qid/content", async (req, res) => {
+  try {
+    const ballot = await Ballot.findById(req.params.id).lean();
+    if (!ballot) {
+      return res.status(404).json({ status: "error", message: "Ballot not found" });
+    }
+    const proposal = await Proposal.findOne({
+      _id: req.params.qid,
+      ballotId: ballot._id,
+    }).lean();
+    if (!proposal) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Proposal not found on this ballot" });
+    }
+    const bytes = canonicalContentBytes(proposal, ballot);
+    applyBallotCache(res, ballot);
+    res.set("Content-Type", "application/json; charset=utf-8");
+    res.set("Content-Length", String(bytes.length));
+    return res.end(bytes);
+  } catch (err) {
+    console.error("[ballots/:id/questions/:qid/content]", err);
+    return res.status(500).json({ status: "error", message: "Server error" });
+  }
+});
+
+/**
+ * Full archive bundle — one JSON file carrying every voter-facing
+ * committed field, a MANIFEST of per-file hashes, and a README with
+ * the verification recipe. Designed to be saved to disk and re-pinned
+ * to IPFS by anyone who cares about long-term audit.
+ */
+router.get("/:id/archive", async (req, res) => {
+  try {
+    const ballot = await Ballot.findById(req.params.id).lean();
+    if (!ballot) {
+      return res.status(404).json({ status: "error", message: "Ballot not found" });
+    }
+    const proposals = await Proposal.find({ ballotId: ballot._id }).lean();
+
+    // Canonical ballot summary. Not byte-identical to Hydra's pinned
+    // ballot JSON (Hydra adds merkleRoot + ballotIpfsCid, full role-
+    // weighting, etc.) — it covers the voter-facing subset so the
+    // archive stands alone.
+    const ballotBlob = {
+      id: ballot._id.toString(),
+      title: ballot.title,
+      description: ballot.description,
+      voterType: ballot.voterType || "any",
+      voterDescription: ballot.voterDescription,
+      voterGroups: ballot.voterGroups || [],
+      votePeriodStart:
+        ballot.votePeriodStart instanceof Date
+          ? ballot.votePeriodStart.toISOString()
+          : ballot.votePeriodStart,
+      votePeriodEnd:
+        ballot.votePeriodEnd instanceof Date
+          ? ballot.votePeriodEnd.toISOString()
+          : ballot.votePeriodEnd,
+      voteAuthorityId: ballot.voteAuthorityId,
+      voteAuthorityAddress: ballot.voteAuthorityAddress,
+      hydra: {
+        ballotCid: ballot.ballotCid || null,
+        ekklesiaMerkleRoot: ballot.ekklesiaMerkleRoot || null,
+        headId: ballot.hydraHeadId || null,
+        instancePolicyId: ballot.instancePolicyId || null,
+      },
+    };
+    const ballotBytes = canonicalBytes(ballotBlob);
+
+    const proposalEntries = proposals.map((p) => {
+      const blob = buildProposalContentBlob(p, ballot);
+      const bytes = canonicalContentBytes(p, ballot);
+      return {
+        proposalId: p._id.toString(),
+        content: blob,
+        bytes: bytes.length,
+        contentHash: blake2b256Hex(bytes),
+        sha256: sha256Hex(bytes),
+      };
+    });
+
+    const manifest = [
+      {
+        path: "ballot.json",
+        bytes: ballotBytes.length,
+        blake2b_256: blake2b256Hex(ballotBytes),
+        sha256: sha256Hex(ballotBytes),
+      },
+      ...proposalEntries.map((e) => ({
+        path: `proposals/${e.proposalId}.json`,
+        bytes: e.bytes,
+        blake2b_256: e.contentHash,
+        sha256: e.sha256,
+      })),
+    ];
+
+    const bundle = {
+      schemaVersion: "1",
+      generatedAt: new Date().toISOString(),
+      ballot: ballotBlob,
+      proposals: Object.fromEntries(
+        proposalEntries.map((e) => [e.proposalId, e.content])
+      ),
+      manifest,
+      readme: [
+        "This bundle covers every voter-facing field committed on-chain by the",
+        "Hydra middleware via `ekklesia.merkleRoot` on the (600) datum.",
+        "",
+        "Verify a single proposal's content matches the committed hash:",
+        "  1. Extract `proposals[<proposalId>]`.",
+        "  2. Canonicalize: sort object keys lexicographically, UTF-8 encode,",
+        "     no whitespace between tokens (see docs/ballot-audit.md for rules).",
+        "  3. Compute blake2b_256 over the canonical bytes.",
+        "  4. Compare the hex to `manifest[].blake2b_256` for the matching file.",
+        "",
+        "Chain up to on-chain commitment:",
+        "  - Fetch `ballot.hydra.ballotCid` from IPFS; that JSON's",
+        "    `questions[].contentHash` values should match this manifest.",
+        "  - That pinned ballot JSON is what `ballot.hydra.ekklesiaMerkleRoot`",
+        "    is computed over — re-hash to confirm.",
+        "  - `ekklesiaMerkleRoot` is anchored on-chain in the (600) ballot-",
+        "    instance datum. That's the terminus of the chain of custody.",
+      ].join("\n"),
+    };
+
+    applyBallotCache(res, ballot);
+    res.set("Content-Type", "application/json; charset=utf-8");
+    res.set(
+      "Content-Disposition",
+      `attachment; filename="ballot-${ballot._id}-archive.json"`
+    );
+    return res.status(200).json(bundle);
+  } catch (err) {
+    console.error("[ballots/:id/archive]", err);
+    return res.status(500).json({ status: "error", message: "Server error" });
   }
 });
 

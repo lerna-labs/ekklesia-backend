@@ -36,7 +36,7 @@ export async function computeFromUserCache(ballotId) {
     .lean();
   return rows.map((r) => ({
     userId: r.userId,
-    voterGroup: r.voterGroup || "default",
+    voterGroup: r.voterGroup || "stake",
     votingPower: Number(r.votingPower) || 0,
   }));
 }

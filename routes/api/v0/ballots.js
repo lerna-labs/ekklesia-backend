@@ -694,7 +694,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       voterBudget: 1,
       voteOptions: 1,
       voteIncrement: 1,
-      abstainAllowed: 1,
+      requireAnswer: 1,
       commentCount: 1,
       voteCount: {
         $size: {

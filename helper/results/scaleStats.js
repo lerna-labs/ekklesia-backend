@@ -168,7 +168,7 @@ export function bucketScaleSamplesByGroup(votes, votersByUserId) {
     if (raw === "abstain" || raw == null) continue;
     const num = Number(raw);
     if (!Number.isFinite(num)) continue;
-    const group = voter.voterGroup || "default";
+    const group = voter.voterGroup || "stake";
     if (!out.has(group)) out.set(group, []);
     out.get(group).push({ value: num, weight: voter.votingPower ?? 1 });
   }

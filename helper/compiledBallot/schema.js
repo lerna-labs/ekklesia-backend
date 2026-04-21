@@ -42,7 +42,15 @@ export const COMPILED_BALLOT_SHAPE = Object.freeze({
   ballot: {
     title: `string ≤ ${MAX.title}`,
     description: `string ≤ ${MAX.description}`,
-    voterType: 'string, e.g. "stake" | "drep" | "pool"',
+    voterType:
+      'string display label, e.g. "stake" | "drep" | "pool" | "any". Human-readable; the authoritative eligibility + power-source declaration lives in voterGroups.',
+    voterGroups: [
+      {
+        group: '"drep" | "pool" | "stake"',
+        powerSource:
+          '"CredentialBased" | "StakeBased" | "PledgeBased". Valid combinations: drep→CredentialBased|StakeBased; pool→CredentialBased|StakeBased|PledgeBased; stake→StakeBased.',
+      },
+    ],
     voterDescription: "string",
     voteWeighted: "boolean",
     voteFilters: "boolean",
@@ -88,12 +96,27 @@ export const COMPILED_BALLOT_SHAPE = Object.freeze({
         },
       },
       title: `string ≤ ${MAX.title}`,
-      voteType: '"default" | "budget" | "ranked" | "scale" | "preference"',
+      voteType:
+        '"choice" | "multi-choice" | "budget" | "weighted" | "ranked" | "scale" | "likert"',
+      minSelections:
+        "number (optional; multi-choice only — default 1 when unset)",
+      maxSelections:
+        "number (optional; multi-choice only — defaults to voteOptions.length when unset)",
+      ratingRange:
+        '{ min: number, max: number, step?: number } (optional; likert only)',
       voteIncrement: "number",
       voterBudget: "number",
-      abstainAllowed: "boolean",
+      requireAnswer: "boolean (optional; default false = abstain allowed)",
       voteOptions: [
-        { id: "number | string('abstain')", cost: "number", label: "string" },
+        {
+          id: 'integer (or legacy "abstain" sentinel)',
+          label: "string ≤ 120 (required)",
+          cost: "number ≥ 0 (optional; default 1)",
+          description: "string ≤ 1000 (optional; voter-facing blurb)",
+          referenceUrl: "string ≤ 500 (optional; canonical 'learn more' URL)",
+          imageUrl: "string ≤ 500 (optional; thumbnail for the option)",
+          metadata: "object, free-form (optional; one-off attributes the frontend understands)",
+        },
       ],
       data: "object, arbitrary structured data (bounded by overall payload size)",
       ipfsHash: "string | null",

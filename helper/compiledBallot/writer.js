@@ -16,6 +16,7 @@ import mongoose from "mongoose";
 import { Ballot } from "../../schema/Ballot.js";
 import { Proposal } from "../../schema/Proposal.js";
 import { ImportedBallotPayload } from "../../schema/ImportedBallotPayload.js";
+import { ensureProposalContentHashes } from "../proposalContent.js";
 import { SCHEMA_VERSION } from "./schema.js";
 
 export class CompiledBallotWriteError extends Error {
@@ -41,6 +42,7 @@ function buildBallotDoc(payload, authCtx) {
     description: b.description,
     ipfsHash: b.ipfsHash ?? null,
     voterType: b.voterType,
+    voterGroups: Array.isArray(b.voterGroups) ? b.voterGroups : [],
     voterDescription: b.voterDescription,
     voteWeighted: b.voteWeighted,
     voteFilters: b.voteFilters,
@@ -76,7 +78,7 @@ function buildProposalDoc(p, ballotId) {
     voteIncrement: p.voteIncrement ?? 1,
     voterBudget: p.voterBudget ?? 1,
     voteOptions: p.voteOptions,
-    abstainAllowed: p.abstainAllowed ?? true,
+    requireAnswer: p.requireAnswer === true,
     // Promote upstream snapshot fields into first-class Proposal
     // fields so display code reads from one canonical place. The
     // raw snapshot is still archived under externalProposal for
@@ -186,6 +188,11 @@ export async function writeCompiledBallot(payload, authCtx) {
   } else {
     await run(null);
   }
+
+  // Stamp per-proposal contentHash outside the transaction — the hash
+  // is deterministic from the just-written proposal docs and this keeps
+  // the core write path transaction-boundaried.
+  await ensureProposalContentHashes(ballotId);
 
   return {
     ballotId: ballotId.toString(),

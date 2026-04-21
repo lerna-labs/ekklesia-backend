@@ -61,18 +61,18 @@ function pickOption(proposal, r, ballotId) {
   const opts = Array.isArray(proposal.voteOptions) ? proposal.voteOptions : [];
   if (opts.length === 0) return null;
 
-  if (proposal.voteType === "default" && opts.length >= 2) {
+  if (proposal.voteType === "choice" && opts.length === 2) {
     const { yesMargin, abstainRate } = defaultSkew(ballotId);
-    if (proposal.abstainAllowed && r < abstainRate) return ["abstain"];
+    if (proposal.requireAnswer !== true && r < abstainRate) return ["abstain"];
     // After abstain bucket, normalize r into [0, 1) for the Yes/No
     // split so the skew percentages stay accurate.
-    const r2 = (r - (proposal.abstainAllowed ? abstainRate : 0)) /
-      (1 - (proposal.abstainAllowed ? abstainRate : 0));
+    const r2 = (r - (proposal.requireAnswer !== true ? abstainRate : 0)) /
+      (1 - (proposal.requireAnswer !== true ? abstainRate : 0));
     return [r2 < yesMargin ? opts[0].id : opts[1].id];
   }
 
   if (proposal.voteType === "scale") {
-    if (proposal.abstainAllowed && r < 0.06) return ["abstain"];
+    if (proposal.requireAnswer !== true && r < 0.06) return ["abstain"];
     // Spread votes across the FULL [min, max] range, snapped to the
     // declared increment — declared anchor points (e.g. -100/0/100)
     // are just the legal range boundaries, not the only legal votes.
@@ -99,7 +99,7 @@ function pickOption(proposal, r, ballotId) {
     return [value];
   }
   if (proposal.voteType === "ranked") {
-    if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
+    if (proposal.requireAnswer !== true && r < 0.05) return ["abstain"];
     // Random permutation of option ids, deterministic per (proposal, voter).
     const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
     const sorted = ids
@@ -111,7 +111,7 @@ function pickOption(proposal, r, ballotId) {
     return sorted.slice(0, depth);
   }
   if (proposal.voteType === "likert") {
-    if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
+    if (proposal.requireAnswer !== true && r < 0.05) return ["abstain"];
     const range = proposal.ratingRange || { min: 1, max: 5, step: 1 };
     const step = Number(range.step) || 1;
     const steps = Math.floor((range.max - range.min) / step) + 1;
@@ -127,23 +127,27 @@ function pickOption(proposal, r, ballotId) {
           step,
     }));
   }
-  if (proposal.voteType === "preference") {
-    if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
-    // Pick up to voterBudget (or 3 by default) selections. Deterministic
-    // per (proposal, voter, r). Each voter picks 1..N where N is the
-    // configured cap; popularity skew differs per option so the tally
-    // doesn't come out flat.
-    const cap = Math.max(1, Math.min(proposal.voterBudget || 3, opts.length));
+  if (proposal.voteType === "multi-choice") {
+    if (proposal.requireAnswer !== true && r < 0.05) return ["abstain"];
+    // Pick minSelections..maxSelections selections, deterministic per
+    // (proposal, voter, r). Popularity skew differs per option so the
+    // tally doesn't come out flat.
     const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
+    const min = Number.isFinite(Number(proposal.minSelections))
+      ? Math.max(1, Number(proposal.minSelections))
+      : 1;
+    const max = Number.isFinite(Number(proposal.maxSelections))
+      ? Math.min(Number(proposal.maxSelections), ids.length)
+      : ids.length;
     const ranked = ids
-      .map((id, i) => ({ id, sort: prand(ballotId, "preference", `${id}_${i}_${r.toFixed(8)}`) }))
+      .map((id, i) => ({ id, sort: prand(ballotId, "multi-choice", `${id}_${i}_${r.toFixed(8)}`) }))
       .sort((a, b) => a.sort - b.sort)
       .map((x) => x.id);
-    const n = pickInt(ballotId, r, 1, cap);
+    const n = pickInt(ballotId, r, min, Math.max(min, max));
     return ranked.slice(0, n);
   }
   if (proposal.voteType === "budget") {
-    if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
+    if (proposal.requireAnswer !== true && r < 0.05) return ["abstain"];
     // Knapsack: pick options whose summed `cost` ≤ voterBudget. Emits
     // number[] (multi-choice shape) — matches Hydra method:"multi-choice".
     const budget = Number(proposal.voterBudget) || 1;
@@ -163,7 +167,7 @@ function pickOption(proposal, r, ballotId) {
     return out.length > 0 ? out : [ranked[0].id];
   }
   if (proposal.voteType === "weighted") {
-    if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
+    if (proposal.requireAnswer !== true && r < 0.05) return ["abstain"];
     // Point allocation: distribute voterBudget integer points across
     // options with deterministic per-option popularity skew. Emits
     // [{option, value}] summing EXACTLY to voterBudget — matches
@@ -191,16 +195,12 @@ function pickOption(proposal, r, ballotId) {
     // across all voters.
     return ids.map((id, i) => ({ option: id, value: final[i] }));
   }
-  // For default with many options (e.g. CC election with 7 candidates)
-  // the existing >2 branch above only handles the 2-option Yes/No case.
-  // Fall through here for ≥3 options: pick exactly one, weighted by
-  // a per-option popularity coefficient so the tally doesn't come out
-  // perfectly uniform.
-  if (proposal.voteType === "default") {
-    if (proposal.abstainAllowed && r < 0.05) return ["abstain"];
+  // Fallthrough for voteType:"choice" with ≥3 options (e.g. the CC
+  // election with 7 candidates). Pick exactly one, weighted by a
+  // per-option popularity coefficient so the tally isn't uniform.
+  if (proposal.voteType === "choice") {
+    if (proposal.requireAnswer !== true && r < 0.05) return ["abstain"];
     const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
-    // Build a cumulative-weight bucket over the options. Weights are
-    // deterministic per (proposal, option) so re-runs converge.
     const weights = ids.map((id) => 1 + prand(ballotId, "popularity", id) * 4);
     const sum = weights.reduce((s, w) => s + w, 0);
     let target = r * sum;
@@ -248,10 +248,10 @@ function rollup(proposal, votes, votersByUserId, ballot) {
       // Scale/ranked don't have a meaningful per-option discrete tally;
       // emit an abstain row only (when allowed) so the existing
       // frontend code path doesn't choke on an empty array.
-      return proposal.abstainAllowed ? [abstainRow()] : [];
+      return proposal.requireAnswer !== true ? [abstainRow()] : [];
     }
     const rows = proposal.voteOptions.map(optionRow);
-    if (proposal.abstainAllowed) rows.push(abstainRow());
+    if (proposal.requireAnswer !== true) rows.push(abstainRow());
     return rows;
   };
 
@@ -263,7 +263,7 @@ function rollup(proposal, votes, votersByUserId, ballot) {
     const voter = votersByUserId.get(v.userId);
     if (!voter) continue;
     const power = voter.votingPower ?? 1;
-    const group = voter.voterGroup || "default";
+    const group = voter.voterGroup || "stake";
 
     if (!byGroup.has(group)) {
       byGroup.set(group, { results: makeTally(), totalVotes: 0 });
@@ -359,7 +359,7 @@ function rollup(proposal, votes, votersByUserId, ballot) {
  * Seed votes + result for a single proposal.
  *
  * @param {Object} ballot     Ballot document (needs _id, source, status)
- * @param {Object} proposal   Proposal document (needs _id, voteType, voteOptions, abstainAllowed)
+ * @param {Object} proposal   Proposal document (needs _id, voteType, voteOptions, requireAnswer)
  * @param {Array} voters     Voter objects from VOTERS fixture (needs userId, voterGroup, votingPower)
  * @param {"closed"|"live"|"upcoming"} state
  */
@@ -398,11 +398,17 @@ async function seedProposal(ballot, proposal, voters, state) {
   // (proposal, voter) so re-runs converge.
   const proposalEngagement = 0.75 + prand(ballot._id.toString(), proposal._id.toString(), "engagement") * 0.15;
   for (const voter of voters) {
-    if (!participates(ballot._id.toString(), voter.userId, turnout)) {
+    // `forceParticipate` lets a fixture voter bypass the random
+    // turnout draw — used for the frontend voter-history test subject
+    // so they always have votes on every eligible ballot. Same voter
+    // still skips per-proposal engagement below to produce a realistic
+    // "voted on most but not all questions" shape.
+    const forced = voter.forceParticipate === true;
+    if (!forced && !participates(ballot._id.toString(), voter.userId, turnout)) {
       continue;
     }
     const e = prand(ballot._id.toString(), voter.userId, proposal._id.toString(), "engage");
-    if (e > proposalEngagement) continue;
+    if (!forced && e > proposalEngagement) continue;
     const r = prand(ballot._id.toString(), voter.userId, proposal._id.toString(), "pick");
     const vote = pickOption(proposal, r, ballot._id.toString());
     if (!vote) continue;

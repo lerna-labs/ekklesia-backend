@@ -54,7 +54,7 @@ export function computeRankedDistribution({ proposal, votes, votersByUserId }) {
     const usableRanking = ranking.filter((id) => id !== "abstain");
     if (usableRanking.length === 0) continue;
 
-    const group = voter.voterGroup || "default";
+    const group = voter.voterGroup || "stake";
     const power = voter.votingPower ?? 1;
     const perOption = ensureGroup(group);
 

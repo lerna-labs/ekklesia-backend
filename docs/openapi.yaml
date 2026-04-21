@@ -2023,7 +2023,7 @@ components:
         Represents a registered proposal within a ballot. Proposals are items that voters can vote on.
         Each proposal belongs to a specific ballot and contains details about what's being voted on,
         along with configurable voting options. Proposals support multiple vote types including
-        default (Yes/No), budget (with cost constraints), ranked, scale (numeric range), and preference voting.
+        choice (single-pick Yes/No or candidate election), multi-choice (pick min..max), budget (knapsack with option costs), weighted (point allocation), ranked, scale (numeric range), and likert (per-option rating) voting.
       properties:
         _id:
           type: string
@@ -2057,41 +2057,71 @@ components:
           description: Additional structured data related to the proposal (format varies by proposal type)
         voteType:
           type: string
-          enum: [default, budget, ranked, scale, preference]
+          enum: [choice, multi-choice, budget, weighted, ranked, scale, likert]
           description: |
             Type of voting system for this proposal:
-            - "default": Standard voting with predefined options (Yes/No/Abstain)
-            - "budget": Voting with cost constraints where voters have a budget to allocate
-            - "ranked": Voters rank options in order of preference
-            - "scale": Numeric scale voting (e.g., 1-10) with configurable increment
-            - "preference": Voters express preferences among multiple options
+            - "choice": Single selection. 2 options maps to Hydra method "binary"; ≥3 options maps to "single-choice".
+            - "multi-choice": Pick min..max options. See minSelections/maxSelections.
+            - "budget": Knapsack — pick a subset whose Σ option.cost ≤ voterBudget. Backend validates cost cap.
+            - "weighted": Distribute voterBudget integer points across options; Σ value must equal voterBudget exactly.
+            - "ranked": Voters rank options in order of preference.
+            - "scale": Numeric scale voting (e.g., 1-10) with configurable increment.
+            - "likert": Rate each option independently on a 1-5 (or custom) grid.
+        minSelections:
+          type: number
+          nullable: true
+          description: Lower count bound for voteType "multi-choice" (default 1). Ignored for other types.
+        maxSelections:
+          type: number
+          nullable: true
+          description: Upper count bound for voteType "multi-choice" (defaults to voteOptions.length). Ignored for other types.
         voteIncrement:
           type: number
           description: Increment value for scale votes (e.g., 1 for integer scale, 0.5 for half-point scale)
         voterBudget:
           type: number
           description: Budget limit for voters in budget vote type (total cost of selected options cannot exceed this)
-        abstainAllowed:
+        requireAnswer:
           type: boolean
-          description: Whether voters can select an "abstain" option (if true, abstain cannot be combined with other votes)
+          default: false
+          description: When true, voters must submit a selection — abstain is rejected. Default false (permissive): abstain is allowed.
         voteOptions:
           type: array
           items:
             type: object
+            required: [id, label]
             properties:
               id:
                 oneOf:
-                  - type: number
+                  - type: integer
                   - type: string
                     enum: [abstain]
-                description: Vote option ID (number) or "abstain" string
-              cost:
-                type: number
-                description: Cost of selecting this option (used in budget vote type, defaults to 1)
+                description: Integer option id. The string "abstain" is a legacy sentinel retained for back-compat only; production-authored ballots use the top-level `abstain: true` vote flag instead.
               label:
                 type: string
-                description: Display label for this vote option (e.g., "Yes", "No", "Strongly Agree")
-          description: Array of available voting options for this proposal
+                maxLength: 120
+                description: Display label for this vote option (e.g., "Yes", "No", "Strongly Agree").
+              cost:
+                type: number
+                minimum: 0
+                default: 1
+                description: Per-option cost; only meaningful for voteType "budget". Defaults to 1.
+              description:
+                type: string
+                maxLength: 1000
+                description: Optional voter-facing blurb rendered alongside the label.
+              referenceUrl:
+                type: string
+                maxLength: 500
+                description: Optional canonical "learn more" link for this specific option.
+              imageUrl:
+                type: string
+                maxLength: 500
+                description: Optional thumbnail / portrait URL (e.g. candidate headshot).
+              metadata:
+                type: object
+                description: Free-form one-off attributes the frontend understands (e.g. candidate platform). No schema contract.
+          description: Array of available voting options for this proposal.
         commentCount:
           type: number
           description: Number of comments posted on this proposal (computed field)

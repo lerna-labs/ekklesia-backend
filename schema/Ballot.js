@@ -9,7 +9,8 @@ const { Schema } = mongoose;
  * @property {String} title - Title of the ballot
  * @property {String} description - Description of the ballot
  * @property {String} ipfsHash - IPFS hash of the ballot metadata (optional, null if not stored on IPFS)
- * @property {String} voterType - Type of voters eligible for this ballot (e.g., 'stake', 'drep', 'pool')
+ * @property {String} voterType - Display label for eligible voters (e.g., 'stake', 'drep', 'pool', 'any'). Human-readable; the authoritative role + power-source declaration lives in `voterGroups`.
+ * @property {Array<{group: String, powerSource: String}>} voterGroups - Per-group eligibility + power-source declaration. `group` is one of "drep" / "pool" / "stake"; `powerSource` is one of Hydra's RoleWeighting values ("CredentialBased" / "StakeBased" / "PledgeBased"), subject to the valid-combinations rule (stake → StakeBased only; drep → CredentialBased or StakeBased; pool → CredentialBased / StakeBased / PledgeBased). hydraPrepare.js translates this array into Hydra's `roleWeighting` object at /prepare time.
  * @property {String} voterDescription - Human-readable description of eligible voters
  * @property {Boolean} voteWeighted - Whether the voting is weighted (default: false) - needed for UI displays mainly
  * @property {Date} votePeriodStart - Start date and time of the voting period
@@ -46,6 +47,32 @@ const ballotSchema = new Schema(
     voterType: {
       type: String,
       required: true,
+    },
+    // Per-group eligibility + power source. Array so a single ballot
+    // can declare, e.g., "DReps by delegated voting power AND SPOs by
+    // pledge" in one shot. hydraPrepare.js translates this into Hydra's
+    // roleWeighting object at /prepare time. Valid (group, powerSource)
+    // combinations are enforced by the CompiledBallot validator:
+    //   drep  → CredentialBased | StakeBased
+    //   pool  → CredentialBased | StakeBased | PledgeBased
+    //   stake → StakeBased
+    voterGroups: {
+      type: [
+        {
+          _id: false,
+          group: {
+            type: String,
+            enum: ["drep", "pool", "stake"],
+            required: true,
+          },
+          powerSource: {
+            type: String,
+            enum: ["CredentialBased", "StakeBased", "PledgeBased"],
+            required: true,
+          },
+        },
+      ],
+      default: [],
     },
     voterDescription: {
       type: String,
