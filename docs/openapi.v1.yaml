@@ -209,7 +209,30 @@ paths:
   /votes/{ballotId}/draft:
     post:
       tags: [Votes (v1)]
-      summary: Create a draft vote package; reserves a nonce and returns the canonical signing payload
+      summary: Create or resume a draft vote package (idempotent upsert)
+      description: |
+        **Idempotent on (voter, ballot).** If the authenticated voter already
+        has a non-terminal VotePackage on this ballot, that package is
+        returned / updated in place — a fresh nonce is NOT reserved. Hydra
+        requires `signedPayload.nonce === currentVersion + 1` strictly, so
+        burning a new nonce on every /draft click would drift the stored
+        nonce ahead of Hydra's expected next value.
+
+        Behavior:
+          - No active package exists → reserves nonce, creates VotePackage,
+            returns 201.
+          - Active package exists with matching selections → returns the
+            existing package unchanged (same packageId, same merkleRoot),
+            status 200.
+          - Active package exists with DIFFERENT selections AND no
+            signatures collected → updates signingPayload + merkleRoot +
+            voteHash in place; same packageId + nonce; status 200.
+          - Active package exists with DIFFERENT selections AND signatures
+            already collected (multisig partial) → 409
+            `PACKAGE_ALREADY_SIGNED`. Voter must DELETE and redraft.
+
+        Abandoning an in-flight package (DELETE endpoint or TTL sweep)
+        releases the nonce so the next fresh /draft reuses the same value.
       security: [{ cookieAuth: [] }]
       parameters:
         - in: path
@@ -235,12 +258,30 @@ paths:
                   description: For CIP-151 pool hot-key votes.
                   type: object
       responses:
+        "200":
+          description: Existing active package returned or updated in place
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DraftResponse" }
         "201":
-          description: Draft created
+          description: New draft created
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DraftResponse" }
         "403": { description: Voter is not eligible }
+        "409":
+          description: |
+            Package already has collected signatures; mutating selections
+            would invalidate cosigners. Call DELETE and redraft.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [error] }
+                  code: { type: string, enum: [PACKAGE_ALREADY_SIGNED] }
+                  message: { type: string }
+                  package: { $ref: "#/components/schemas/VotePackage" }
 
   /votes/{ballotId}/signature:
     post:
@@ -416,6 +457,55 @@ paths:
                 properties:
                   status: { type: string }
                   package: { $ref: "#/components/schemas/VotePackage" }
+    delete:
+      tags: [Votes (v1)]
+      summary: Voter-initiated abandonment of an in-flight package
+      description: |
+        Marks a non-terminal package as `abandoned` and releases its
+        reserved nonce back to UserCache. Load-bearing release: Hydra
+        enforces `signedPayload.nonce === currentVersion + 1` strictly,
+        so abandoning without release would break the voter's next
+        submission.
+
+        - 403 `FORBIDDEN` if the authenticated voter doesn't own the
+          package.
+        - 404 `PACKAGE_NOT_FOUND` if no package with that id exists on
+          this ballot.
+        - 409 `PACKAGE_TERMINAL` if the package is already in a
+          terminal state (hydra-confirmed, failed, cancelled,
+          abandoned).
+
+        For multisig: only the original drafter (the session voter
+        whose userId matches the package's userId) can delete. The
+        TTL sweep also uses this semantic on long-idle packages.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - in: path
+          name: ballotId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: packageId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Package abandoned; nonce released.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [success] }
+                  package:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      status: { type: string, enum: [abandoned] }
+                      nonce: { type: integer }
+        "403": { description: Not the package owner }
+        "404": { description: Package not found }
+        "409": { description: Package already in a terminal state }
 
   /proposals/ballot/{ballotId}:
     get:

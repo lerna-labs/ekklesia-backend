@@ -89,6 +89,12 @@ const votePackageSchema = new Schema(
         "hydra-confirmed",
         "failed",
         "cancelled",
+        // Set by the staleVotePackageSweep cron or an explicit DELETE
+        // when a voter walks away from an unfinished draft. Terminal —
+        // NOT resumable. The nonce is released back to UserCache so the
+        // next fresh draft reserves the same value (Hydra enforces
+        // strict nonce === currentVersion + 1).
+        "abandoned",
       ],
       default: "draft",
       required: true,
@@ -96,6 +102,17 @@ const votePackageSchema = new Schema(
     failureReason: {
       type: String,
       default: null,
+    },
+    // Stamped on every voter-initiated interaction (draft upsert,
+    // signature append, submit attempt). Drives the TTL sweep —
+    // packages in non-terminal status whose lastActivityAt is older
+    // than VOTE_PACKAGE_TTL_MINUTES get transitioned to "abandoned"
+    // and their nonce released. Distinct from Mongoose's automatic
+    // `updatedAt` which mutates on every field touch; lastActivityAt
+    // tracks only voter presence.
+    lastActivityAt: {
+      type: Date,
+      default: Date.now,
     },
   },
   {
@@ -108,6 +125,9 @@ votePackageSchema.index({ userId: 1 });
 votePackageSchema.index({ ballotId: 1 });
 votePackageSchema.index({ status: 1 });
 votePackageSchema.index({ ballotId: 1, userId: 1 });
+// TTL sweep: cron queries for non-terminal packages past their
+// lastActivityAt cutoff. Compound index keeps the scan fast.
+votePackageSchema.index({ status: 1, lastActivityAt: 1 });
 
 const VotePackage = mongoose.model("VotePackage", votePackageSchema);
 export { VotePackage };

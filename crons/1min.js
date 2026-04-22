@@ -24,6 +24,7 @@ import {
     disconnectFromDatabase,
 } from "../helper/dbManager.js";
 import { Ballot } from "../schema/Ballot.js";
+import { sweepStaleVotePackages } from "./sweepVotePackages.js";
 
 // connect db
 if (!isDatabaseConnected()) {
@@ -46,6 +47,16 @@ const ballotsUpcoming = await Ballot.find({
 for (const ballot of ballotsUpcoming) {
     await Ballot.updateOne({ _id: ballot._id }, { $set: { status: "live" } });
     console.log("1MIN: Ballot", ballot._id.toString(), "set to live");
+}
+
+// Sweep stale vote packages (draft / awaiting-signatures /
+// awaiting-submission) past their activity TTL. Transitions them to
+// "abandoned" and releases their reserved nonce — Hydra's strict
+// nonce === currentVersion + 1 makes this load-bearing.
+try {
+    await sweepStaleVotePackages();
+} catch (err) {
+    console.error("1MIN: sweepVotePackages failed:", err);
 }
 
 // disconnect from db

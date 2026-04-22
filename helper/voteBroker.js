@@ -86,6 +86,13 @@ export function voteHash(evidence) {
  * End-to-end payload construction in one call. Reserves a nonce and returns
  * everything the route needs to respond to a draft request.
  *
+ * When `reuseNonce` is passed, the caller owns a pre-reserved nonce from
+ * an existing VotePackage and buildDraft skips reserveNext — this is how
+ * the idempotent /draft upsert updates selections on an in-flight package
+ * without burning a new nonce. Hydra requires nonce === currentVersion + 1
+ * strictly, so a new reservation per /draft click would drift the backend
+ * out of sync with Hydra's expected next nonce.
+ *
  * @param {Object} input
  * @param {string} input.ballotId
  * @param {string} input.voterId        — bech32
@@ -93,6 +100,7 @@ export function voteHash(evidence) {
  * @param {Array} input.votes           — VoteSelection[]
  * @param {string} [input.responderRole]
  * @param {Object} [input.merkleProof]  — supplied when the caller has it
+ * @param {number} [input.reuseNonce]   — when present, skips reserveNext
  */
 export async function buildDraft({
   ballotId,
@@ -101,11 +109,15 @@ export async function buildDraft({
   votes,
   responderRole,
   merkleProof,
+  reuseNonce,
 }) {
   if (!ballotId || !voterId || !credentialHrp) {
     throw new BrokerError("ballotId, voterId, credentialHrp required", { code: "BAD_INPUT" });
   }
-  const nonce = await nonceManager.reserveNext({ userId: voterId, ballotId });
+  const nonce =
+    typeof reuseNonce === "number"
+      ? reuseNonce
+      : await nonceManager.reserveNext({ userId: voterId, ballotId });
   const evidence = buildEvidence({
     ballotId,
     voterId,

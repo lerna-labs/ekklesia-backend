@@ -37,6 +37,7 @@ import {
   BrokerError,
 } from "../../../helper/voteBroker.js";
 import { validateVotesForBallot } from "../../../helper/voteValidation.js";
+import { canonicalize } from "../../../helper/canonicalJson.js";
 import {
   status as multisigStatus,
   dedupeSignatures,
@@ -79,11 +80,43 @@ export const ERROR_CODES = Object.freeze({
   PACKAGE_NOT_FOUND: "PACKAGE_NOT_FOUND",
   FORBIDDEN: "FORBIDDEN",
   PACKAGE_TERMINAL: "PACKAGE_TERMINAL",
+  // Voter called /draft with different selections on a package that
+  // already has collected signatures (multisig mid-flight). Mutating
+  // the payload would invalidate cosigner sigs. Voter must DELETE
+  // the package and redraft fresh.
+  PACKAGE_ALREADY_SIGNED: "PACKAGE_ALREADY_SIGNED",
   SIGNATURE_INVALID: "SIGNATURE_INVALID",
   NONCE_STALE: "NONCE_STALE",
   HYDRA_UPSTREAM: "HYDRA_UPSTREAM",
   INTERNAL: "INTERNAL",
 });
+
+// Packages the voter could still act on (sign / submit / abandon).
+// Anything outside this set is terminal — idempotent /draft skips it
+// when looking for an active resume target, DELETE 404s on it, and
+// the TTL sweep leaves it alone.
+const NON_TERMINAL_STATUSES = Object.freeze([
+  "draft",
+  "awaiting-signatures",
+  "awaiting-submission",
+]);
+
+/**
+ * Canonical byte compare: two /draft calls with identical votes[]
+ * produce the same canonicalJson bytes for the signingPayload.votes
+ * field. Ballot + voter + nonce are constant for any given package,
+ * so comparing just the votes array is sufficient.
+ */
+function sameSelections(storedVotes, incomingVotes) {
+  try {
+    return (
+      canonicalize(storedVotes || []) ===
+      canonicalize(incomingVotes || [])
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Best-effort map from a Hydra HydraClientError to a normalized broker
@@ -167,31 +200,85 @@ router.post("/:ballotId/draft", async (req, res) => {
   }
 
   try {
-    const draft = await buildDraft({
-      ballotId: ballot._id.toString(),
-      voterId: session.userId,
-      credentialHrp: credentialHrp(session.userId),
-      votes,
-      responderRole,
-    });
-
-    const pkg = await VotePackage.create({
+    // Idempotent upsert: one active package per voter+ballot at a time.
+    // Hydra requires strict nonce === currentVersion + 1, so burning a
+    // fresh nonce on every /draft click would leave the stored nonce
+    // ahead of Hydra's expected next value. Instead, we resume or
+    // mutate the existing active package and only reserve a new nonce
+    // when none exists.
+    const existing = await VotePackage.findOne({
       ballotId: ballot._id,
       userId: session.userId,
-      signingPayload: draft.signingPayload,
-      nonce: draft.nonce,
-      voteHash: draft.prelimVoteHash,
-      nativeScript: nativeScript || null,
-      calidusDeclaration: calidusDeclaration || null,
-      status: nativeScript ? "awaiting-signatures" : "awaiting-signatures",
-    });
+      status: { $in: NON_TERMINAL_STATUSES },
+    }).sort({ createdAt: -1 });
 
-    let multisig = null;
-    if (nativeScript) {
-      multisig = multisigStatus(nativeScript, []);
+    let pkg;
+    let draft;
+
+    if (existing) {
+      const identical = sameSelections(existing.signingPayload?.votes, votes);
+
+      if (!identical && (existing.signatures || []).length > 0) {
+        // Mutating selections on a package cosigners have already
+        // signed would invalidate their work. Make the voter explicitly
+        // DELETE and redraft.
+        return res.status(409).json({
+          status: "error",
+          code: ERROR_CODES.PACKAGE_ALREADY_SIGNED,
+          message:
+            "This package already has collected signatures. Cancel it first, then create a new draft.",
+          package: { id: existing._id.toString(), status: existing.status, nonce: existing.nonce },
+        });
+      }
+
+      // Reuse the existing reservation — no new nonce burn.
+      draft = await buildDraft({
+        ballotId: ballot._id.toString(),
+        voterId: session.userId,
+        credentialHrp: credentialHrp(session.userId),
+        votes,
+        responderRole,
+        reuseNonce: existing.nonce,
+      });
+
+      existing.signingPayload = draft.signingPayload;
+      existing.voteHash = draft.prelimVoteHash;
+      existing.lastActivityAt = new Date();
+      if (!identical) {
+        // Selections actually changed — clear any stale sig draft state
+        // (multisig: signatures is empty at this branch per the check
+        // above; single-sig: no-op).
+        existing.signatures = [];
+      }
+      await existing.save();
+      pkg = existing;
+    } else {
+      draft = await buildDraft({
+        ballotId: ballot._id.toString(),
+        voterId: session.userId,
+        credentialHrp: credentialHrp(session.userId),
+        votes,
+        responderRole,
+      });
+      pkg = await VotePackage.create({
+        ballotId: ballot._id,
+        userId: session.userId,
+        signingPayload: draft.signingPayload,
+        nonce: draft.nonce,
+        voteHash: draft.prelimVoteHash,
+        nativeScript: nativeScript || null,
+        calidusDeclaration: calidusDeclaration || null,
+        status: "awaiting-signatures",
+        lastActivityAt: new Date(),
+      });
     }
 
-    return res.status(201).json({
+    let multisig = null;
+    if (pkg.nativeScript) {
+      multisig = multisigStatus(pkg.nativeScript, pkg.signatures || []);
+    }
+
+    return res.status(existing ? 200 : 201).json({
       status: "success",
       package: {
         id: pkg._id.toString(),
@@ -252,6 +339,7 @@ router.post("/:ballotId/signature", async (req, res) => {
   }
 
   pkg.signatures = dedupeSignatures([...(pkg.signatures || []), witness]);
+  pkg.lastActivityAt = new Date();
 
   let readyToSubmit = false;
   if (pkg.nativeScript) {
@@ -321,6 +409,12 @@ router.post("/:ballotId/submit", async (req, res) => {
     return res.status(409).json({ status: "error", code: ERROR_CODES.PACKAGE_TERMINAL, message: `Package in state ${pkg.status}` });
   }
 
+  // Stamp activity so a stalled /submit retry loop isn't swept by the
+  // TTL cron mid-attempt. submitPackage may take a while on the Hydra
+  // side; this also keeps the package alive for the voter's window.
+  pkg.lastActivityAt = new Date();
+  await pkg.save();
+
   const result = await submitPackage(pkg, ballot).catch((err) => ({ ok: false, err }));
   if (!result.ok) {
     return res.status(502).json({
@@ -331,6 +425,67 @@ router.post("/:ballotId/submit", async (req, res) => {
     });
   }
   return res.json({ status: "success", package: await currentPackageView(pkg._id) });
+});
+
+// DELETE /:ballotId/package/:packageId — voter-initiated abandonment
+// of an in-flight package (broker modal "Cancel" button, or the
+// per-row Discard on the pending-packages dashboard alert).
+//
+// Terminal statuses cannot be abandoned. Non-terminal packages flip
+// to "abandoned" and their reserved nonce is released — load-bearing,
+// since Hydra enforces strict nonce === currentVersion + 1 and a
+// non-released nonce would poison the voter's next draft attempt.
+router.delete("/:ballotId/package/:packageId", async (req, res) => {
+  const session = requireSession(req, res);
+  if (!session) return;
+  const ballot = await requireHydraBallot(req, res);
+  if (!ballot) return;
+
+  const pkg = await VotePackage.findOne({
+    _id: req.params.packageId,
+    ballotId: ballot._id,
+  });
+  if (!pkg) {
+    return res
+      .status(404)
+      .json({ status: "error", code: ERROR_CODES.PACKAGE_NOT_FOUND, message: "Package not found" });
+  }
+  if (pkg.userId !== session.userId) {
+    return res
+      .status(403)
+      .json({ status: "error", code: ERROR_CODES.FORBIDDEN, message: "Not the package owner" });
+  }
+  if (!NON_TERMINAL_STATUSES.includes(pkg.status)) {
+    return res.status(409).json({
+      status: "error",
+      code: ERROR_CODES.PACKAGE_TERMINAL,
+      message: `Package in terminal state: ${pkg.status}`,
+    });
+  }
+
+  pkg.status = "abandoned";
+  pkg.lastActivityAt = new Date();
+  await pkg.save();
+
+  // Roll back the reserved nonce so the next fresh /draft gets the
+  // same value Hydra is expecting (currentVersion + 1). If some other
+  // reservation has advanced the counter since this package was
+  // created, release is a no-op — under idempotent /draft that
+  // shouldn't happen, but the guard is defensive.
+  await nonceManager.release({
+    userId: pkg.userId,
+    ballotId: ballot._id,
+    nonce: pkg.nonce,
+  });
+
+  return res.json({
+    status: "success",
+    package: {
+      id: pkg._id.toString(),
+      status: pkg.status,
+      nonce: pkg.nonce,
+    },
+  });
 });
 
 // GET /:ballotId/package/:packageId

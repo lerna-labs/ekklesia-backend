@@ -71,10 +71,19 @@ export async function commit({ userId, ballotId, nonce }) {
 
 /**
  * Release a reserved nonce by rolling the counter back by one — but only if
- * the stored head equals the reserved value. If another reservation has
- * already passed it, we leave things alone (the next vote to fail simply
- * sees a larger gap, which Hydra accepts as long as the payload's nonce
- * exceeds the current on-chain Version).
+ * the stored head equals the reserved value.
+ *
+ * Load-bearing: Hydra enforces strict `signedPayload.nonce === currentVersion + 1`.
+ * A reserved-then-abandoned nonce that is NOT released creates a gap (stored
+ * nonce drifts ahead of Hydra's on-chain Version), and every subsequent vote
+ * attempt fails at /vote until the gap is reconciled. Callers that abandon
+ * a reservation (draft cancelled, TTL sweep, submission failure) MUST call
+ * release to keep the backend in lockstep with Hydra's expected next nonce.
+ *
+ * If another reservation has already advanced the head past this value,
+ * release is a no-op — whichever reservation remains in flight will be the
+ * voter's real submission attempt. Under idempotent /draft this shouldn't
+ * happen: one active package per voter+ballot ⇒ one live reservation.
  */
 export async function release({ userId, ballotId, nonce }) {
   if (nonce == null) return;
