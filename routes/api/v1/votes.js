@@ -32,6 +32,7 @@ import { Ballot } from "../../../schema/Ballot.js";
 import { VotePackage } from "../../../schema/VotePackage.js";
 import { Vote } from "../../../schema/Vote.js";
 import { checkVoterValidation, checkVotingPower } from "../../../helper/voterValidation.js";
+import { loadValidationScript } from "../../../helper/loadValidationScript.js";
 import {
   buildDraft,
   BrokerError,
@@ -185,8 +186,36 @@ router.post("/:ballotId/draft", async (req, res) => {
     });
   }
 
-  // Eligibility gate (L1 validation)
-  const validated = await checkVoterValidation(session.userId, ballot._id);
+  // Eligibility gate. On cache miss — or a cached row flagged
+  // validated: false that might be stale — fall through to the
+  // ballot's voterValidationScript for an on-demand Koios/Blockfrost
+  // lookup. This is the "lazy validation" model: don't pre-enumerate
+  // every potentially eligible DRep / SPO / stake credential at
+  // ballot start (which could be millions of rows for a stake
+  // ballot); instead, validate the specific voter when they show up
+  // to vote. The per-group validator writes the authoritative
+  // UserCache row + votingPower as part of its return path.
+  const cached = await checkVoterValidation(session.userId, ballot._id);
+  let validated = Boolean(cached?.validated);
+  if (!cached || !cached.validated) {
+    try {
+      const mod = await loadValidationScript(ballot.voterValidationScript);
+      if (typeof mod?.validateVoter === "function") {
+        validated = Boolean(await mod.validateVoter(session.userId, ballot._id));
+      } else {
+        console.warn(
+          `[votes/draft] validation script ${ballot.voterValidationScript} exports no validateVoter`
+        );
+      }
+    } catch (err) {
+      console.error("[votes/draft] validation script failed:", err);
+      return res.status(502).json({
+        status: "error",
+        code: ERROR_CODES.HYDRA_UPSTREAM,
+        message: "Voter validation unavailable — try again shortly",
+      });
+    }
+  }
   if (!validated) {
     return res.status(403).json({ status: "error", code: ERROR_CODES.ELIGIBILITY_DENIED, message: "Voter is not eligible for this ballot" });
   }

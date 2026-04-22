@@ -28,9 +28,13 @@
 //   --endpoint URL        Override HYDRA_DEFAULT_ENDPOINT.
 //   --voteStartMinutes N  Minutes from now until voting opens. Default 15.
 //                         Hydra mint-policy requires > ~4 minutes ahead.
+//   --voteDurationMinutes N  Window length in minutes — takes precedence
+//                            over --voteDurationDays. Useful for same-day
+//                            E2E test runs.
 //   --voteDurationDays N  Length of voting window in days. Default 1.
 //   --authority ADDRESS   bech32 voting-authority address. Defaults to a
 //                         placeholder; MUST be set for a real preprod run.
+//   --title STRING        Override the ballot title (useful for dry-runs).
 //
 // Exits non-zero on any failure. The Mongo insert happens BEFORE the
 // /prepare call, so if Hydra rejects the body the ballot doc still
@@ -64,25 +68,52 @@ loadLocalOverrides(join(__dirname, ".."));
 // ---------------------------------------------------------------------
 // Flag parsing (minimal; no extra deps)
 // ---------------------------------------------------------------------
+// Supports both `--flag=value` and `--flag value`. Argument without a
+// leading `--` is consumed as the preceding flag's value.
 const flags = {};
-for (const raw of process.argv.slice(2)) {
-  const [k, v] = raw.replace(/^--/, "").split("=");
-  flags[k] = v === undefined ? true : v;
+{
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const raw = args[i];
+    if (!raw.startsWith("--")) continue;
+    const eq = raw.indexOf("=");
+    if (eq >= 0) {
+      flags[raw.slice(2, eq)] = raw.slice(eq + 1);
+    } else {
+      const key = raw.slice(2);
+      const next = args[i + 1];
+      if (next !== undefined && !next.startsWith("--")) {
+        flags[key] = next;
+        i += 1;
+      } else {
+        flags[key] = true;
+      }
+    }
+  }
 }
 const doPrepare = flags.prepare === true || flags.prepare === "true";
 const endpointOverride = typeof flags.endpoint === "string" ? flags.endpoint : null;
 const voteStartMinutes = Number(flags.voteStartMinutes) || 15;
+const voteDurationMinutes = Number(flags.voteDurationMinutes) || null;
 const voteDurationDays = Number(flags.voteDurationDays) || 1;
 const authorityAddress =
   typeof flags.authority === "string"
     ? flags.authority
     : "addr_test1_PLACEHOLDER_REPLACE_FOR_REAL_RUNS";
+const titleOverride = typeof flags.title === "string" ? flags.title : null;
 
 // ---------------------------------------------------------------------
 // Ballot content
 // ---------------------------------------------------------------------
 
-const BALLOT_TITLE = "Cardano Reward Sharing Scheme v2";
+// Default title for dry runs. Stamp the current date so the ballot is
+// unambiguously test content on preprod explorers — community members
+// watching preprod traffic shouldn't mistake it for a real vote.
+function defaultTitle() {
+  const today = new Date().toISOString().slice(0, 10);
+  return `Ekklesia Dry Run ${today}`;
+}
+const BALLOT_TITLE = titleOverride || defaultTitle();
 const BALLOT_DESCRIPTION =
   "Ballot organized by the Cardano Incentives Working Group (CIWG), an " +
   "independent volunteer collective of community members researching " +
@@ -316,9 +347,10 @@ await connectToDatabase();
 
 const now = Date.now();
 const votePeriodStart = new Date(now + voteStartMinutes * 60 * 1000);
-const votePeriodEnd = new Date(
-  votePeriodStart.getTime() + voteDurationDays * 24 * 60 * 60 * 1000
-);
+const durationMs = voteDurationMinutes
+  ? voteDurationMinutes * 60 * 1000
+  : voteDurationDays * 24 * 60 * 60 * 1000;
+const votePeriodEnd = new Date(votePeriodStart.getTime() + durationMs);
 
 console.log(`[rss-v2] title:              ${BALLOT_TITLE}`);
 console.log(`[rss-v2] votePeriodStart:    ${votePeriodStart.toISOString()}`);
@@ -340,6 +372,16 @@ const ballot = await Ballot.findOneAndUpdate(
       voterGroups: [
         { group: "drep", powerSource: "StakeBased" },
         { group: "pool", powerSource: "PledgeBased" },
+        // Stake group included for the dry run so a real stake
+        // credential on preprod exercises the new Koios/Blockfrost-
+        // backed stakeholder validator. Off-spec for the real RSS v2
+        // ballot (which is drep + pool only) but appropriate for an
+        // Ekklesia Dry Run — exercises all three credential paths.
+        {
+          group: "stake",
+          powerSource: "StakeBased",
+          requirements: { mustExist: true },
+        },
       ],
       voteWeighted: true,
       voteFilters: false,
@@ -349,9 +391,15 @@ const ballot = await Ballot.findOneAndUpdate(
       voteAuthorityAddress: authorityAddress,
       proposalPeriodStart: new Date(now - 7 * 24 * 60 * 60 * 1000),
       proposalPeriodEnd: new Date(now),
-      voterValidationScript: "voterValidationSnapshot.js",
+      // Lazy validation: no startup pre-seed of all DReps/pools. The
+      // dispatcher in voterValidationByCredential.js routes each
+      // arriving voter to the right per-group Koios lookup at /draft
+      // time. Pre-seeding doesn't scale (a stake ballot could be
+      // millions of rows) and is also wasteful — only voters who
+      // actually show up to vote need to be validated.
+      voterValidationScript: "voterValidationByCredential.js",
       rollupScript: "rollupBallot.js",
-      startupScript: "startupIncentiveVote.js",
+      startupScript: "startupBallot.js",
       status: "upcoming",
       source: "hydra",
     },

@@ -236,7 +236,12 @@ function acceptedCredentialsFor(ballot) {
  * @param {object} ballot — local Ballot mongoose doc (or lean object)
  * @param {object} [opts]
  * @param {string} [opts.votingAuthority] — bech32 address (advisory)
- * @param {number} [opts.gasAmount=100]
+ * @param {number} [opts.gasAmount=5] — ADA on the (601) instance-token UTxO.
+ *   In-head txs use `.setFee('0')`, so the (601) only needs enough above
+ *   minUTxO (~1.3 ADA) to satisfy the ledger. Matches the 5-ADA sibling
+ *   outputs produced by /prepare and keeps (601) off the "largest UTxO"
+ *   list so the hydra-node's coin selection won't pick it for InitTx
+ *   seed/collateral. See HYDRA_DEDICATED_FUEL_WALLET.md TRD.
  */
 export async function buildPrepareBody(ballot, opts = {}) {
   const proposals = await Proposal.find({ ballotId: ballot._id }).lean();
@@ -271,6 +276,6 @@ export async function buildPrepareBody(ballot, opts = {}) {
   return {
     namespace,
     ballot: ballotDef,
-    gasAmount: opts.gasAmount ?? 100,
+    gasAmount: opts.gasAmount ?? 5,
   };
 }

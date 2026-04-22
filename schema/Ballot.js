@@ -70,6 +70,24 @@ const ballotSchema = new Schema(
             enum: ["CredentialBased", "StakeBased", "PledgeBased"],
             required: true,
           },
+          // Optional per-group eligibility criteria. Validator-
+          // interpreted; the only group with requirements support
+          // today is `stake`, which accepts:
+          //   mustExist: boolean
+          //     — stake address seen on chain (account_info returns
+          //       a row OR account_utxos non-empty). Default true.
+          //   allowedPools: string[]
+          //     — voter must be delegated to a pool in this allow-
+          //       list. Omit / null = any pool accepted.
+          //   tokenHoldings: Array<{ policyId, assetName?, minQuantity }>
+          //     — voter must hold ≥ minQuantity of each entry.
+          //       assetName absent = any asset under the policy.
+          // Drep + pool groups ignore this field for now; their
+          // requirement surface is the existing per-group validator.
+          requirements: {
+            type: mongoose.Schema.Types.Mixed,
+            default: null,
+          },
         },
       ],
       default: [],
