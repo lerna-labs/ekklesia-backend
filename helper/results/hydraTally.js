@@ -82,7 +82,12 @@ function deriveTopLevelResults(proposal, votes, votersByUserId) {
   const perOption = new Map();
   for (const row of votes) {
     const meta = votersByUserId.get(row.userId);
-    const power = typeof meta?.votingPower === "number" ? meta.votingPower : 1;
+    // Skip voters the caller didn't map — matches the per-group bucket's
+    // behavior in `groupByVoterGroup`. For the certify path this is how
+    // we drop voters the authority flagged ineligible: the caller builds
+    // the map with ineligible voters omitted and the tally sees nothing.
+    if (!meta) continue;
+    const power = typeof meta.votingPower === "number" ? meta.votingPower : 1;
     for (const item of row.vote) {
       const id = item && typeof item === "object" ? item.option : item;
       const rec = perOption.get(id) || { count: 0, votingPower: 0 };
@@ -238,10 +243,8 @@ function ballotParticipationFromEvidence(auditFull, votersByUserId) {
       (a) => a?.abstain !== true && Array.isArray(a?.selection) && a.selection.length > 0
     );
     if (!hasNonAbstain) continue;
-    const meta = votersByUserId.get(v.voterId) || {
-      voterGroup: "default",
-      votingPower: 1,
-    };
+    const meta = votersByUserId.get(v.voterId);
+    if (!meta) continue; // unmapped voter → excluded (authority ineligible or pre-vote placeholder)
     const group = meta.voterGroup || "default";
     voterCount[group] = (voterCount[group] || 0) + 1;
     totalVotingPower[group] =
@@ -268,10 +271,8 @@ function proposalParticipationFromEvidence(auditFull, proposalId, votersByUserId
       Array.isArray(answer.selection) &&
       answer.selection.length > 0;
     if (!hasNonAbstain) continue;
-    const meta = votersByUserId.get(v.voterId) || {
-      voterGroup: "default",
-      votingPower: 1,
-    };
+    const meta = votersByUserId.get(v.voterId);
+    if (!meta) continue; // unmapped → excluded
     const group = meta.voterGroup || "default";
     voterCount[group] = (voterCount[group] || 0) + 1;
     totalVotingPower[group] =

@@ -119,10 +119,19 @@ const headers = {
 
 console.log(`[castVote] voter=${voterName} (${voterId})`);
 console.log(`[castVote] POST /api/v1/votes/${flags.ballotId}/draft`);
+// CIP-151 calidus-signed SPO votes: voterId is the pool bech32, signing
+// key is the calidus hot key. Hydra needs the calidus declaration in the
+// evidence package so it can verify the COSE witness against the on-chain
+// calidus binding (pool → calidus pubkey) rather than the pool cold key.
+const draftBody = { votes: [voteSelection] };
+if (fixture.calidusId) {
+  draftBody.calidusDeclaration = { calidusId: fixture.calidusId };
+  console.log(`[castVote] attaching calidusDeclaration=${fixture.calidusId.slice(0, 16)}…`);
+}
 const draftRes = await fetch(`${backend}/api/v1/votes/${flags.ballotId}/draft`, {
   method: "POST",
   headers,
-  body: JSON.stringify({ votes: [voteSelection] }),
+  body: JSON.stringify(draftBody),
 });
 const draft = await draftRes.json().catch(() => ({}));
 if (!draftRes.ok || draft.status !== "success") {

@@ -12,6 +12,7 @@ import blake from "blakejs";
 import { listUnified, getUnified } from "../../../helper/ballotAdapters/index.js";
 import { Ballot } from "../../../schema/Ballot.js";
 import { Proposal } from "../../../schema/Proposal.js";
+import { CertifiedSnapshot } from "../../../schema/CertifiedSnapshot.js";
 import {
   buildProposalContentBlob,
   canonicalContentBytes,
@@ -305,6 +306,84 @@ router.get("/:id/archive", async (req, res) => {
     return res.status(200).json(bundle);
   } catch (err) {
     console.error("[ballots/:id/archive]", err);
+    return res.status(500).json({ status: "error", message: "Server error" });
+  }
+});
+
+// GET /api/v1/ballots/:id/certified — authority-certification state
+//
+// Surfaces the currently-active CertifiedSnapshot (if any) plus version
+// history so the frontend can label results as "Certified at version N
+// by <authority>" vs. "Provisional (Hydra-final, not yet certified)".
+//
+// Shape when certified:
+//   { certified: true, version, certifiedAt, snapshotUrl, snapshotHash,
+//     snapshotEpoch, narrative: {url,label}|null, perProposal: [...],
+//     history: [{version, submittedAt, narrativeOnly, ...}] }
+//
+// Shape when not yet certified (no CertifiedSnapshot rows exist):
+//   { certified: false, narrative: null, history: [] }
+//
+// When only narrative has been published (narrativeOnly: true at every
+// version), `certified` is false but `narrative` is set.
+router.get("/:id/certified", async (req, res) => {
+  try {
+    const ballot = await Ballot.findById(req.params.id).lean();
+    if (!ballot) {
+      return res.status(404).json({ status: "error", message: "Ballot not found" });
+    }
+    const all = await CertifiedSnapshot.find({ ballotId: ballot._id })
+      .sort({ version: -1 })
+      .lean();
+    const history = all.map((s) => ({
+      version: s.version,
+      submittedAt: s.submittedAt,
+      submittedBy: s.submittedBy,
+      source: s.source,
+      chainTxHash: s.chainTxHash,
+      snapshotUrl: s.snapshotUrl,
+      snapshotHash: s.snapshotHash,
+      narrativeOnly: s.narrativeOnly,
+      narrative: s.narrative,
+    }));
+    const activeVersion = ballot.currentCertifiedVersion || null;
+    const active = activeVersion
+      ? all.find((s) => s.version === activeVersion) || null
+      : null;
+    if (!active) {
+      return res.json({
+        status: "success",
+        data: {
+          certified: false,
+          narrative: ballot.authorityNarrative || null,
+          history,
+        },
+      });
+    }
+    // Materialize per-proposal tally from the active snapshot's stored
+    // derivation. Map/object both serialize out as an object via lean().
+    const derivedMap = active.derivedPerProposal || {};
+    const perProposal = Object.entries(derivedMap).map(([proposalId, t]) => ({
+      proposalId,
+      results: t?.results || [],
+      resultsByGroup: t?.resultsByGroup || {},
+    }));
+    return res.json({
+      status: "success",
+      data: {
+        certified: true,
+        version: active.version,
+        certifiedAt: active.submittedAt,
+        snapshotUrl: active.snapshotUrl,
+        snapshotHash: active.snapshotHash,
+        snapshotEpoch: active.snapshotEpoch,
+        narrative: ballot.authorityNarrative || active.narrative || null,
+        perProposal,
+        history,
+      },
+    });
+  } catch (err) {
+    console.error("[ballots/:id/certified]", err);
     return res.status(500).json({ status: "error", message: "Server error" });
   }
 });

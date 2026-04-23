@@ -26,6 +26,7 @@ import {
   HydraClientError,
 } from "../../../../helper/hydraClient.js";
 import { writeFinalResult } from "../../../../crons/10minAggregateVotes.js";
+import { certifyBallot, CertifyError } from "../../../../helper/results/certify.js";
 import { VoterPowerSnapshot } from "../../../../schema/VoterPowerSnapshot.js";
 import { ImportedBallotPayload } from "../../../../schema/ImportedBallotPayload.js";
 import crypto from "node:crypto";
@@ -582,6 +583,67 @@ router.post("/:id/voting-power", async (req, res) => {
     return res.status(500).json({
       status: "error",
       code: "INTERNAL",
+      message: err.message || "Server error",
+    });
+  }
+});
+
+// POST /:id/certify — voting-authority certification ingest.
+//
+// Body (at least one of `snapshot` or `narrative` required):
+// {
+//   snapshotUrl?: string,              // URL the authority published at (informational)
+//   snapshot?: {                       // full re-weighting payload
+//     ballotId?: string,               // echoed; must match path param when set
+//     authority?: string,              // informational; matches Ballot.voteAuthorityId
+//     snapshotEpoch?: number,
+//     voters: [{ voterId, votingPower: "<lovelace>", eligible: boolean }, ...],
+//   },
+//   narrative?: { url: string, label: string },
+// }
+//
+// Full snapshot: flips every Result doc to `source: "certified"`,
+// writes `certifiedResults*` + the latest-best `results*` fields, and
+// bumps `Ballot.currentCertifiedVersion`.
+//
+// Narrative-only (no `snapshot`): records a CertifiedSnapshot row
+// with `narrativeOnly: true` and updates `Ballot.authorityNarrative`,
+// without flipping Result.source.
+//
+// Versioning: append-only, monotonic per ballot. Restatements land
+// as version N+1. Identical payload bytes short-circuit to the
+// existing version (idempotent by blake2b_256 of canonical JSON).
+router.post("/:id/certify", async (req, res) => {
+  try {
+    // `req.user.userId` is set by the isAdmin middleware; fall back to
+    // "admin" when the JWT shape is unexpected so the audit row still
+    // captures who-ish submitted (avoids null-violating required field).
+    const submittedBy = req.user?.userId || req.user?.sub || "admin";
+    const outcome = await certifyBallot({
+      ballotId: req.params.id,
+      submittedBy,
+      source: "api",
+      chainTxHash: null,
+      payload: req.body || {},
+    });
+    return res.json({ status: "success", ...outcome });
+  } catch (err) {
+    if (err instanceof CertifyError) {
+      const status =
+        err.code === "BALLOT_NOT_FOUND" ? 404
+        : err.code === "SNAPSHOT_COVERAGE_INCOMPLETE" ? 409
+        : err.code === "AUDIT_FETCH_FAILED" ? 502
+        : 400;
+      return res.status(status).json({
+        status: "error",
+        code: err.code,
+        message: err.message,
+        details: err.details,
+      });
+    }
+    console.error("[admin/certify] failed:", err);
+    return res.status(500).json({
+      status: "error",
       message: err.message || "Server error",
     });
   }

@@ -37,7 +37,15 @@ const resultSchema = new Schema(
     },
     source: {
       type: String,
-      enum: ["provisional", "final"],
+      // "provisional"  — anything before authority certification. Covers
+      //                  both the live-cron tally and the Hydra-final
+      //                  tally (written at /settle/finalize).
+      // "certified"    — an authority-published CertifiedSnapshot has
+      //                  re-weighted the tally with audited voting power.
+      // "final" (legacy) — kept for backwards compatibility with pre-
+      //                  certification docs; mapped to "provisional" at
+      //                  read time by the /certified endpoint.
+      enum: ["provisional", "final", "certified"],
       default: "provisional",
     },
     ballotSource: {
@@ -117,6 +125,45 @@ const resultSchema = new Schema(
     hydraExcludedVoters: {
       type: Array,
       default: [],
+    },
+    // Timestamp when /settle/finalize populated the Hydra-provenance
+    // fields above. Distinct from `certifiedAt` (below): Hydra-finalized
+    // means "the head's cryptographic record is closed and anchored on
+    // chain"; certification is the separate authority step.
+    hydraFinalizedAt: {
+      type: Date,
+      default: null,
+    },
+    // Authority-certified-results fields. Populated by
+    // POST /api/v1/admin/ballots/:id/certify when the voting authority
+    // ingests an audited voting-power + eligibility snapshot. The same
+    // Hydra per-voter evidence (unchanged) is re-derived through the
+    // existing per-ballot helpers with the authority's snapshot as the
+    // votersByUserId input, yielding a second set of counts/groups that
+    // honor the authoritative voting power.
+    certifiedResults: {
+      type: Array,
+      default: null,
+    },
+    certifiedResultsByGroup: {
+      type: Object,
+      default: null,
+    },
+    // Ref to the currently-active CertifiedSnapshot row. History stays
+    // on the CertifiedSnapshot collection; this field always points at
+    // the newest version.
+    certifiedSnapshotId: {
+      type: Schema.Types.ObjectId,
+      ref: "CertifiedSnapshot",
+      default: null,
+    },
+    certifiedVersion: {
+      type: Number,
+      default: null,
+    },
+    certifiedAt: {
+      type: Date,
+      default: null,
     },
     createdAt: {
       type: Date,

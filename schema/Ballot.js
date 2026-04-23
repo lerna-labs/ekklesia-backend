@@ -122,6 +122,29 @@ const ballotSchema = new Schema(
       type: String,
       required: true,
     },
+    // Display-only link to the authority's announcement / blog post
+    // interpreting the result. Set via
+    //   POST /api/v1/admin/ballots/:id/certify
+    // either as part of a full certification (snapshot + narrative) or
+    // narrative-only. The frontend renders `label` as a link to `url`.
+    authorityNarrative: {
+      type: new mongoose.Schema(
+        {
+          url: { type: String, required: true },
+          label: { type: String, required: true },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
+    // Version number of the currently-active CertifiedSnapshot for this
+    // ballot. History (older versions) stays on the CertifiedSnapshot
+    // collection; this is a cheap-read pointer to the newest. `null`
+    // until the authority certifies at least once.
+    currentCertifiedVersion: {
+      type: Number,
+      default: null,
+    },
     proposalPeriodStart: {
       type: Date,
       required: true,

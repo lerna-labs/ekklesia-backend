@@ -93,6 +93,36 @@ export const SINGLE_SIG_VOTER = {
   addrPath: null, // DRep signing doesn't need an address, just the skey
 };
 
+// Registered preprod calidus keys — CIP-151 hot keys bound to real pools.
+// Per Hydra's vote evidence contract (`EkklesiaVoteExtension.voterId`),
+// the voter submits under the POOL bech32 and signs with the calidus
+// skey; Hydra verifies the witness against the on-chain calidus binding
+// for that pool. Key material lives outside the repo at ~/calid*.
+export const VOTERS_CALIDUS = [
+  {
+    userId: "pool1jk4gd9cty2n89d6y6m8j3g63mr05drdjvqpgxqzhdzkjq4msndn",
+    name: "Calidus-signed SPO 01",
+    voterGroup: "pool",
+    votingPower: 5000,
+    validated: true,
+    kind: "key",
+    keyPath: "~/calid.calidus.skey",
+    calidusId:
+      "calidus15yqfpa58cvpshjdwuzma06mv3na7sx4w29aluq78s8w9rwgd6whj6",
+  },
+  {
+    userId: "pool1wdxhnkflk78u0h8kymhaga7l22rtk2xdlqrlajt4quagxh63er7",
+    name: "Calidus-signed SPO 02",
+    voterGroup: "pool",
+    votingPower: 5000,
+    validated: true,
+    kind: "key",
+    keyPath: "~/calid2.calidus.skey",
+    calidusId:
+      "calidus158cp49cy4twyetngn3733fjtedm8q0k2x3h7ay7d0jn32use2rudv",
+  },
+];
+
 // Lookup by short name for convenience in scripts.
 export const VOTERS_BY_NAME = {
   drep01: VOTERS[0],
@@ -100,4 +130,6 @@ export const VOTERS_BY_NAME = {
   stake01: VOTERS[2],
   stake02: VOTERS[3],
   multisig: VOTERS[4],
+  calidus01: VOTERS_CALIDUS[0],
+  calidus02: VOTERS_CALIDUS[1],
 };
