@@ -219,6 +219,12 @@ function buildClient({ endpoint, apiKey, timeoutMs, retries }) {
     settleFinalize: () => call("POST", "/settle/finalize"),
     settleClose: (body) => call("POST", "/settle/close", body),
 
+    // Recovery — re-fetch the last /settle/finalize response envelope
+    // byte-identical. Safe to call after the finalize tx has run but
+    // before /settle/close; also safe after /settle/close. 404 when no
+    // finalize has run yet in this staging directory.
+    getResults: () => call("GET", "/results"),
+
     // Sweep / queue / cache — operations & cleanup
     sweep: (body) => call("POST", "/sweep", body),
     queueStatus: () => call("GET", "/queue/status"),

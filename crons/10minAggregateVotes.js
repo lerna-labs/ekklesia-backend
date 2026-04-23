@@ -14,6 +14,9 @@ import {
 import { computeRankedDistribution } from "../helper/results/rankedDistribution.js";
 import { computeLikertStats, bucketLikertVotesByGroup } from "../helper/results/likertStats.js";
 import { computeWeightedStats, bucketWeightedVotesByGroup } from "../helper/results/weightedStats.js";
+import { forBallot, HydraClientError } from "../helper/hydraClient.js";
+import { buildVotersByUserId } from "../helper/hydraEvidence.js";
+import { deriveProposalTally } from "../helper/results/hydraTally.js";
 
 // Runs every ~10 minutes (see crons/10min.js wiring). Produces provisional
 // tallies for every proposal that has recent activity.
@@ -363,33 +366,73 @@ export async function writeFinalResult(ballotId, hydraData = {}) {
   if (!ballot) throw new Error(`Ballot ${ballotId} not found`);
 
   const proposals = await Proposal.find({ ballotId }).lean();
-  const perProposalTallies = hydraData?.tallies || {};
 
+  // Fetch /audit/full so we can derive per-proposal tallies from per-voter
+  // evidence — matching the provisional-cron shape 1:1. Tolerant of
+  // failure: if Hydra is unreachable or returns malformed data we still
+  // stamp the provenance fields onto every Result doc so the caller can
+  // replay via POST /api/v1/admin/ballots/:id/results/recover.
+  let auditFull = null;
+  try {
+    const client = await forBallot(ballotId);
+    auditFull = await client.auditFull();
+  } catch (err) {
+    const tag = err instanceof HydraClientError ? `${err.status || ""} ${err.code || ""}`.trim() : err.message;
+    console.warn(`[final] /audit/full fetch failed (${tag}) — provenance will be stamped, tallies deferred to /results/recover`);
+  }
+
+  const votersByUserId = auditFull
+    ? await buildVotersByUserId(auditFull, ballotId, UserCache)
+    : new Map();
+
+  const finalizedAt = new Date();
   for (const proposal of proposals) {
-    const hydraForProposal = perProposalTallies[proposal._id.toString()] || null;
-
-    // Fall back to the current provisional tally if Hydra didn't supply a
-    // per-proposal breakdown — the last provisional run is the best record
-    // we have locally.
-    const provisional = await Result.findOne({ proposalId: proposal._id }).lean();
+    // Derive from evidence when available; otherwise fall back to whatever
+    // the provisional cron last wrote so we don't regress a good tally.
+    let derived = null;
+    if (auditFull) {
+      try {
+        derived = deriveProposalTally({
+          ballot,
+          proposal,
+          auditFull,
+          votersByUserId,
+        });
+      } catch (err) {
+        console.warn(
+          `[final] deriveProposalTally failed for proposal ${proposal._id}: ${err.message}`
+        );
+      }
+    }
+    const provisional = derived ? null : await Result.findOne({ proposalId: proposal._id }).lean();
 
     await Result.updateOne(
       { proposalId: proposal._id },
       {
         $set: {
-          results: hydraForProposal?.results || provisional?.results || [],
+          results: derived?.results || provisional?.results || [],
           resultsByGroup:
-            hydraForProposal?.resultsByGroup || provisional?.resultsByGroup || null,
+            derived?.resultsByGroup || provisional?.resultsByGroup || null,
+          ballotParticipation:
+            derived?.ballotParticipation || provisional?.ballotParticipation || null,
+          proposalParticipation:
+            derived?.proposalParticipation ||
+            provisional?.proposalParticipation ||
+            null,
           source: "final",
           ballotSource: ballot.source,
           ballotId: ballot._id,
-          finalizedAt: new Date(),
+          finalizedAt,
           // Hydra /settle/finalize (and /finalize) return:
           //   { txHash, resultsHash, evidenceDirectoryCid, resultsCid,
-          //     evidenceMerkleRoot, totalVoters, excludedVoters }
-          // We persist all of them for auditability — resultsHash and
-          // evidenceMerkleRoot are anchored on the (601) datum so auditors
-          // can independently verify the pinned artifacts match on-chain.
+          //     evidenceMerkleRoot, totalVoters, excludedVoters, tallies }
+          // We persist the provenance subset for auditability — resultsHash
+          // and evidenceMerkleRoot are anchored on the (601) datum so
+          // auditors can independently verify the pinned artifacts match
+          // on-chain. `tallies` is intentionally NOT consumed here: the
+          // per-ballot helpers reached via `deriveProposalTally` above
+          // are the single source of derivation truth, feeding on the same
+          // per-voter evidence Hydra used internally.
           hydraEvidenceCid:
             hydraData?.evidenceDirectoryCid ||
             hydraData?.resultsCid ||

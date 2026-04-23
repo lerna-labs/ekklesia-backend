@@ -88,6 +88,22 @@ router.use(isAdmin);
 
 function handleHydraError(err, res) {
   if (err instanceof HydraClientError) {
+    // 409 CONFLICT from Hydra is operator-actionable (HEAD_NOT_CLOSEABLE
+    // from driveHeadToFinal, or "finalize-response.json already present in
+    // staging" from /start post-finalize — see the BACKEND_TALLY_DERIVATIONS
+    // contract). Preserve the upstream status + code so the admin can tell
+    // "don't retry — archive the prior staging dir / reset the head" apart
+    // from a generic upstream failure.
+    if (err.status === 409) {
+      return res.status(409).json({
+        status: "error",
+        code: err.code || "CONFLICT",
+        message:
+          err.message ||
+          "Hydra rejected the request as a conflict — do not retry without operator review.",
+        upstream: err.data ?? null,
+      });
+    }
     return res.status(err.status && err.status < 600 ? 502 : 502).json({
       status: "error",
       code: err.code || null,
@@ -316,6 +332,10 @@ router.post("/:id/settle/burn", async (req, res) => {
   }
 });
 
+// Finalize is the authoritative end-of-vote event: the tally is fixed,
+// `resultsHash` + `evidenceMerkleRoot` are anchored on-chain, and the (601)
+// datum carries the committed result. Flip the ballot to "closed" here so
+// downstream consumers don't block on the subsequent L1 cleanup in /settle/close.
 router.post("/:id/settle/finalize", async (req, res) => {
   const ballot = await Ballot.findById(req.params.id).lean();
   if (!ballot) return res.status(404).json({ status: "error", message: "Ballot not found" });
@@ -325,7 +345,8 @@ router.post("/:id/settle/finalize", async (req, res) => {
     await writeFinalResult(req.params.id, data).catch((err) => {
       console.warn(`[admin/settle/finalize] writeFinalResult failed: ${err.message}`);
     });
-    return res.json({ status: "success", hydra: data });
+    const synced = await syncHeadStateToBallot(req.params.id, client, { status: "closed" });
+    return res.json({ status: "success", hydra: data, ballot: synced });
   } catch (err) {
     return handleHydraError(err, res);
   }
@@ -341,9 +362,49 @@ router.post("/:id/settle/close", async (req, res) => {
   try {
     const client = await forBallot(req.params.id);
     const data = await client.settleClose({ closeToken });
+    // Ballot was already flipped to "closed" by /settle/finalize. Here we only
+    // refresh the head-state mirror (hydraHeadId + hydraHeadStatus) so the Ballot
+    // doc reflects FINAL on the Hydra side.
+    const synced = await syncHeadStateToBallot(req.params.id, client);
+    return res.json({ status: "success", hydra: data, ballot: synced });
+  } catch (err) {
+    return handleHydraError(err, res);
+  }
+});
+
+// POST /:id/results/recover — re-run the finalize bookkeeping when the
+// /settle/finalize HTTP call completed server-side but the backend never
+// saw the response (client timeout, proxy drop, gateway restart). Calls
+// Hydra `GET /results` to retrieve the last finalize envelope byte-identical
+// and re-runs `writeFinalResult` so provenance and tally derivation match
+// what would have landed on a clean /settle/finalize. Idempotent — safe to
+// call repeatedly; the Result docs upsert in place.
+//
+// 404 when Hydra has no persisted finalize response (no finalize has run in
+// the current staging directory).
+router.post("/:id/results/recover", async (req, res) => {
+  const ballot = await Ballot.findById(req.params.id).lean();
+  if (!ballot) return res.status(404).json({ status: "error", message: "Ballot not found" });
+  try {
+    const client = await forBallot(req.params.id);
+    const data = await client.getResults();
+    await writeFinalResult(req.params.id, data).catch((err) => {
+      console.warn(`[admin/results/recover] writeFinalResult failed: ${err.message}`);
+    });
+    // Same status-flip as /settle/finalize — the ballot is authoritatively
+    // closed once the finalize envelope is in hand, regardless of whether
+    // /settle/close ever completed.
     const synced = await syncHeadStateToBallot(req.params.id, client, { status: "closed" });
     return res.json({ status: "success", hydra: data, ballot: synced });
   } catch (err) {
+    if (err instanceof HydraClientError && err.status === 404) {
+      return res.status(404).json({
+        status: "error",
+        code: err.code || "NOT_FOUND",
+        message:
+          "No finalize response persisted on Hydra — /settle/finalize must run before recovery.",
+      });
+    }
     return handleHydraError(err, res);
   }
 });
