@@ -653,15 +653,23 @@ router.get("/:ballotId/mine", async (req, res) => {
     failed: 0,
   };
 
-  // Pluck per-package vote map { proposalId: selection } from the
-  // signing payload. Hydra's payload uses `questionId`; older shapes
-  // sometimes had `proposalId`. Normalize either way.
+  // Per-proposal vote map mirroring the canonical wire shape the voter
+  // submitted at /draft — `{ selection: number[] }` or `{ abstain: true }`
+  // keyed by questionId. The Vote collection's `["abstain"]` sentinel
+  // is an internal legacy collapse and is NOT part of the public
+  // contract; the frontend's type definitions use the wire shape.
   const extractVotes = (pkg) => {
     const out = {};
     for (const a of pkg.signingPayload?.votes || []) {
       const pid = a.questionId || a.proposalId;
       if (!pid) continue;
-      out[String(pid)] = a.vote ?? a.choice ?? null;
+      if (a.abstain === true) {
+        out[String(pid)] = { abstain: true };
+      } else {
+        out[String(pid)] = {
+          selection: Array.isArray(a.selection) ? a.selection : [],
+        };
+      }
     }
     return out;
   };
@@ -691,7 +699,13 @@ router.get("/:ballotId/mine", async (req, res) => {
       continue;
     }
 
-    // Anything not yet on Hydra is in flight (or failed and retryable).
+    // `inFlight` is the "voter could still act on this" list. Terminal
+    // states (abandoned, cancelled) are surfaced in `summary` only, not
+    // here — the DELETE handler and TTL sweep both land packages in
+    // "abandoned" and those shouldn't reappear in the voter's active UX.
+    // `failed` stays in to support a manual retry path.
+    if (pkg.status === "abandoned" || pkg.status === "cancelled") continue;
+
     const entry = {
       packageId: pkg._id.toString(),
       status: pkg.status,

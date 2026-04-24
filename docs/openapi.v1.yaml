@@ -358,8 +358,9 @@ paths:
                     nullable: true
                     description: |
                       Latest hydra-confirmed package. The rehydration source.
-                      `votes` is { proposalId: selection }. Null if the voter
-                      has never successfully submitted on this ballot.
+                      `votes` is a map keyed by questionId; see MineVoteEntry
+                      for the per-entry shape. Null if the voter has never
+                      successfully submitted on this ballot.
                     type: object
                     properties:
                       packageId: { type: string }
@@ -368,7 +369,7 @@ paths:
                       hydraTxId: { type: string, nullable: true }
                       votes:
                         type: object
-                        additionalProperties: true
+                        additionalProperties: { $ref: "#/components/schemas/MineVoteEntry" }
                   inFlight:
                     type: array
                     description: |
@@ -384,7 +385,7 @@ paths:
                         createdAt: { type: string, format: date-time }
                         votes:
                           type: object
-                          additionalProperties: true
+                          additionalProperties: { $ref: "#/components/schemas/MineVoteEntry" }
                         multisig:
                           nullable: true
                           type: object
@@ -1072,6 +1073,30 @@ components:
             properties:
               option: { type: number }
               weight: { type: number }
+
+    MineVoteEntry:
+      description: |
+        Per-proposal vote-rehydration payload returned by
+        GET /votes/{ballotId}/mine. Mirrors the canonical wire shape the
+        voter submitted at /draft: either a selection array or an abstain
+        flag — never both.
+      oneOf:
+        - type: object
+          required: [selection]
+          properties:
+            selection:
+              type: array
+              items: { type: number }
+              description: Option ids chosen for this proposal.
+          additionalProperties: false
+        - type: object
+          required: [abstain]
+          properties:
+            abstain:
+              type: boolean
+              enum: [true]
+              description: Voter abstained on this proposal.
+          additionalProperties: false
 
     CoseWitness:
       type: object

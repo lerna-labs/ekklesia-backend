@@ -62,6 +62,15 @@
 //                         than drawn from an open submission window.
 //                         Defaults to the scaffold run's `now`. This
 //                         ballot (CIWG RSS v2) has no submission period.
+//   --refreshContent      Only update CIWG-authored copy on an existing
+//                         ballot + its 5 proposals. Lifecycle, Hydra,
+//                         and voter-eligibility fields are preserved
+//                         (votePeriodStart / voteAuthorityAddress /
+//                         hydraEndpoint / status / voterGroups). Fails
+//                         if no existing ballot matches --title. Cannot
+//                         be combined with --prepare. Use when CIWG
+//                         ships a revised draft after the head has
+//                         already been /prepared on-chain.
 //
 // Exits non-zero on any failure. The Mongo insert happens BEFORE the
 // /prepare call, so if Hydra rejects the body the ballot doc still
@@ -132,6 +141,12 @@ const authorityAddress =
     : "addr_test1_PLACEHOLDER_REPLACE_FOR_REAL_RUNS";
 const titleOverride = typeof flags.title === "string" ? flags.title : null;
 const namespaceOverride = typeof flags.namespace === "string" ? flags.namespace : null;
+const refreshContent = flags.refreshContent === true || flags.refreshContent === "true";
+
+if (refreshContent && doPrepare) {
+  console.error("[rss-v2] --refreshContent and --prepare are mutually exclusive.");
+  process.exit(2);
+}
 
 // Hydra's mint-policy is timelocked `before(votingOpenSlot)` — once that
 // slot is reached, tokens can't be minted under the policy ever again.
@@ -161,93 +176,126 @@ function defaultTitle() {
   return `Ekklesia Dry Run ${today}`;
 }
 const BALLOT_TITLE = titleOverride || defaultTitle();
+
+// Ballot-level copy — verbatim from the CIWG draft at
+// .claude/ballots/reward-sharing-scheme-v2.md. Ekklesia hosts the content;
+// we do not paraphrase or edit CIWG wording.
 const BALLOT_DESCRIPTION =
-  "Ballot organized by the Cardano Incentives Working Group (CIWG), an " +
-  "independent volunteer collective of community members researching " +
-  "improvements to Cardano's Reward Sharing Scheme (RSS). This ballot " +
-  "collects community signal on proposed incentive changes and initial " +
-  "parameter values for potential inclusion in a future hard fork.\n\n" +
-  "Cardano DReps vote using their delegated voting power, SPOs vote " +
-  "using their pledge. An entity with both a DRep credential AND an " +
-  "operator pledge has each portion counted separately, by design.\n\n" +
-  "**More info:**\n" +
-  "- https://cerkoryn.gitbook.io/rssv2/\n" +
-  "- https://incentives.solutions";
+  "## How to vote\n\n" +
+  "- Items 1 and 3 are YES / NO / ABSTAIN questions. Select exactly one.\n" +
+  "- Items 2, 4, and 5 use Majority Judgment (MJ) with five grades:\n" +
+  "  - 5 (Most Preferred) through 1 (Least Preferred)\n" +
+  "  - You may re-use the same grade for multiple options.\n" +
+  "  - These are grades, not a ranking. Grade each option independently.\n" +
+  "- Dependencies:\n" +
+  "  - Item 2 is binding only if Item 1 (adopt CIP-50) passes.\n" +
+  "  - Item 4 is binding only if Item 3 (adopt CIP-163) passes.\n" +
+  "  - All items that pass community vote will begin development to be included in a future Hard Fork.\n\n" +
+  "## How results are tallied\n\n" +
+  "- Snapshot taken of live dRep voting power and SPO pledge after the voting period ends\n" +
+  "- dRep voting power and SPO pledge are added together and referred to as voting weight\n" +
+  "- If an entity has both dRep voting power and SPO pledge, both portions count toward their selections (by design).\n\n" +
+  "### A) YES / NO / ABSTAIN items (1, 3)\n\n" +
+  "1. Tally the voting weight marked YES and NO. ABSTAIN is excluded from the tally.\n" +
+  "2. Item passes if YES stake > NO stake.\n\n" +
+  "### B) Majority Judgment (MJ) items (2, 4, 5)\n\n" +
+  "1. For each option, add up the voting weight at each grade.\n" +
+  "2. Find the median grade where at least half of the weight is at that grade or better.\n" +
+  "3. Compare options by their median grade. The option with the highest median wins.\n" +
+  "4. If medians tie, use these tie-breakers in order:\n" +
+  "   - More support above the median wins.\n" +
+  "   - If still tied, less opposition below the median wins.\n" +
+  "   - If still tied, pick the higher parameter value.\n" +
+  "5. If a non-specific answer wins (i.e., greater/less than X), a statistical analysis may be conducted to determine an initial value, or a new ballot/poll may be conducted.";
 
 const VOTER_DESCRIPTION =
-  "Eligible: Cardano DReps (vote by delegated voting power) and SPOs " +
-  "(vote by pool pledge). Snapshot taken at voting-period end. If an " +
-  "entity is registered as both a DRep and an SPO, both portions count " +
-  "toward their vote (intentional).";
+  "Cardano dReps vote using their delegated voting power, SPOs vote using their pledge.";
 
 // voteType "likert" for the three MJ questions. 1-5 integer grid.
 const LIKERT_RANGE = { min: 1, max: 5, step: 1 };
 const LIKERT_LABELS = { 1: "Least Preferred", 5: "Most Preferred" };
+// Verbatim from canonical section B.4.
 const LIKERT_TIE_BREAKERS = [
-  "Higher share of weight above the median wins.",
-  "Lower share of weight below the median wins.",
-  "Higher parameter value wins (authority-resolved; not computed by tally).",
+  "More support above the median wins.",
+  "If still tied, less opposition below the median wins.",
+  "If still tied, pick the higher parameter value.",
 ];
+// Verbatim from canonical section B.5.
+const NON_SPECIFIC_ANSWER_FALLBACK =
+  "If a non-specific answer wins (i.e., greater/less than X), a statistical " +
+  "analysis may be conducted to determine an initial value, or a new " +
+  "ballot/poll may be conducted.";
+// Verbatim from canonical section A.
+const PASS_CONDITION =
+  "Tally the voting weight marked YES and NO. ABSTAIN is excluded from the " +
+  "tally. Item passes if YES stake > NO stake.";
 
 /**
- * RSS v2 proposal definitions. IDs on options start at 1 per proposal
- * and are stable across reruns (the script is idempotent at the
- * Proposal title level — re-runs upsert in place and contentHash
- * gets re-stamped).
+ * RSS v2 proposal definitions. Content is verbatim from the CIWG draft at
+ * .claude/ballots/reward-sharing-scheme-v2.md. Ekklesia hosts CIWG content
+ * without editorial changes — do NOT paraphrase summaries, titles,
+ * options, tie-breakers, or link labels. If the canonical draft changes,
+ * re-sync this file verbatim and re-run with --refreshContent.
+ *
+ * Option IDs start at 1 per proposal and are stable across reruns.
+ * `externalProposal.id` is the stable upsert key (see loop below).
  */
 function buildProposalDocs(ballotId) {
   return [
     {
       ballotId,
-      title: "Adopt CIP-50 — Pledge Leverage-Based Staking Rewards",
+      title: "1) Adopt CIP-50 — Pledge Leverage-Based Staking Rewards",
       summary:
-        "Introduces a new parameter L to cap a pool's effective stake " +
-        "relative to its pledge, discouraging highly under-pledged / " +
-        "split pools and aiming to improve sybil resistance and " +
-        "decentralization without penalizing well-pledged small pools.",
+        "Introduces a new parameter **L** to cap a pool's *effective* stake " +
+        "relative to its pledge, discouraging highly under-pledged / split " +
+        "pools and aiming to improve sybil resistance and decentralization " +
+        "without penalizing well-pledged small pools.",
       rationale:
-        "**Supporting links:**\n\n" +
-        "- [CIP-50 text](https://cips.cardano.org/cip/CIP-50)\n" +
-        "- [CIP-50 GitHub Discussion](https://github.com/cardano-foundation/CIPs/pull/1042)\n" +
-        "- [Cardano Forum discussion](https://forum.cardano.org/t/cip-0050-pledge-leverage-based-staking-rewards)\n" +
-        "- [RSS Simulation Engine PR](https://github.com/Blockchain-Technology-Lab/Rewards-Sharing-Simulation-Engine/pull/11)\n" +
-        "- [Foundation Table Talk (video)](https://www.youtube.com/live/dGymb5wCX8Y)\n" +
-        "- [Parameter Committee slides](https://docs.google.com/presentation/d/1foroY6UjFRyCicKE8QkrOpDgqS5_NrS-qN6u6HHhWHA)\n" +
-        "- [CIP-50 modeling tool](https://spo-incentives.vercel.app)\n" +
-        "- [CIP-50 FAQ](https://incentives.solutions/cip-50-faq)",
+        "**Supporting links**\n\n" +
+        "- CIP-50 text: [https://cips.cardano.org/cip/CIP-50](https://cips.cardano.org/cip/CIP-50)\n" +
+        "- CIP-50 GitHub Discussion: [https://github.com/cardano-foundation/CIPs/pull/1042](https://github.com/cardano-foundation/CIPs/pull/1042)\n" +
+        "- CIP-50 Cardano Forum Discussion: [https://forum.cardano.org/t/cip-0050-pledge-leverage-based-staking-rewards](https://forum.cardano.org/t/cip-0050-pledge-leverage-based-staking-rewards)\n" +
+        "- CIP-50 RSS Simulation Engine Pull Request: [https://github.com/Blockchain-Technology-Lab/Rewards-Sharing-Simulation-Engine/pull/11](https://github.com/Blockchain-Technology-Lab/Rewards-Sharing-Simulation-Engine/pull/11)\n" +
+        "- Cardano Foundation CIP-50 Table Talk: [https://www.youtube.com/live/dGymb5wCX8Y](https://www.youtube.com/live/dGymb5wCX8Y?si=6JGqQbUDIcjM8zEv)\n" +
+        "- Parameter Committee CIP-50 Presentation: [https://docs.google.com/presentation/d/1foroY6UjFRyCicKE8QkrOpDgqS5_NrS-qN6u6HHhWHA](https://docs.google.com/presentation/d/1foroY6UjFRyCicKE8QkrOpDgqS5_NrS-qN6u6HHhWHA)\n" +
+        "- CIP-50 Modeling (select CIP-50 under formula and adjust **L** slider): [https://spo-incentives.vercel.app](https://spo-incentives.vercel.app/)\n" +
+        "- CIP-50 FAQ: [https://incentives.solutions/cip-50-faq](https://incentives.solutions/cip-50-faq)",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "choice",
       voteOptions: [
-        { id: 1, label: "Yes" },
-        { id: 2, label: "No" },
+        { id: 1, label: "YES" },
+        { id: 2, label: "NO" },
       ],
       data: {
         bindsItems: ["rss-v2-item-2"],
-        passCondition:
-          "YES voting weight > NO voting weight; abstain:true excluded from tally.",
+        passCondition: PASS_CONDITION,
       },
       externalProposal: { id: "rss-v2-item-1", url: "https://cips.cardano.org/cip/CIP-50" },
     },
     {
       ballotId,
-      title: "Initial value of the CIP-50 \"L\" parameter",
+      title: "2) Initial value of new \"L\" parameter for CIP-50",
       summary:
-        "L is a new protocol parameter that represents a pool's pledge " +
+        "**L** is a new protocol parameter that represents a pool's pledge " +
         "leverage (stake-to-pledge ratio) used when computing a pool's " +
-        "eligible stake in rewards. Stake above L × pledge is treated " +
-        "as oversaturated and does not contribute additional rewards.\n\n" +
-        "Example: if L is set to 1000 and a pool has 10k ADA in pledge, " +
-        "that pool can support up to 10M ADA in stake (1000 × 10k) " +
-        "before becoming oversaturated. If that pool increased their " +
-        "pledge to 100k, that would amount to 100M ADA in stake " +
-        "(1000 × 100k) — but at that point they would be limited by " +
-        "the global saturation cap set by the k parameter, which is " +
+        "eligible stake in rewards. If a pool exceeds the limit set by this " +
+        "value (**L** times the pool's pledge), any stake over the limit is " +
+        "treated as oversaturated and does not contribute additional " +
+        "rewards.\n\n" +
+        "For example, if L is set to 1000 and a pool has 10k ADA in pledge, " +
+        "then that pool can support up to 10M ADA in stake (1000 \\* 10k) " +
+        "before becoming oversaturated. If that pool increased their pledge " +
+        "to 100k, then that would amount to 100M ADA in stake " +
+        "(1000 \\* 100k). However, at that point they would be limited by " +
+        "the global saturation cap set by the **k** parameter which is " +
         "currently around 71.7M ADA.",
       rationale:
-        "**Supporting links:**\n\n" +
-        "- [CIP-50 modeling tool](https://spo-incentives.vercel.app/)\n" +
-        "- [L-values chart (2025-10-15 snapshot)](https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/L_values.png)",
+        "**Supporting links**\n\n" +
+        "- CIP-50 Modeling (select CIP-50 under formula and adjust **L** slider): [https://spo-incentives.vercel.app/](https://spo-incentives.vercel.app/)\n" +
+        "- Chart showing Stake/Wallets affected by values of **L** (snapshot from 15 October, 2025):\n" +
+        "  **Note:** Many pools could avoid impact with a small increase to their pledge\n" +
+        "  [https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/L_values.png](https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/L_values.png)",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "likert",
@@ -266,58 +314,61 @@ function buildProposalDocs(ballotId) {
         ratingLabels: LIKERT_LABELS,
         tieBreakers: LIKERT_TIE_BREAKERS,
         bindingOn: "rss-v2-item-1",
-        nonSpecificAnswerFallback:
-          "If a greater/less-than option wins, a statistical analysis " +
-          "may be conducted to determine the initial value, or a " +
-          "follow-up ballot may be run.",
+        nonSpecificAnswerFallback: NON_SPECIFIC_ANSWER_FALLBACK,
       },
       externalProposal: { id: "rss-v2-item-2", url: "https://cips.cardano.org/cip/CIP-50" },
     },
     {
       ballotId,
-      title: "Adopt CIP-163 — Time-Bound Delegation with Dynamic Rewards",
+      title: "3) Adopt CIP-163 — Time-Bound Delegation with Dynamic Rewards",
       summary:
-        "Introduces a delegatorInactivity parameter (epochs) as " +
-        "proof-of-life for each delegating wallet. Inactive wallets " +
-        "don't earn rewards or contribute voting power until " +
-        "reactivated. Full rewards pot is distributed among eligible " +
-        "participants rather than partially returned to the reserve.",
+        "Introduces a new parameter **delegatorInactivity**, measured in " +
+        "epochs, as a proof-of-life for each wallet delegated to a stake " +
+        "pool or dRep. Expired (inactive) wallets don't earn rewards or " +
+        "contribute voting power until they are reactivated. Additionally, " +
+        "the full rewards pot is distributed among eligible participants " +
+        "instead of returning a portion to the reserve during rewards " +
+        "calculation.",
       rationale:
-        "**Supporting links:**\n\n" +
-        "- [CIP-163 text](https://cips.cardano.org/cip/CIP-163)\n" +
-        "- [CIP-163 GitHub Discussion](https://github.com/cardano-foundation/CIPs/pull/1077)\n" +
-        "- [Cardano Forum discussion](https://forum.cardano.org/t/cip-0163-time-bound-delegation-with-dynamic-rewards)\n" +
-        "- [Foundation seminar (video)](https://youtu.be/zxcuOqHe7zA)\n" +
-        "- [Seminar slides](https://docs.google.com/presentation/d/1m_s0yymahQjyE21s1VgC6CgYC0K4mjP2YgjnIGzUhNo)\n" +
-        "- [CIP-163 modeling tool](https://spo-incentives.vercel.app)\n" +
-        "- [CIP-163 FAQ](https://incentives.solutions/cip-163-faq/)",
+        "**Supporting links**\n\n" +
+        "- CIP-163 text: [https://cips.cardano.org/cip/CIP-163](https://cips.cardano.org/cip/CIP-163)\n" +
+        "- CIP-163 GitHub Discussion: [https://github.com/cardano-foundation/CIPs/pull/1077](https://github.com/cardano-foundation/CIPs/pull/1077)\n" +
+        "- CIP-163 Cardano Forum Discussion: [https://forum.cardano.org/t/cip-0163-time-bound-delegation-with-dynamic-rewards](https://forum.cardano.org/t/cip-0163-time-bound-delegation-with-dynamic-rewards)\n" +
+        "- Cardano Foundation CIP-163 Seminar: [https://youtu.be/zxcuOqHe7zA](https://youtu.be/zxcuOqHe7zA?si=BVsifPln9iIB6cJX)\n" +
+        "- Cardano Foundation CIP-163 Seminar Slides: [https://docs.google.com/presentation/d/1m_s0yymahQjyE21s1VgC6CgYC0K4mjP2YgjnIGzUhNo](https://docs.google.com/presentation/d/1m_s0yymahQjyE21s1VgC6CgYC0K4mjP2YgjnIGzUhNo)\n" +
+        "- CIP-163 Modeling (select CIP-163 under rewards and adjust **Staked Ratio** & **k** sliders): [https://spo-incentives.vercel.app](https://spo-incentives.vercel.app/)\n" +
+        "- CIP-163 FAQ: [https://incentives.solutions/cip-163-faq](https://incentives.solutions/cip-163-faq/)",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "choice",
       voteOptions: [
-        { id: 1, label: "Yes" },
-        { id: 2, label: "No" },
+        { id: 1, label: "YES" },
+        { id: 2, label: "NO" },
       ],
       data: {
         bindsItems: ["rss-v2-item-4"],
-        passCondition:
-          "YES voting weight > NO voting weight; abstain:true excluded from tally.",
+        passCondition: PASS_CONDITION,
       },
       externalProposal: { id: "rss-v2-item-3", url: "https://cips.cardano.org/cip/CIP-163" },
     },
     {
       ballotId,
-      title: "Initial value of the CIP-163 \"delegatorInactivity\" parameter",
+      title: "4) Initial value of new \"delegatorInactivity\" parameter for CIP-163",
       summary:
-        "delegatorInactivity is the number of epochs a wallet may go " +
-        "without a transaction before becoming ineligible for rewards " +
-        "and governance. Any stake-credential witness refreshes the " +
-        "duration. Applied retroactively.",
+        "**delegatorInactivity** is the number of epochs a wallet can go " +
+        "without making a transaction before it becomes ineligible for " +
+        "rewards/governance. Any transaction that records a witness from " +
+        "the wallet's stake credential will refresh the " +
+        "**delegatorInactivity** duration for that wallet. This change " +
+        "will be applied retroactively.",
       rationale:
-        "**Supporting links:**\n\n" +
-        "- [CIP-163 modeling tool](https://spo-incentives.vercel.app)\n" +
-        "- [Inactive stake-by-pool search](https://earncoinpool.com/CIP-163.html)\n" +
-        "- [delegatorInactivity values chart (2025-10-15)](https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/delegatorInactivity_values.jpg)",
+        "**Supporting links**\n\n" +
+        "- CIP-163 Modeling (select CIP-163 under rewards and adjust **Staked Ratio** & **k** sliders): [https://spo-incentives.vercel.app](https://spo-incentives.vercel.app/)\n" +
+        "- CIP-163 Inactive Stake by Pool Search: [https://earncoinpool.com/CIP-163.html](https://earncoinpool.com/CIP-163.html)\n" +
+        "- Chart showing Stake/Wallets affected by values of **delegatorInactivity** (snapshot from 15 October, 2025):\n" +
+        "  **Note:** Many wallets could avoid impact by making a transaction.\n" +
+        "  **Second Note:** 6 years is a viable choice, but the oldest delegations won't be that old until the anniversary of the Shelley Hard Fork on 29 July, 2026. Therefore there will be 0 ADA and 0 wallets affected until that date is reached.\n" +
+        "  [https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/delegatorInactivity_values.jpg](https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/delegatorInactivity_values.jpg)",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "likert",
@@ -329,39 +380,37 @@ function buildProposalDocs(ballotId) {
         { id: 4, label: "292 epochs (4 years)" },
         { id: 5, label: "365 epochs (5 years)" },
         { id: 6, label: "438 epochs (6 years)" },
-        { id: 7, label: "Greater than 438 epochs (6 years)" },
+        // Canonical has "Greater than 438 epochs(6 years)" — no space
+        // before "(6". Preserved verbatim; do not "fix" without CIWG sign-off.
+        { id: 7, label: "Greater than 438 epochs(6 years)" },
       ],
       data: {
         tallyRule: "majority-judgment",
         ratingLabels: LIKERT_LABELS,
         tieBreakers: LIKERT_TIE_BREAKERS,
         bindingOn: "rss-v2-item-3",
-        nonSpecificAnswerFallback:
-          "If a greater/less-than option wins, a statistical analysis " +
-          "may be conducted to determine the initial value, or a " +
-          "follow-up ballot may be run.",
-        notes: [
-          "6 years is a viable choice, but the oldest delegations won't " +
-            "be that old until 2026-07-29 (Shelley anniversary); 0 ADA " +
-            "/ 0 wallets affected until then.",
-        ],
+        nonSpecificAnswerFallback: NON_SPECIFIC_ANSWER_FALLBACK,
       },
       externalProposal: { id: "rss-v2-item-4", url: "https://cips.cardano.org/cip/CIP-163" },
     },
     {
       ballotId,
-      title: "Initial value of the CIP-23 \"minPoolMargin\" parameter",
+      title: "5) Initial value of new \"minPoolMargin\" parameter for CIP-23",
       summary:
-        "Introduces minPoolMargin, the minimum variable fee a pool can " +
-        "set. Intended to complement minPoolCost to make fees fairer " +
-        "for delegators to smaller pools and reduce centralization " +
-        "pressure. Does NOT eliminate minPoolCost.",
+        "Introduces a new parameter **minPoolMargin** that represents the " +
+        "minimum variable fee that a pool can set. This parameter could be " +
+        "used instead of the existing **minPoolCost** parameter that " +
+        "represents the minimum per-epoch fixed fee a pool can set. The " +
+        "expectation is to make fees fairer for delegators to smaller " +
+        "pools and reduce centralization pressure.\n\n" +
+        "**Note**: This proposal introduces the new parameter " +
+        "**minPoolMargin** but does not eliminate **minPoolCost.**",
       rationale:
-        "**Supporting links:**\n\n" +
-        "- [CIP-23 text](https://cips.cardano.org/cip/CIP-23)\n" +
-        "- [CIP-23 GitHub Discussion](https://github.com/cardano-foundation/CIPs/pull/1086)\n" +
-        "- [Cardano Forum discussion](https://forum.cardano.org/t/cip-0023-fair-min-fees)\n" +
-        "- [CIP-23 misconceptions](https://incentives.solutions/misconception-pool-min-fee-is-applied-to-all-blocks-in-an-epoch)",
+        "**Supporting links**\n\n" +
+        "- CIP-23 text: [https://cips.cardano.org/cip/CIP-23](https://cips.cardano.org/cip/CIP-23)\n" +
+        "- CIP-23 GitHub Discussion: [https://github.com/cardano-foundation/CIPs/pull/1086](https://github.com/cardano-foundation/CIPs/pull/1086)\n" +
+        "- CIP-23 Cardano Forum Discussion: [https://forum.cardano.org/t/cip-0023-fair-min-fees](https://forum.cardano.org/t/cip-0023-fair-min-fees)\n" +
+        "- CIP-23 Misconceptions: [https://incentives.solutions/misconception-pool-min-fee-is-applied-to-all-blocks-in-an-epoch](https://incentives.solutions/misconception-pool-min-fee-is-applied-to-all-blocks-in-an-epoch)",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "likert",
@@ -378,11 +427,7 @@ function buildProposalDocs(ballotId) {
         tallyRule: "majority-judgment",
         ratingLabels: LIKERT_LABELS,
         tieBreakers: LIKERT_TIE_BREAKERS,
-        nonSpecificAnswerFallback:
-          "If a greater/less-than option wins, a statistical analysis " +
-          "may be conducted to determine the initial value, or a " +
-          "follow-up ballot may be run.",
-        notes: ["Introduces minPoolMargin but does NOT eliminate minPoolCost."],
+        nonSpecificAnswerFallback: NON_SPECIFIC_ANSWER_FALLBACK,
       },
       externalProposal: { id: "rss-v2-item-5", url: "https://cips.cardano.org/cip/CIP-23" },
     },
@@ -439,58 +484,87 @@ console.log(`[rss-v2] votePeriodStart:    ${votePeriodStart.toISOString()}`);
 console.log(`[rss-v2] votePeriodEnd:      ${votePeriodEnd.toISOString()}`);
 console.log(`[rss-v2] authoredAt:         ${authoredAtDate.toISOString()} (no submission period)`);
 console.log(`[rss-v2] voteAuthorityAddr:  ${authorityAddress}`);
-console.log(`[rss-v2] mode:               ${doPrepare ? "prepare" : "dry-run (Mongo only)"}`);
+console.log(
+  `[rss-v2] mode:               ${
+    refreshContent
+      ? "refresh-content (no lifecycle fields touched, no /prepare)"
+      : doPrepare
+        ? "prepare"
+        : "dry-run (Mongo only)"
+  }`,
+);
 console.log();
 
-// Idempotent at the title level — re-runs update in place (votePeriod fields
-// refresh too, so re-running resets the timeline).
+// Idempotent at the title level — re-runs update in place.
+//
+// --refreshContent mode: only touches ballot-level copy (title,
+// description, voterDescription). All lifecycle / Hydra-anchored /
+// structural fields are preserved so a content refresh after /prepare
+// doesn't clobber votePeriodStart, voteAuthorityAddress, hydraEndpoint,
+// etc. (mint policy is on-chain-anchored; mutating the window in Mongo
+// would desync display from chain).
+const ballotContentFields = {
+  title: BALLOT_TITLE,
+  description: BALLOT_DESCRIPTION,
+  voterDescription: VOTER_DESCRIPTION,
+};
+const ballotLifecycleFields = {
+  voterType: "any", // closed enum; real eligibility lives in voterGroups
+  voterGroups: [
+    { group: "drep", powerSource: "StakeBased" },
+    { group: "pool", powerSource: "PledgeBased" },
+  ],
+  voteWeighted: true,
+  voteFilters: false,
+  votePeriodStart,
+  votePeriodEnd,
+  voteAuthorityId: "ciwg",
+  voteAuthorityAddress: authorityAddress,
+  // CIWG authored the questions themselves — no public submission
+  // period. Schema requires both fields, so we stamp the same
+  // "authored-at" timestamp on both for a zero-length window that
+  // the frontend can recognize as "no submission phase."
+  proposalPeriodStart: authoredAtDate,
+  proposalPeriodEnd: authoredAtDate,
+  // Lazy validation: no startup pre-seed of all DReps/pools. The
+  // dispatcher in voterValidationByCredential.js routes each
+  // arriving voter to the right per-group Koios lookup at /draft
+  // time. Pre-seeding doesn't scale (a stake ballot could be
+  // millions of rows) and is also wasteful — only voters who
+  // actually show up to vote need to be validated.
+  voterValidationScript: "voterValidationByCredential.js",
+  rollupScript: "rollupBallot.js",
+  startupScript: "startupBallot.js",
+  status: "upcoming",
+  source: "hydra",
+};
+const ballotSet = refreshContent
+  ? ballotContentFields
+  : { ...ballotContentFields, ...ballotLifecycleFields };
 const ballot = await Ballot.findOneAndUpdate(
   { title: BALLOT_TITLE },
-  {
-    $set: {
-      title: BALLOT_TITLE,
-      description: BALLOT_DESCRIPTION,
-      voterType: "any", // closed enum; real eligibility lives in voterGroups
-      voterDescription: VOTER_DESCRIPTION,
-      voterGroups: [
-        { group: "drep", powerSource: "StakeBased" },
-        { group: "pool", powerSource: "PledgeBased" },
-      ],
-      voteWeighted: true,
-      voteFilters: false,
-      votePeriodStart,
-      votePeriodEnd,
-      voteAuthorityId: "ciwg",
-      voteAuthorityAddress: authorityAddress,
-      // CIWG authored the questions themselves — no public submission
-      // period. Schema requires both fields, so we stamp the same
-      // "authored-at" timestamp on both for a zero-length window that
-      // the frontend can recognize as "no submission phase."
-      proposalPeriodStart: authoredAtDate,
-      proposalPeriodEnd: authoredAtDate,
-      // Lazy validation: no startup pre-seed of all DReps/pools. The
-      // dispatcher in voterValidationByCredential.js routes each
-      // arriving voter to the right per-group Koios lookup at /draft
-      // time. Pre-seeding doesn't scale (a stake ballot could be
-      // millions of rows) and is also wasteful — only voters who
-      // actually show up to vote need to be validated.
-      voterValidationScript: "voterValidationByCredential.js",
-      rollupScript: "rollupBallot.js",
-      startupScript: "startupBallot.js",
-      status: "upcoming",
-      source: "hydra",
-    },
-  },
-  { upsert: true, new: true, setDefaultsOnInsert: true }
+  { $set: ballotSet },
+  { upsert: !refreshContent, new: true, setDefaultsOnInsert: !refreshContent }
 );
+if (!ballot) {
+  console.error(
+    `[rss-v2] --refreshContent: no existing ballot with title "${BALLOT_TITLE}". ` +
+      `Run without --refreshContent to scaffold fresh.`,
+  );
+  await disconnectFromDatabase();
+  process.exit(2);
+}
 console.log(`[rss-v2] ballot _id:         ${ballot._id}`);
 
-// Proposals: upsert-by-title-within-ballot for idempotence.
+// Proposals: upsert keyed on `externalProposal.id` (stable across title
+// edits). Earlier versions keyed on title, which orphaned docs whenever
+// CIWG adjusted question wording. Each of rss-v2-item-{1..5} maps to
+// exactly one Proposal per ballot.
 for (const p of buildProposalDocs(ballot._id)) {
   await Proposal.updateOne(
-    { ballotId: ballot._id, title: p.title },
+    { ballotId: ballot._id, "externalProposal.id": p.externalProposal.id },
     { $set: p },
-    { upsert: true }
+    { upsert: !refreshContent }
   );
 }
 const proposalCount = await Proposal.countDocuments({ ballotId: ballot._id });
