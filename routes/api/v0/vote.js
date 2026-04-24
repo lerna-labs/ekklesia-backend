@@ -8,6 +8,7 @@ import { Ballot } from "../../../schema/Ballot.js";
 
 // helper
 import { isAuthenticated, getProposal } from "../../../helper/middleWare.js";
+import { checkVotingWindow } from "../../../helper/votingWindow.js";
 
 /**
  * @route POST /api/v0/vote/:proposalId
@@ -56,6 +57,18 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
     return res.status(400).json({
       status: "error",
       message: "Ballot is not live",
+    });
+  }
+
+  // Time-window gate independent of status. Status is flipped by the
+  // 1min cron, which leaves up to a minute where votePeriodEnd has
+  // elapsed but the ballot is still "live" in Mongo.
+  const windowCheck = checkVotingWindow(ballot);
+  if (!windowCheck.ok) {
+    return res.status(409).json({
+      status: "error",
+      code: windowCheck.code,
+      message: windowCheck.message,
     });
   }
 

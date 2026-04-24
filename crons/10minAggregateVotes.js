@@ -438,7 +438,6 @@ export async function writeFinalResult(ballotId, hydraData = {}) {
             hydraData?.resultsCid ||
             hydraData?.evidenceCid ||
             null,
-          hydraFinalizeTxHash: hydraData?.txHash || null,
           hydraResultsHash: hydraData?.resultsHash || null,
           hydraEvidenceMerkleRoot: hydraData?.evidenceMerkleRoot || null,
           hydraResultsCid: hydraData?.resultsCid || null,

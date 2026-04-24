@@ -668,6 +668,24 @@ paths:
             $ref: '#/components/responses/Forbidden'
           '404':
             $ref: '#/components/responses/NotFound'
+          '409':
+            description: |
+              Vote rejected because the ballot is outside its voting window.
+              `code` is `VOTING_WINDOW_NOT_OPEN` before `votePeriodStart` or
+              `VOTING_WINDOW_CLOSED` at/after `votePeriodEnd`.
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      example: error
+                    code:
+                      type: string
+                      enum: [VOTING_WINDOW_NOT_OPEN, VOTING_WINDOW_CLOSED]
+                    message:
+                      type: string
           '500':
             $ref: '#/components/responses/ServerError'
 
@@ -1970,7 +1988,39 @@ components:
           description: IPFS hash of the ballot metadata (optional, for decentralized storage)
         voterType:
           type: string
-          description: Type of voters eligible for this ballot (e.g., 'stake', 'drep', 'pool')
+          description: |
+            Legacy display label for eligible voters (e.g., 'stake', 'drep', 'pool', 'any').
+            Retained for backwards-compatible list filtering (`?voterType=`). The
+            authoritative per-group eligibility + power-source declaration lives in
+            `voterGroups`; new clients should prefer that field.
+        voterGroups:
+          type: array
+          description: |
+            Authoritative per-group eligibility + power-source declaration. A single
+            ballot can declare multiple groups simultaneously (e.g. RSS v2 enables
+            both `drep` and `pool`). `hydraPrepare` translates this into Hydra's
+            `roleWeighting` object at /prepare time. Valid (group, powerSource)
+            combinations:
+            - drep  → CredentialBased | StakeBased
+            - pool  → CredentialBased | StakeBased | PledgeBased
+            - stake → StakeBased
+          items:
+            type: object
+            required: [group, powerSource]
+            properties:
+              group:
+                type: string
+                enum: [drep, pool, stake]
+              powerSource:
+                type: string
+                enum: [CredentialBased, StakeBased, PledgeBased]
+              requirements:
+                description: |
+                  Optional per-group eligibility gate. Validator-interpreted;
+                  today only `stake` honors this. Accepts `mustExist: boolean`,
+                  `allowedPools: string[]`, and
+                  `tokenHoldings: [{policyId, assetName?, minQuantity}]`.
+                nullable: true
         voterDescription:
           type: string
           description: Human-readable description of who is eligible to vote in this ballot

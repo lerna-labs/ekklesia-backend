@@ -93,12 +93,6 @@ const resultSchema = new Schema(
       type: String,
       default: null,
     },
-    // L1 tx hash from Hydra /settle/finalize (the on-chain update of the
-    // (601) ballot-instance token with the finalized datum).
-    hydraFinalizeTxHash: {
-      type: String,
-      default: null,
-    },
     // blake2b_256 of the canonical results JSON; anchored on the (601)
     // datum so auditors can verify the pinned results match on-chain.
     hydraResultsHash: {

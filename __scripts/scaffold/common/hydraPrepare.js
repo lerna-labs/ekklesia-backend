@@ -12,7 +12,12 @@ import { Proposal } from "../../../schema/Proposal.js";
 
 /**
  * Stable namespace string derived from the ballot title.
- * Format: vote.ekklesia.scaffold.<slug>
+ * Format: vote.ekklesia.<slug>
+ *
+ * Operator-curated namespaces (e.g. for a public production ballot)
+ * should be passed explicitly to buildPrepareBody via opts.namespace
+ * rather than inferred from the title, since title-derived slugs
+ * bake punctuation and phrasing into the on-chain identifier.
  */
 export function namespaceForTitle(title) {
   const slug = title
@@ -249,7 +254,7 @@ export async function buildPrepareBody(ballot, opts = {}) {
     throw new Error(`Ballot ${ballot._id} has no proposals to publish`);
   }
 
-  const namespace = namespaceForTitle(ballot.title);
+  const namespace = opts.namespace || namespaceForTitle(ballot.title);
   const endEpoch = Math.floor(new Date(ballot.votePeriodEnd).getTime() / 1000 / (5 * 24 * 60 * 60));
 
   const ballotDef = {

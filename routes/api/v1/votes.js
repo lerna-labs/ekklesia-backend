@@ -51,6 +51,7 @@ import * as nonceManager from "../../../helper/nonceManager.js";
 import { forBallot, HydraClientError } from "../../../helper/hydraClient.js";
 import { credentialHrp } from "../../../helper/voterCredential.js";
 import { voteWriteLimiter } from "../../../helper/rateLimiters.js";
+import { checkVotingWindow } from "../../../helper/votingWindow.js";
 
 const router = Router();
 
@@ -159,12 +160,31 @@ async function requireHydraBallot(req, res) {
   return ballot;
 }
 
+// Write-path gate: rejects drafts/signatures/submissions when the ballot
+// is outside its vote window. Not applied to GET or DELETE (voters must
+// still read and cancel in-flight packages after close). Applied to
+// /signature as well as /draft and /submit — a cosigner's witness
+// completing after votePeriodEnd would let a stale package submit.
+function requireVotingOpen(res, ballot) {
+  const check = checkVotingWindow(ballot);
+  if (!check.ok) {
+    res.status(409).json({
+      status: "error",
+      code: check.code,
+      message: check.message,
+    });
+    return false;
+  }
+  return true;
+}
+
 // POST /:ballotId/draft
 router.post("/:ballotId/draft", async (req, res) => {
   const session = requireSession(req, res);
   if (!session) return;
   const ballot = await requireHydraBallot(req, res);
   if (!ballot) return;
+  if (!requireVotingOpen(res, ballot)) return;
 
   const { votes, responderRole, calidusDeclaration } = req.body || {};
   let nativeScript = req.body?.nativeScript || null;
@@ -339,6 +359,7 @@ router.post("/:ballotId/signature", async (req, res) => {
   if (!session) return;
   const ballot = await requireHydraBallot(req, res);
   if (!ballot) return;
+  if (!requireVotingOpen(res, ballot)) return;
 
   const { packageId, witness: rawWitness } = req.body || {};
   if (!packageId || !rawWitness) {
@@ -424,6 +445,7 @@ router.post("/:ballotId/submit", async (req, res) => {
   if (!session) return;
   const ballot = await requireHydraBallot(req, res);
   if (!ballot) return;
+  if (!requireVotingOpen(res, ballot)) return;
 
   const { packageId } = req.body || {};
   const pkg = await VotePackage.findOne({ _id: packageId, ballotId: ballot._id });

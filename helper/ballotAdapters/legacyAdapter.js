@@ -84,6 +84,7 @@ export function toUnified(doc) {
     description: doc.description,
     status: doc.status,
     voterType: doc.voterType,
+    voterGroups: Array.isArray(doc.voterGroups) ? doc.voterGroups : [],
     voterDescription: doc.voterDescription,
     voteWeighted: doc.voteWeighted,
     votePeriodStart: doc.votePeriodStart,
@@ -104,6 +105,16 @@ export function toUnified(doc) {
           uploadedAt: doc.votingPowerSource.uploadedAt || null,
         }
       : null,
+    // Authority-certification surface — see hydraAdapter.js for
+    // rationale. Legacy ballots can still carry a certification
+    // (e.g. historical ballots that get re-certified after a
+    // ruleset change) so the field is exposed on both adapters
+    // for parity.
+    certification: {
+      certified: typeof doc.currentCertifiedVersion === "number",
+      version: doc.currentCertifiedVersion ?? null,
+      narrative: doc.authorityNarrative ?? null,
+    },
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };

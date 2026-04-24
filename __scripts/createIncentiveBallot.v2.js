@@ -19,6 +19,12 @@
 //   node __scripts/createIncentiveBallot.v2.js --prepare    # dry-run + Hydra /prepare
 //   node __scripts/createIncentiveBallot.v2.js --prepare --endpoint https://…
 //   node __scripts/createIncentiveBallot.v2.js --voteStartMinutes 60 --voteDurationDays 7
+//   node __scripts/createIncentiveBallot.v2.js --prepare \
+//       --title "CIWG RSS v2 Parameter Signal" \
+//       --namespace vote.ekklesia.ciwg.rss-v2 \
+//       --voteStartAt 2026-04-24T00:00:00Z \
+//       --voteEndAt   2026-05-01T23:59:59Z \
+//       --authority addr_test1...
 //
 // Flags:
 //   --prepare             After Mongo insert, call Hydra /prepare with the
@@ -26,15 +32,36 @@
 //                         or --endpoint. (Hydra /prepare is NOT idempotent —
 //                         re-running mints fresh tokens.)
 //   --endpoint URL        Override HYDRA_DEFAULT_ENDPOINT.
+//   --voteStartAt ISO     Absolute ISO-8601 start (e.g. 2026-04-24T00:00:00Z).
+//                         Takes precedence over --voteStartMinutes. Must be
+//                         at least 4 min in the future (Hydra mint-policy
+//                         buffer).
+//   --voteEndAt   ISO     Absolute ISO-8601 end. Takes precedence over
+//                         --voteDurationMinutes / --voteDurationDays. Must
+//                         be strictly after the start.
 //   --voteStartMinutes N  Minutes from now until voting opens. Default 15.
-//                         Hydra mint-policy requires > ~4 minutes ahead.
+//                         Ignored when --voteStartAt is set.
 //   --voteDurationMinutes N  Window length in minutes — takes precedence
-//                            over --voteDurationDays. Useful for same-day
-//                            E2E test runs.
+//                            over --voteDurationDays. Ignored when
+//                            --voteEndAt is set.
 //   --voteDurationDays N  Length of voting window in days. Default 1.
+//                         Ignored when --voteEndAt is set.
 //   --authority ADDRESS   bech32 voting-authority address. Defaults to a
 //                         placeholder; MUST be set for a real preprod run.
 //   --title STRING        Override the ballot title (useful for dry-runs).
+//   --namespace STRING    Explicit Hydra/on-chain namespace. Defaults to a
+//                         slug of the title. For a curated production run
+//                         pass an operator-chosen string (e.g.
+//                         vote.ekklesia.ciwg.rss-v2) rather than relying
+//                         on title-derivation, which bakes punctuation
+//                         and phrasing into the on-chain identifier.
+//   --authoredAt ISO      Timestamp to stamp as both proposalPeriodStart
+//                         and proposalPeriodEnd — i.e. a zero-length
+//                         "proposal period," signalling that questions
+//                         were authored by the voting authority rather
+//                         than drawn from an open submission window.
+//                         Defaults to the scaffold run's `now`. This
+//                         ballot (CIWG RSS v2) has no submission period.
 //
 // Exits non-zero on any failure. The Mongo insert happens BEFORE the
 // /prepare call, so if Hydra rejects the body the ballot doc still
@@ -96,11 +123,31 @@ const endpointOverride = typeof flags.endpoint === "string" ? flags.endpoint : n
 const voteStartMinutes = Number(flags.voteStartMinutes) || 15;
 const voteDurationMinutes = Number(flags.voteDurationMinutes) || null;
 const voteDurationDays = Number(flags.voteDurationDays) || 1;
+const voteStartAt = typeof flags.voteStartAt === "string" ? flags.voteStartAt : null;
+const voteEndAt = typeof flags.voteEndAt === "string" ? flags.voteEndAt : null;
+const authoredAt = typeof flags.authoredAt === "string" ? flags.authoredAt : null;
 const authorityAddress =
   typeof flags.authority === "string"
     ? flags.authority
     : "addr_test1_PLACEHOLDER_REPLACE_FOR_REAL_RUNS";
 const titleOverride = typeof flags.title === "string" ? flags.title : null;
+const namespaceOverride = typeof flags.namespace === "string" ? flags.namespace : null;
+
+// Hydra's mint-policy is timelocked `before(votingOpenSlot)` — once that
+// slot is reached, tokens can't be minted under the policy ever again.
+// The scaffolder needs votePeriodStart a safe margin ahead of now at
+// /prepare time. 4 minutes matches HYDRA_PREPARE_BUFFER_MS in
+// common/ballotFactory.js.
+const HYDRA_PREPARE_BUFFER_MS = 4 * 60 * 1000;
+
+function parseIsoOrExit(label, value) {
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) {
+    console.error(`[rss-v2] ${label} is not a valid ISO-8601 timestamp: ${value}`);
+    process.exit(2);
+  }
+  return new Date(ms);
+}
 
 // ---------------------------------------------------------------------
 // Ballot content
@@ -152,13 +199,22 @@ function buildProposalDocs(ballotId) {
   return [
     {
       ballotId,
-      title: "1) Adopt CIP-50 — Pledge Leverage-Based Staking Rewards",
+      title: "Adopt CIP-50 — Pledge Leverage-Based Staking Rewards",
       summary:
         "Introduces a new parameter L to cap a pool's effective stake " +
         "relative to its pledge, discouraging highly under-pledged / " +
         "split pools and aiming to improve sybil resistance and " +
         "decentralization without penalizing well-pledged small pools.",
-      rationale: null,
+      rationale:
+        "**Supporting links:**\n\n" +
+        "- [CIP-50 text](https://cips.cardano.org/cip/CIP-50)\n" +
+        "- [CIP-50 GitHub Discussion](https://github.com/cardano-foundation/CIPs/pull/1042)\n" +
+        "- [Cardano Forum discussion](https://forum.cardano.org/t/cip-0050-pledge-leverage-based-staking-rewards)\n" +
+        "- [RSS Simulation Engine PR](https://github.com/Blockchain-Technology-Lab/Rewards-Sharing-Simulation-Engine/pull/11)\n" +
+        "- [Foundation Table Talk (video)](https://www.youtube.com/live/dGymb5wCX8Y)\n" +
+        "- [Parameter Committee slides](https://docs.google.com/presentation/d/1foroY6UjFRyCicKE8QkrOpDgqS5_NrS-qN6u6HHhWHA)\n" +
+        "- [CIP-50 modeling tool](https://spo-incentives.vercel.app)\n" +
+        "- [CIP-50 FAQ](https://incentives.solutions/cip-50-faq)",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "choice",
@@ -170,28 +226,17 @@ function buildProposalDocs(ballotId) {
         bindsItems: ["rss-v2-item-2"],
         passCondition:
           "YES voting weight > NO voting weight; abstain:true excluded from tally.",
-        referenceLinks: [
-          { label: "CIP-50 text", url: "https://cips.cardano.org/cip/CIP-50" },
-          { label: "CIP-50 GitHub Discussion", url: "https://github.com/cardano-foundation/CIPs/pull/1042" },
-          { label: "Cardano Forum discussion", url: "https://forum.cardano.org/t/cip-0050-pledge-leverage-based-staking-rewards" },
-          { label: "RSS Simulation Engine PR", url: "https://github.com/Blockchain-Technology-Lab/Rewards-Sharing-Simulation-Engine/pull/11" },
-          { label: "Foundation Table Talk (video)", url: "https://www.youtube.com/live/dGymb5wCX8Y" },
-          { label: "Parameter Committee slides", url: "https://docs.google.com/presentation/d/1foroY6UjFRyCicKE8QkrOpDgqS5_NrS-qN6u6HHhWHA" },
-          { label: "CIP-50 modeling tool", url: "https://spo-incentives.vercel.app" },
-          { label: "CIP-50 FAQ", url: "https://incentives.solutions/cip-50-faq" },
-        ],
       },
       externalProposal: { id: "rss-v2-item-1", url: "https://cips.cardano.org/cip/CIP-50" },
     },
     {
       ballotId,
-      title: "2) Initial value of the CIP-50 \"L\" parameter",
+      title: "Initial value of the CIP-50 \"L\" parameter",
       summary:
         "L is a new protocol parameter that represents a pool's pledge " +
         "leverage (stake-to-pledge ratio) used when computing a pool's " +
         "eligible stake in rewards. Stake above L × pledge is treated " +
-        "as oversaturated and does not contribute additional rewards.",
-      rationale:
+        "as oversaturated and does not contribute additional rewards.\n\n" +
         "Example: if L is set to 1000 and a pool has 10k ADA in pledge, " +
         "that pool can support up to 10M ADA in stake (1000 × 10k) " +
         "before becoming oversaturated. If that pool increased their " +
@@ -199,6 +244,10 @@ function buildProposalDocs(ballotId) {
         "(1000 × 100k) — but at that point they would be limited by " +
         "the global saturation cap set by the k parameter, which is " +
         "currently around 71.7M ADA.",
+      rationale:
+        "**Supporting links:**\n\n" +
+        "- [CIP-50 modeling tool](https://spo-incentives.vercel.app/)\n" +
+        "- [L-values chart (2025-10-15 snapshot)](https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/L_values.png)",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "likert",
@@ -221,23 +270,27 @@ function buildProposalDocs(ballotId) {
           "If a greater/less-than option wins, a statistical analysis " +
           "may be conducted to determine the initial value, or a " +
           "follow-up ballot may be run.",
-        referenceLinks: [
-          { label: "CIP-50 modeling tool", url: "https://spo-incentives.vercel.app/" },
-          { label: "L-values chart (2025-10-15 snapshot)", url: "https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/L_values.png" },
-        ],
       },
       externalProposal: { id: "rss-v2-item-2", url: "https://cips.cardano.org/cip/CIP-50" },
     },
     {
       ballotId,
-      title: "3) Adopt CIP-163 — Time-Bound Delegation with Dynamic Rewards",
+      title: "Adopt CIP-163 — Time-Bound Delegation with Dynamic Rewards",
       summary:
         "Introduces a delegatorInactivity parameter (epochs) as " +
         "proof-of-life for each delegating wallet. Inactive wallets " +
         "don't earn rewards or contribute voting power until " +
         "reactivated. Full rewards pot is distributed among eligible " +
         "participants rather than partially returned to the reserve.",
-      rationale: null,
+      rationale:
+        "**Supporting links:**\n\n" +
+        "- [CIP-163 text](https://cips.cardano.org/cip/CIP-163)\n" +
+        "- [CIP-163 GitHub Discussion](https://github.com/cardano-foundation/CIPs/pull/1077)\n" +
+        "- [Cardano Forum discussion](https://forum.cardano.org/t/cip-0163-time-bound-delegation-with-dynamic-rewards)\n" +
+        "- [Foundation seminar (video)](https://youtu.be/zxcuOqHe7zA)\n" +
+        "- [Seminar slides](https://docs.google.com/presentation/d/1m_s0yymahQjyE21s1VgC6CgYC0K4mjP2YgjnIGzUhNo)\n" +
+        "- [CIP-163 modeling tool](https://spo-incentives.vercel.app)\n" +
+        "- [CIP-163 FAQ](https://incentives.solutions/cip-163-faq/)",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "choice",
@@ -249,27 +302,22 @@ function buildProposalDocs(ballotId) {
         bindsItems: ["rss-v2-item-4"],
         passCondition:
           "YES voting weight > NO voting weight; abstain:true excluded from tally.",
-        referenceLinks: [
-          { label: "CIP-163 text", url: "https://cips.cardano.org/cip/CIP-163" },
-          { label: "CIP-163 GitHub Discussion", url: "https://github.com/cardano-foundation/CIPs/pull/1077" },
-          { label: "Cardano Forum discussion", url: "https://forum.cardano.org/t/cip-0163-time-bound-delegation-with-dynamic-rewards" },
-          { label: "Foundation seminar (video)", url: "https://youtu.be/zxcuOqHe7zA" },
-          { label: "Seminar slides", url: "https://docs.google.com/presentation/d/1m_s0yymahQjyE21s1VgC6CgYC0K4mjP2YgjnIGzUhNo" },
-          { label: "CIP-163 modeling tool", url: "https://spo-incentives.vercel.app" },
-          { label: "CIP-163 FAQ", url: "https://incentives.solutions/cip-163-faq/" },
-        ],
       },
       externalProposal: { id: "rss-v2-item-3", url: "https://cips.cardano.org/cip/CIP-163" },
     },
     {
       ballotId,
-      title: "4) Initial value of the CIP-163 \"delegatorInactivity\" parameter",
+      title: "Initial value of the CIP-163 \"delegatorInactivity\" parameter",
       summary:
         "delegatorInactivity is the number of epochs a wallet may go " +
         "without a transaction before becoming ineligible for rewards " +
         "and governance. Any stake-credential witness refreshes the " +
         "duration. Applied retroactively.",
-      rationale: null,
+      rationale:
+        "**Supporting links:**\n\n" +
+        "- [CIP-163 modeling tool](https://spo-incentives.vercel.app)\n" +
+        "- [Inactive stake-by-pool search](https://earncoinpool.com/CIP-163.html)\n" +
+        "- [delegatorInactivity values chart (2025-10-15)](https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/delegatorInactivity_values.jpg)",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "likert",
@@ -288,28 +336,32 @@ function buildProposalDocs(ballotId) {
         ratingLabels: LIKERT_LABELS,
         tieBreakers: LIKERT_TIE_BREAKERS,
         bindingOn: "rss-v2-item-3",
+        nonSpecificAnswerFallback:
+          "If a greater/less-than option wins, a statistical analysis " +
+          "may be conducted to determine the initial value, or a " +
+          "follow-up ballot may be run.",
         notes: [
           "6 years is a viable choice, but the oldest delegations won't " +
             "be that old until 2026-07-29 (Shelley anniversary); 0 ADA " +
             "/ 0 wallets affected until then.",
-        ],
-        referenceLinks: [
-          { label: "CIP-163 modeling tool", url: "https://spo-incentives.vercel.app" },
-          { label: "Inactive stake-by-pool search", url: "https://earncoinpool.com/CIP-163.html" },
-          { label: "delegatorInactivity values chart (2025-10-15)", url: "https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/delegatorInactivity_values.jpg" },
         ],
       },
       externalProposal: { id: "rss-v2-item-4", url: "https://cips.cardano.org/cip/CIP-163" },
     },
     {
       ballotId,
-      title: "5) Initial value of the CIP-23 \"minPoolMargin\" parameter",
+      title: "Initial value of the CIP-23 \"minPoolMargin\" parameter",
       summary:
         "Introduces minPoolMargin, the minimum variable fee a pool can " +
         "set. Intended to complement minPoolCost to make fees fairer " +
         "for delegators to smaller pools and reduce centralization " +
         "pressure. Does NOT eliminate minPoolCost.",
-      rationale: null,
+      rationale:
+        "**Supporting links:**\n\n" +
+        "- [CIP-23 text](https://cips.cardano.org/cip/CIP-23)\n" +
+        "- [CIP-23 GitHub Discussion](https://github.com/cardano-foundation/CIPs/pull/1086)\n" +
+        "- [Cardano Forum discussion](https://forum.cardano.org/t/cip-0023-fair-min-fees)\n" +
+        "- [CIP-23 misconceptions](https://incentives.solutions/misconception-pool-min-fee-is-applied-to-all-blocks-in-an-epoch)",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "likert",
@@ -326,13 +378,11 @@ function buildProposalDocs(ballotId) {
         tallyRule: "majority-judgment",
         ratingLabels: LIKERT_LABELS,
         tieBreakers: LIKERT_TIE_BREAKERS,
+        nonSpecificAnswerFallback:
+          "If a greater/less-than option wins, a statistical analysis " +
+          "may be conducted to determine the initial value, or a " +
+          "follow-up ballot may be run.",
         notes: ["Introduces minPoolMargin but does NOT eliminate minPoolCost."],
-        referenceLinks: [
-          { label: "CIP-23 text", url: "https://cips.cardano.org/cip/CIP-23" },
-          { label: "CIP-23 GitHub Discussion", url: "https://github.com/cardano-foundation/CIPs/pull/1086" },
-          { label: "Cardano Forum discussion", url: "https://forum.cardano.org/t/cip-0023-fair-min-fees" },
-          { label: "CIP-23 misconceptions", url: "https://incentives.solutions/misconception-pool-min-fee-is-applied-to-all-blocks-in-an-epoch" },
-        ],
       },
       externalProposal: { id: "rss-v2-item-5", url: "https://cips.cardano.org/cip/CIP-23" },
     },
@@ -346,15 +396,48 @@ function buildProposalDocs(ballotId) {
 await connectToDatabase();
 
 const now = Date.now();
-const votePeriodStart = new Date(now + voteStartMinutes * 60 * 1000);
-const durationMs = voteDurationMinutes
-  ? voteDurationMinutes * 60 * 1000
-  : voteDurationDays * 24 * 60 * 60 * 1000;
-const votePeriodEnd = new Date(votePeriodStart.getTime() + durationMs);
+const votePeriodStart = voteStartAt
+  ? parseIsoOrExit("--voteStartAt", voteStartAt)
+  : new Date(now + voteStartMinutes * 60 * 1000);
+const votePeriodEnd = voteEndAt
+  ? parseIsoOrExit("--voteEndAt", voteEndAt)
+  : new Date(
+      votePeriodStart.getTime() +
+        (voteDurationMinutes
+          ? voteDurationMinutes * 60 * 1000
+          : voteDurationDays * 24 * 60 * 60 * 1000),
+    );
+
+if (votePeriodStart.getTime() - now < HYDRA_PREPARE_BUFFER_MS) {
+  const minOpen = new Date(now + HYDRA_PREPARE_BUFFER_MS).toISOString();
+  console.error(
+    `[rss-v2] votePeriodStart (${votePeriodStart.toISOString()}) is within ` +
+      `Hydra's mint-policy buffer (~4 min). Minimum acceptable open time: ${minOpen}.`,
+  );
+  process.exit(2);
+}
+if (votePeriodEnd.getTime() <= votePeriodStart.getTime()) {
+  console.error(
+    `[rss-v2] votePeriodEnd (${votePeriodEnd.toISOString()}) must be strictly ` +
+      `after votePeriodStart (${votePeriodStart.toISOString()}).`,
+  );
+  process.exit(2);
+}
+
+// The CIWG RSS v2 ballot has no open proposal-submission period — the
+// working group authored the questions directly. The Ballot schema
+// still requires proposalPeriodStart/End, so we stamp both with the
+// same "authored-at" timestamp to signal a zero-length window.
+const authoredAtDate = authoredAt
+  ? parseIsoOrExit("--authoredAt", authoredAt)
+  : new Date(now);
 
 console.log(`[rss-v2] title:              ${BALLOT_TITLE}`);
+console.log(`[rss-v2] namespace:          ${namespaceOverride || "(derived from title)"}`);
+console.log(`[rss-v2] voterGroups:        drep=StakeBased, pool=PledgeBased`);
 console.log(`[rss-v2] votePeriodStart:    ${votePeriodStart.toISOString()}`);
 console.log(`[rss-v2] votePeriodEnd:      ${votePeriodEnd.toISOString()}`);
+console.log(`[rss-v2] authoredAt:         ${authoredAtDate.toISOString()} (no submission period)`);
 console.log(`[rss-v2] voteAuthorityAddr:  ${authorityAddress}`);
 console.log(`[rss-v2] mode:               ${doPrepare ? "prepare" : "dry-run (Mongo only)"}`);
 console.log();
@@ -372,16 +455,6 @@ const ballot = await Ballot.findOneAndUpdate(
       voterGroups: [
         { group: "drep", powerSource: "StakeBased" },
         { group: "pool", powerSource: "PledgeBased" },
-        // Stake group included for the dry run so a real stake
-        // credential on preprod exercises the new Koios/Blockfrost-
-        // backed stakeholder validator. Off-spec for the real RSS v2
-        // ballot (which is drep + pool only) but appropriate for an
-        // Ekklesia Dry Run — exercises all three credential paths.
-        {
-          group: "stake",
-          powerSource: "StakeBased",
-          requirements: { mustExist: true },
-        },
       ],
       voteWeighted: true,
       voteFilters: false,
@@ -389,8 +462,12 @@ const ballot = await Ballot.findOneAndUpdate(
       votePeriodEnd,
       voteAuthorityId: "ciwg",
       voteAuthorityAddress: authorityAddress,
-      proposalPeriodStart: new Date(now - 7 * 24 * 60 * 60 * 1000),
-      proposalPeriodEnd: new Date(now),
+      // CIWG authored the questions themselves — no public submission
+      // period. Schema requires both fields, so we stamp the same
+      // "authored-at" timestamp on both for a zero-length window that
+      // the frontend can recognize as "no submission phase."
+      proposalPeriodStart: authoredAtDate,
+      proposalPeriodEnd: authoredAtDate,
       // Lazy validation: no startup pre-seed of all DReps/pools. The
       // dispatcher in voterValidationByCredential.js routes each
       // arriving voter to the right per-group Koios lookup at /draft
@@ -440,6 +517,7 @@ if (doPrepare) {
     const client = forEndpoint(endpoint);
     const body = await buildPrepareBody(ballot, {
       votingAuthority: authorityAddress,
+      namespace: namespaceOverride || undefined,
     });
     console.log(`[rss-v2] calling ${endpoint}/prepare — namespace=${body.namespace}`);
     const data = await client.prepare(body);
