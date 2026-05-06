@@ -275,7 +275,6 @@ export async function buildPrepareBody(ballot, opts = {}) {
       context: "hydra-head",
       acceptedCredentials: acceptedCredentialsFor(ballot),
       merkleRoot: "", // filled by Hydra
-      ballotIpfsCid: "", // filled by Hydra
       votingWindow: {
         open: new Date(ballot.votePeriodStart).toISOString(),
         close: new Date(ballot.votePeriodEnd).toISOString(),
