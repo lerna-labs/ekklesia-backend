@@ -18,3 +18,6 @@ yarn-error.log
 # Keep repo .npmrc (env-var substitution only, no literal token),
 # but exclude any local override that might contain a token.
 .npmrc.local
+
+# Host-local cache (e.g. cached Cardano genesis params per Koios host).
+.cache/

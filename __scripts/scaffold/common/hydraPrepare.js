@@ -9,6 +9,7 @@
 // EkklesiaBallotExtension) — the source of truth for this shape.
 
 import { Proposal } from "../../../schema/Proposal.js";
+import { epochForDate } from "../../../helper/cardanoEpochs.js";
 
 /**
  * Stable namespace string derived from the ballot title.
@@ -255,7 +256,11 @@ export async function buildPrepareBody(ballot, opts = {}) {
   }
 
   const namespace = opts.namespace || namespaceForTitle(ballot.title);
-  const endEpoch = Math.floor(new Date(ballot.votePeriodEnd).getTime() / 1000 / (5 * 24 * 60 * 60));
+  // Cardano epoch numbers are network-anchored (Shelley genesis), and
+  // epoch length differs across networks (preview = 1d, preprod/mainnet
+  // = 5d). Resolve via Koios /tip + /genesis instead of dividing Unix
+  // time by a hardcoded 5-day window. See helper/cardanoEpochs.js.
+  const endEpoch = await epochForDate(ballot.votePeriodEnd);
 
   const ballotDef = {
     specVersion: "ekklesia/1.0",
