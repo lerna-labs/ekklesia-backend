@@ -13,6 +13,8 @@ import {
 } from "./helper/dbManager.js";
 import cookieParser from "cookie-parser";
 import { v0Freeze } from "./helper/v0Freeze.js";
+import { createOgMetaMiddleware } from "./helper/og/ogMeta.js";
+import { ogBallotImage, ogProposalImage } from "./helper/og/ogImage.js";
 
 // Initialize console with timestamps
 initializeConsole();
@@ -64,6 +66,29 @@ async function startServer() {
 
     // Serve static files from the public directory (SvelteKit assets)
     app.use(express.static(join(__dirname, "public")));
+
+    // Per-ballot / per-proposal OpenGraph cards. Slots between
+    // express.static (so /social.png and other shipped assets keep their
+    // fast path) and the SPA fallback (so unmatched URLs still serve
+    // the generic SPA). Gated on OG_CARDS_ENABLED — leave unset to
+    // preserve the legacy single-card behavior.
+    if (process.env.OG_CARDS_ENABLED === "true") {
+      app.get("/og/ballot/:ballotId.png", ogBallotImage);
+      app.get("/og/proposal/:proposalId.png", ogProposalImage);
+
+      const ogMeta = createOgMetaMiddleware({
+        indexHtmlPath: join(__dirname, "public", "index.html"),
+      });
+      app.get(
+        [
+          "/ballots/:ballotId",
+          "/ballots/:ballotId/proposals",
+          "/ballots/:ballotId/proposals/:proposalId",
+          "/ballots/:ballotId/proposals/:proposalId/results",
+        ],
+        ogMeta
+      );
+    }
 
     // Handle SPA routing - serve index.html for all non-API routes (Express 5: named wildcard)
     app.get("/{*splat}", (req, res, next) => {

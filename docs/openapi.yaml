@@ -1810,10 +1810,37 @@ paths:
                                   type: string
                                 title:
                                   type: string
+                                voteType:
+                                  type: string
+                                  enum: [choice, multi-choice, ranked, scale, likert, weighted, budget]
+                                  description: |
+                                    Voting method for the proposal. Drives the shape of the
+                                    `vote` array below — clients should dispatch on this rather
+                                    than sniffing array contents.
                                 vote:
                                   type: array
+                                  description: |
+                                    Per-vote-type projection of the voter's submission:
+                                    - `choice` / `multi-choice` / `ranked`: array of option labels (strings).
+                                    - `scale`: a single-element array carrying the numeric score (zero is preserved).
+                                    - `likert` / `weighted`: array of `{ option, optionLabel, value }` objects, one per voted-on option. `value` is the rating (likert) or point allocation (weighted).
+                                    - Any abstain (any voteType): `["Abstain"]`.
                                   items:
-                                    type: string
+                                    oneOf:
+                                      - type: string
+                                      - type: number
+                                      - type: object
+                                        properties:
+                                          option:
+                                            type: string
+                                            description: voteOption id
+                                          optionLabel:
+                                            type: string
+                                            description: Denormalized label for the option, copied from the proposal's voteOptions catalogue.
+                                          value:
+                                            type: number
+                                            description: Rating (likert) or integer point allocation (weighted).
+                                        required: [option, optionLabel, value]
                     ballotsVoted:
                       type: number
                       description: Number of ballots the voter has voted on

@@ -30,6 +30,7 @@ import {
 import { Ballot } from "../schema/Ballot.js";
 import { aggregateVotes } from "./10minAggregateVotes.js";
 import { snapshotVotingPower } from "./15minVotingPower.js";
+import { reconcileVoteMirrors } from "./reconcileVoteMirrors.js";
 
 // connect db
 if (!isDatabaseConnected()) {
@@ -60,6 +61,16 @@ for (const ballot of ballotsStart) {
   }
   console.log("STARTUP: Ballot", ballot._id, "completed");
 }
+// reconcile any hydra-confirmed VotePackages whose Vote-collection
+// mirror was interrupted (e.g. process restart between pkg.save() and
+// the inline syncVoteRecords call in submitPackage). Must run before
+// aggregateVotes so backfilled rows are visible to the discovery query.
+try {
+  await reconcileVoteMirrors();
+} catch (err) {
+  console.error("reconcileVoteMirrors failed:", err);
+}
+
 // aggregate votes
 await aggregateVotes();
 

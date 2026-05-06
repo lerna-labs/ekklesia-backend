@@ -30,8 +30,8 @@ import { Router } from "express";
 import { verifyToken } from "../../../helper/verifyToken.js";
 import { Ballot } from "../../../schema/Ballot.js";
 import { VotePackage } from "../../../schema/VotePackage.js";
-import { Vote } from "../../../schema/Vote.js";
-import { checkVoterValidation, checkVotingPower } from "../../../helper/voterValidation.js";
+import { checkVoterValidation } from "../../../helper/voterValidation.js";
+import { syncVoteRecords } from "../../../helper/voteMirror.js";
 import { loadValidationScript } from "../../../helper/loadValidationScript.js";
 import {
   buildDraft,
@@ -860,49 +860,6 @@ async function submitPackage(pkg, ballot) {
     await nonceManager.release({ userId: pkg.userId, ballotId: ballot._id, nonce: pkg.nonce });
     throw err;
   }
-}
-
-/**
- * Mirror Hydra-confirmed votes into the per-proposal Vote collection so the
- * legacy frontend read paths and the aggregation cron can keep working.
- */
-async function syncVoteRecords(pkg, ballot) {
-  for (const answer of pkg.signingPayload.votes || []) {
-    // Translate Hydra v2 wire shape to the internal Vote.vote
-    // sentinel: { abstain: true } → ["abstain"]; selection → selection.
-    // Keeping ["abstain"] as the internal marker lets the existing
-    // rollup / aggregation code keep pattern-matching on first === "abstain"
-    // without a wider refactor.
-    const stored = answer.abstain === true ? ["abstain"] : (answer.selection || []);
-    const base = {
-      userId: pkg.userId,
-      ballotId: ballot._id,
-      proposalId: answer.questionId,
-      vote: stored,
-      submittedVote: stored,
-      submittedAt: new Date(),
-      nonce: pkg.nonce,
-      voteHash: pkg.voteHash,
-      hydraTxId: pkg.hydraTxId,
-      hydraProof: pkg.hydraProof,
-      ipfsCid: pkg.ipfsCid,
-      confirmedAt: pkg.confirmedAt,
-      status: "hydra-confirmed",
-    };
-    try {
-      await Vote.updateOne(
-        { proposalId: answer.questionId, userId: pkg.userId },
-        { $set: base },
-        { upsert: true }
-      );
-    } catch (err) {
-      // proposalId may not be a Mongo ObjectId for Hydra-native questions —
-      // skip the mirror in that case; the VotePackage still holds the truth.
-      console.warn(`[votes/sync] skipped mirror for ${answer.questionId}: ${err.message}`);
-    }
-  }
-  // Nudge voting power cache on first vote.
-  await checkVotingPower(pkg.userId, ballot._id).catch(() => null);
 }
 
 export default router;

@@ -252,14 +252,14 @@ function buildProposalDocs(ballotId) {
         "without penalizing well-pledged small pools.",
       rationale:
         "**Supporting links**\n\n" +
-        "- CIP-50 text: [https://cips.cardano.org/cip/CIP-50](https://cips.cardano.org/cip/CIP-50)\n" +
-        "- CIP-50 GitHub Discussion: [https://github.com/cardano-foundation/CIPs/pull/1042](https://github.com/cardano-foundation/CIPs/pull/1042)\n" +
-        "- CIP-50 Cardano Forum Discussion: [https://forum.cardano.org/t/cip-0050-pledge-leverage-based-staking-rewards](https://forum.cardano.org/t/cip-0050-pledge-leverage-based-staking-rewards)\n" +
-        "- CIP-50 RSS Simulation Engine Pull Request: [https://github.com/Blockchain-Technology-Lab/Rewards-Sharing-Simulation-Engine/pull/11](https://github.com/Blockchain-Technology-Lab/Rewards-Sharing-Simulation-Engine/pull/11)\n" +
-        "- Cardano Foundation CIP-50 Table Talk: [https://www.youtube.com/live/dGymb5wCX8Y](https://www.youtube.com/live/dGymb5wCX8Y?si=6JGqQbUDIcjM8zEv)\n" +
-        "- Parameter Committee CIP-50 Presentation: [https://docs.google.com/presentation/d/1foroY6UjFRyCicKE8QkrOpDgqS5_NrS-qN6u6HHhWHA](https://docs.google.com/presentation/d/1foroY6UjFRyCicKE8QkrOpDgqS5_NrS-qN6u6HHhWHA)\n" +
-        "- CIP-50 Modeling (select CIP-50 under formula and adjust **L** slider): [https://spo-incentives.vercel.app](https://spo-incentives.vercel.app/)\n" +
-        "- CIP-50 FAQ: [https://incentives.solutions/cip-50-faq](https://incentives.solutions/cip-50-faq)",
+        "- [CIP-50 text](https://cips.cardano.org/cip/CIP-50)\n" +
+        "- [CIP-50 GitHub Discussion](https://github.com/cardano-foundation/CIPs/pull/1042)\n" +
+        "- [CIP-50 Cardano Forum Discussion](https://forum.cardano.org/t/cip-0050-pledge-leverage-based-staking-rewards)\n" +
+        "- [CIP-50 RSS Simulation Engine Pull Request](https://github.com/Blockchain-Technology-Lab/Rewards-Sharing-Simulation-Engine/pull/11)\n" +
+        "- [Cardano Foundation CIP-50 Table Talk](https://www.youtube.com/live/dGymb5wCX8Y?si=6JGqQbUDIcjM8zEv)\n" +
+        "- [Parameter Committee CIP-50 Presentation](https://docs.google.com/presentation/d/1foroY6UjFRyCicKE8QkrOpDgqS5_NrS-qN6u6HHhWHA)\n" +
+        "- [CIP-50 Modeling](https://spo-incentives.vercel.app/) (select CIP-50 under formula and adjust **L** slider)\n" +
+        "- [CIP-50 FAQ](https://incentives.solutions/cip-50-faq)",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "choice",
@@ -283,7 +283,7 @@ function buildProposalDocs(ballotId) {
         "value (**L** times the pool's pledge), any stake over the limit is " +
         "treated as oversaturated and does not contribute additional " +
         "rewards.\n\n" +
-        "For example, if L is set to 1000 and a pool has 10k ADA in pledge, " +
+        "For example, if **L** is set to 1000 and a pool has 10k ADA in pledge, " +
         "then that pool can support up to 10M ADA in stake (1000 \\* 10k) " +
         "before becoming oversaturated. If that pool increased their pledge " +
         "to 100k, then that would amount to 100M ADA in stake " +
@@ -292,10 +292,9 @@ function buildProposalDocs(ballotId) {
         "currently around 71.7M ADA.",
       rationale:
         "**Supporting links**\n\n" +
-        "- CIP-50 Modeling (select CIP-50 under formula and adjust **L** slider): [https://spo-incentives.vercel.app/](https://spo-incentives.vercel.app/)\n" +
-        "- Chart showing Stake/Wallets affected by values of **L** (snapshot from 15 October, 2025):\n" +
-        "  **Note:** Many pools could avoid impact with a small increase to their pledge\n" +
-        "  [https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/L_values.png](https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/L_values.png)",
+        "- [CIP-50 Modeling](https://spo-incentives.vercel.app/) (select CIP-50 under formula and adjust **L** slider)\n" +
+        "- [Chart showing Stake/Wallets affected by values of **L**](https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/L_values.png) (snapshot from 15 October, 2025)\\\n" +
+        "  **Note:** Many pools could avoid impact with a small increase to their pledge",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "likert",
@@ -331,13 +330,13 @@ function buildProposalDocs(ballotId) {
         "calculation.",
       rationale:
         "**Supporting links**\n\n" +
-        "- CIP-163 text: [https://cips.cardano.org/cip/CIP-163](https://cips.cardano.org/cip/CIP-163)\n" +
-        "- CIP-163 GitHub Discussion: [https://github.com/cardano-foundation/CIPs/pull/1077](https://github.com/cardano-foundation/CIPs/pull/1077)\n" +
-        "- CIP-163 Cardano Forum Discussion: [https://forum.cardano.org/t/cip-0163-time-bound-delegation-with-dynamic-rewards](https://forum.cardano.org/t/cip-0163-time-bound-delegation-with-dynamic-rewards)\n" +
-        "- Cardano Foundation CIP-163 Seminar: [https://youtu.be/zxcuOqHe7zA](https://youtu.be/zxcuOqHe7zA?si=BVsifPln9iIB6cJX)\n" +
-        "- Cardano Foundation CIP-163 Seminar Slides: [https://docs.google.com/presentation/d/1m_s0yymahQjyE21s1VgC6CgYC0K4mjP2YgjnIGzUhNo](https://docs.google.com/presentation/d/1m_s0yymahQjyE21s1VgC6CgYC0K4mjP2YgjnIGzUhNo)\n" +
-        "- CIP-163 Modeling (select CIP-163 under rewards and adjust **Staked Ratio** & **k** sliders): [https://spo-incentives.vercel.app](https://spo-incentives.vercel.app/)\n" +
-        "- CIP-163 FAQ: [https://incentives.solutions/cip-163-faq](https://incentives.solutions/cip-163-faq/)",
+        "- [CIP-163 text](https://cips.cardano.org/cip/CIP-163)\n" +
+        "- [CIP-163 GitHub Discussion](https://github.com/cardano-foundation/CIPs/pull/1077)\n" +
+        "- [CIP-163 Cardano Forum Discussion](https://forum.cardano.org/t/cip-0163-time-bound-delegation-with-dynamic-rewards)\n" +
+        "- [Cardano Foundation CIP-163 Seminar](https://youtu.be/zxcuOqHe7zA?si=BVsifPln9iIB6cJX)\n" +
+        "- [Cardano Foundation CIP-163 Seminar Slides](https://docs.google.com/presentation/d/1m_s0yymahQjyE21s1VgC6CgYC0K4mjP2YgjnIGzUhNo)\n" +
+        "- [CIP-163 Modeling](https://spo-incentives.vercel.app/) (select CIP-163 under rewards and adjust **Staked Ratio** & **k** sliders)\n" +
+        "- [CIP-163 FAQ](https://incentives.solutions/cip-163-faq/)",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "choice",
@@ -363,12 +362,11 @@ function buildProposalDocs(ballotId) {
         "will be applied retroactively.",
       rationale:
         "**Supporting links**\n\n" +
-        "- CIP-163 Modeling (select CIP-163 under rewards and adjust **Staked Ratio** & **k** sliders): [https://spo-incentives.vercel.app](https://spo-incentives.vercel.app/)\n" +
-        "- CIP-163 Inactive Stake by Pool Search: [https://earncoinpool.com/CIP-163.html](https://earncoinpool.com/CIP-163.html)\n" +
-        "- Chart showing Stake/Wallets affected by values of **delegatorInactivity** (snapshot from 15 October, 2025):\n" +
-        "  **Note:** Many wallets could avoid impact by making a transaction.\n" +
-        "  **Second Note:** 6 years is a viable choice, but the oldest delegations won't be that old until the anniversary of the Shelley Hard Fork on 29 July, 2026. Therefore there will be 0 ADA and 0 wallets affected until that date is reached.\n" +
-        "  [https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/delegatorInactivity_values.jpg](https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/delegatorInactivity_values.jpg)",
+        "- [CIP-163 Modeling](https://spo-incentives.vercel.app/) (select CIP-163 under rewards and adjust **Staked Ratio** & **k** sliders)\n" +
+        "- [CIP-163 Inactive Stake by Pool Search](https://earncoinpool.com/CIP-163.html)\n" +
+        "- [Chart showing Stake/Wallets affected by values of **delegatorInactivity**](https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/delegatorInactivity_values.jpg) (snapshot from 15 October, 2025)\\\n" +
+        "  **Note:** Many wallets could avoid impact by making a transaction.\\\n" +
+        "  **Second Note:** 6 years is a viable choice, but the oldest delegations won't be that old until the anniversary of the Shelley Hard Fork on 29 July, 2026. Therefore there will be 0 ADA and 0 wallets affected until that date is reached.",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "likert",
@@ -407,10 +405,10 @@ function buildProposalDocs(ballotId) {
         "**minPoolMargin** but does not eliminate **minPoolCost.**",
       rationale:
         "**Supporting links**\n\n" +
-        "- CIP-23 text: [https://cips.cardano.org/cip/CIP-23](https://cips.cardano.org/cip/CIP-23)\n" +
-        "- CIP-23 GitHub Discussion: [https://github.com/cardano-foundation/CIPs/pull/1086](https://github.com/cardano-foundation/CIPs/pull/1086)\n" +
-        "- CIP-23 Cardano Forum Discussion: [https://forum.cardano.org/t/cip-0023-fair-min-fees](https://forum.cardano.org/t/cip-0023-fair-min-fees)\n" +
-        "- CIP-23 Misconceptions: [https://incentives.solutions/misconception-pool-min-fee-is-applied-to-all-blocks-in-an-epoch](https://incentives.solutions/misconception-pool-min-fee-is-applied-to-all-blocks-in-an-epoch)",
+        "- [CIP-23 text](https://cips.cardano.org/cip/CIP-23)\n" +
+        "- [CIP-23 GitHub Discussion](https://github.com/cardano-foundation/CIPs/pull/1086)\n" +
+        "- [CIP-23 Cardano Forum Discussion](https://forum.cardano.org/t/cip-0023-fair-min-fees)\n" +
+        "- [CIP-23 Misconceptions](https://incentives.solutions/misconception-pool-min-fee-is-applied-to-all-blocks-in-an-epoch)",
       authors: [{ name: "Cardano Incentives Working Group" }],
       version: "v1.0",
       voteType: "likert",

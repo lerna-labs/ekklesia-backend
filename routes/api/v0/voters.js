@@ -9,6 +9,7 @@ import { Ballot } from "../../../schema/Ballot.js";
 import { UserCache } from "../../../schema/UserCache.js";
 import { validateAddress } from "../../../helper/validateAddress.js";
 import { cacheControl } from "../../../helper/cacheControl.js";
+import { projectVoteEntries } from "../../../helper/voterDetailMapper.js";
 
 // helper
 const API_URL = process.env.API_URL;
@@ -506,26 +507,16 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
           )
             return null; // Skip if no vote found
 
-          // vote.submittedVote is an array of voteOption ids - extract the label from p.voteOptions
-          const voteLabels = vote.submittedVote.map((id) => {
-            const option = p.voteOptions.find((o) => o.id.toString() === id.toString());
-            // set label for abstain votes
-            if (id === "abstain") {
-              return "Abstain";
-            }
-            // on scale votes return the id
-            if (p.voteType === "scale") {
-              return id;
-            }
-            // otherwise return the found label or null
-            return option ? option.label : null;
-          }).filter(Boolean);
-
+          // Project per-vote-type. Likert/Weighted store object entries
+          // ({ option, value }) which the previous primitive-only mapper
+          // collapsed to []. See projectVoteEntries for the full shape.
+          const voteEntries = projectVoteEntries(vote.submittedVote, p);
 
           return {
             proposalId: p._id,
             title: p.title,
-            vote: voteLabels,
+            voteType: p.voteType,
+            vote: voteEntries,
           };
         })
         .filter(Boolean); // Remove null entries (proposals without votes)
