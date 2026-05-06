@@ -1,6 +1,6 @@
 {
   "name": "ekklesia-backend",
-  "version": "0.6.1",
+  "version": "0.9.0",
   "main": "server.js",
   "scripts": {
     "start:dev": "NODE_ENV=development nodemon --watch '**/*.js' --ignore 'node_modules/' server.js",
@@ -12,7 +12,7 @@
   "type": "module",
   "keywords": [],
   "author": "Mad Orkestra & Adam Dean for Lerna Labs",
-  "homepage": "https://github.com/lernalabs/ekklesia-backend",
+  "homepage": "https://github.com/lerna-labs/ekklesia-backend",
   "license": "Apache-2.0",
   "description": "Ekklesia Voting Backend",
   "dependencies": {

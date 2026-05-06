@@ -242,12 +242,51 @@ paths:
                       properties:
                         voterValidated:
                           type: boolean
+                          description: Voter eligibility flag (only when authenticated).
                         votingPower:
                           type: number
+                          description: Authenticated voter's individual voting power on this ballot (only when authenticated and eligible).
+                        votingPowerByGroup:
+                          type: object
+                          description: |
+                            Per-voter-group total voting power (canonical post-violet-clever-noether shape).
+                            Honors `Ballot.votingPowerSource` (script vs snapshot vs admin-uploaded);
+                            falls back to a one-shot live computation when no snapshot rows exist yet.
+                          additionalProperties:
+                            type: number
+                        eligibleVoterCountByGroup:
+                          type: object
+                          description: Per-voter-group count of eligible voters.
+                          additionalProperties:
+                            type: integer
+                        activeVotingPowerByGroup:
+                          type: object
+                          description: Per-voter-group voting power among voters who have actually submitted a vote.
+                          additionalProperties:
+                            type: number
+                        activeVoterCountByGroup:
+                          type: object
+                          description: Per-voter-group count of voters who have actually submitted a vote.
+                          additionalProperties:
+                            type: integer
+                        votingPowerSourceInfo:
+                          type: object
+                          description: |
+                            Provenance of the voting-power numbers for this ballot — which source
+                            actually populated the per-group fields (script-derived, snapshot row,
+                            admin-uploaded, or live fallback).
                         totalAllowedVoterCount:
                           type: number
+                          deprecated: true
+                          description: |
+                            Degenerate sum of `eligibleVoterCountByGroup` — kept populated for one
+                            release cycle so legacy frontends can migrate to the *ByGroup keys.
                         totalVotingPower:
                           type: number
+                          deprecated: true
+                          description: |
+                            Degenerate sum of `votingPowerByGroup` — kept populated for one
+                            release cycle so legacy frontends can migrate to the *ByGroup keys.
           '404':
             $ref: '#/components/responses/NotFound'
           '500':
@@ -567,9 +606,12 @@ paths:
                             items:
                               type: object
                               properties:
-                                value:
-                                  type: number
-                                  description: Vote option value/id
+                                id:
+                                  oneOf:
+                                    - type: number
+                                    - type: string
+                                      enum: [abstain]
+                                  description: Vote option id (matches `voteOptions[].id`); the literal "abstain" appears as an explicit bucket when the proposal allows abstaining.
                                 label:
                                   type: string
                                   description: Vote option label
@@ -1073,23 +1115,29 @@ paths:
       tags:
         - Session
       summary: Validate session
-      description: Validate JWT token and return voter ID plus user profile (name, lastLogin) when available
+      description: Validate JWT token and return voter ID plus user profile (name, lastLogin), admin flag, native-script context, and active vote-package summary when available
       operationId: getSession
       security:
         - cookieAuth: []
         - bearerAuth: []
       responses:
         '200':
-          description: Voter ID and optional user profile
+          description: Voter ID, optional user profile, admin flag, native-script context, and pending vote packages
           content:
             application/json:
               schema:
                 type: object
                 required:
                   - userId
+                  - isAdmin
+                  - nativeScript
+                  - pendingPackages
                 properties:
                   userId:
                     type: string
+                  isAdmin:
+                    type: boolean
+                    description: True when the session voter is on the admin allowlist.
                   name:
                     type: string
                     nullable: true
@@ -1099,6 +1147,39 @@ paths:
                     format: date-time
                     nullable: true
                     description: Last login timestamp (from User)
+                  nativeScript:
+                    nullable: true
+                    description: |
+                      JSON definition of the multisig native script tied to this session
+                      (script address voter); null for ordinary key-based voters. Always
+                      present so the frontend can rely on the field.
+                    type: object
+                  pendingPackages:
+                    type: array
+                    description: |
+                      Up to 25 most-recently-updated non-terminal v1 vote packages owned
+                      by this voter, surfaced for the wallet-reconnect / multisig-coordination
+                      UX. Empty array when there are none.
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        ballotId:
+                          type: string
+                          nullable: true
+                        status:
+                          type: string
+                          enum: [draft, awaiting-signatures, awaiting-submission, broker-submitted, failed]
+                        nonce:
+                          type: integer
+                        signatureCount:
+                          type: integer
+                        isMultisig:
+                          type: boolean
+                        updatedAt:
+                          type: string
+                          format: date-time
         '401':
           $ref: '#/components/responses/Unauthorized'
     post:
@@ -2161,7 +2242,7 @@ components:
         requireAnswer:
           type: boolean
           default: false
-          description: When true, voters must submit a selection — abstain is rejected. Default false (permissive): abstain is allowed.
+          description: "When true, voters must submit a selection — abstain is rejected. Default false (permissive): abstain is allowed."
         voteOptions:
           type: array
           items:
@@ -2173,7 +2254,7 @@ components:
                   - type: integer
                   - type: string
                     enum: [abstain]
-                description: Integer option id. The string "abstain" is a legacy sentinel retained for back-compat only; production-authored ballots use the top-level `abstain: true` vote flag instead.
+                description: 'Integer option id. The string "abstain" is a legacy sentinel retained for back-compat only; production-authored ballots use the top-level `abstain: true` vote flag instead.'
               label:
                 type: string
                 maxLength: 120
