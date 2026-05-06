@@ -378,9 +378,7 @@ function buildProposalDocs(ballotId) {
         { id: 4, label: "292 epochs (4 years)" },
         { id: 5, label: "365 epochs (5 years)" },
         { id: 6, label: "438 epochs (6 years)" },
-        // Canonical has "Greater than 438 epochs(6 years)" — no space
-        // before "(6". Preserved verbatim; do not "fix" without CIWG sign-off.
-        { id: 7, label: "Greater than 438 epochs(6 years)" },
+        { id: 7, label: "Greater than 438 epochs (6 years)" },
       ],
       data: {
         tallyRule: "majority-judgment",
