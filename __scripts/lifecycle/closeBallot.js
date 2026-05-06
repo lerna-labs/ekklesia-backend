@@ -9,7 +9,7 @@
 // Flags:
 //   --ballotId           required
 //   --closeToken         required (matches Hydra's CLOSE_TOKEN env)
-//   --backend            backend base URL (default http://localhost:3000)
+//   --backend            backend base URL (default http://localhost:$SERVER_PORT, or :3000)
 //   --jwtUserId          admin user id (uses ADMIN_USER_IDS[0] when unset)
 //   --maxBurnRounds      safety cap on /settle/burn iterations (default 20)
 
@@ -37,7 +37,7 @@ if (!flags.closeToken) {
   console.error("Missing --closeToken");
   process.exit(1);
 }
-const backend = flags.backend || "http://localhost:3000";
+const backend = flags.backend || `http://localhost:${process.env.SERVER_PORT || 3000}`;
 const maxBurnRounds = Number(flags.maxBurnRounds || 20);
 
 const secret = process.env.JWT_SECRET;

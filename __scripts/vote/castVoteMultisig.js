@@ -18,7 +18,7 @@
 //                         must have abstainAllowed: true.
 //   --voter               fixture name (default: multisig)
 //   --cosigners           how many keys to sign with (default = script.required)
-//   --backend             backend URL (default http://localhost:3000)
+//   --backend             backend URL (default http://localhost:$SERVER_PORT, or :3000)
 
 import process from "process";
 import { fileURLToPath } from "url";
@@ -99,7 +99,7 @@ const voteSelection = wantsAbstain
   ? { questionId: String(flags.questionId), abstain: true }
   : { questionId: String(flags.questionId), selection };
 
-const backend = flags.backend || "http://localhost:3000";
+const backend = flags.backend || `http://localhost:${process.env.SERVER_PORT || 3000}`;
 const secret = process.env.JWT_SECRET;
 if (!secret) { console.error("JWT_SECRET missing"); process.exit(1); }
 const voterJwt = jwt.sign(

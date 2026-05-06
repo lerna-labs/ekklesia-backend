@@ -16,7 +16,7 @@
 //   --seed       optional integer — deterministic PRNG seed for
 //                reproducible random selections (default: Math.random)
 //   --skeyPath   override fixture.keyPath for single-sig voters
-//   --backend    backend base URL (default http://localhost:3000)
+//   --backend    backend base URL (default http://localhost:$SERVER_PORT, or :3000)
 //   --multisigCount  number of cosigners to sign with (default: fixture.nativeScript.required)
 //   --abstainRate    float in [0,1]; per-question probability of abstain
 //                    (only applied when the proposal has requireAnswer !== true).
@@ -47,7 +47,7 @@ const voterName = flags.voter || "drep01";
 const fixture = VOTERS_BY_NAME[voterName];
 if (!fixture) { console.error(`Unknown voter fixture: ${voterName}`); process.exit(1); }
 const voterId = fixture.userId;
-const backend = flags.backend || "http://localhost:3000";
+const backend = flags.backend || `http://localhost:${process.env.SERVER_PORT || 3000}`;
 const abstainRate = Number(flags.abstainRate) || 0;
 
 // Tiny deterministic PRNG (mulberry32) for reproducible --seed runs; falls

@@ -4,9 +4,11 @@
 
 import { jest } from "@jest/globals";
 
-// Environment required by hydraRegistry.resolveByEndpoint — a default key
-// resolves for any host.
-process.env.HYDRA_DEFAULT_API_KEY = "test-api-key";
+// Environment required by hydraRegistry.resolveByEndpoint — the resolver
+// derives the env-var name from the full endpoint URL (non-alphanumerics
+// → "_", upper-cased). All tests below use "http://hydra.example", whose
+// slug is HYDRA_API_KEY_HTTP_HYDRA_EXAMPLE.
+process.env.HYDRA_API_KEY_HTTP_HYDRA_EXAMPLE = "test-api-key";
 
 const { forEndpoint, HydraClientError } = await import("../helper/hydraClient.js");
 

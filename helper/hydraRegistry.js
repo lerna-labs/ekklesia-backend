@@ -4,12 +4,22 @@
 // env so secrets stay out of Mongo.
 //
 // Env:
-//   HYDRA_DEFAULT_API_KEY     — used when no per-host override is set
 //   HYDRA_DEFAULT_ENDPOINT    — fallback endpoint for ballots without one
-//                               (admin /prepare uses this on first call)
-//   HYDRA_API_KEY_<HOST>      — optional per-host override (dots replaced
-//                               with underscores, upper-cased)
-//                               e.g. HYDRA_API_KEY_HYDRA_PREPROD_EXAMPLE_COM
+//                               stamped yet (admin /prepare uses this on
+//                               first call, before the ballot has been
+//                               associated with an instance).
+//   HYDRA_API_KEY_<SLUG>      — required per-endpoint API key. The Hydra
+//                               middleware issues a unique key per head;
+//                               the slug is the full endpoint URL with
+//                               every run of non-alphanumeric characters
+//                               replaced by a single "_" and the result
+//                               upper-cased.
+//                               e.g. http://10.0.0.5:7001
+//                                  → HYDRA_API_KEY_HTTP_10_0_0_5_7001
+//
+// There is intentionally no global default API key — every endpoint must
+// have its own variable. A missing var fails fast with NO_API_KEY rather
+// than silently authenticating against the wrong head.
 
 import { Ballot } from "../schema/Ballot.js";
 
@@ -21,19 +31,15 @@ export class HydraRegistryError extends Error {
   }
 }
 
-function envKeyForHost(hostname) {
-  return `HYDRA_API_KEY_${hostname.replace(/[^a-z0-9]/gi, "_").toUpperCase()}`;
+function envKeyForEndpoint(endpoint) {
+  // Collapse any run of non-alphanumerics to a single "_" so URLs with
+  // multi-char separators (e.g. "://") produce friendly env-var names.
+  return `HYDRA_API_KEY_${endpoint.replace(/[^a-z0-9]+/gi, "_").toUpperCase()}`;
 }
 
 function resolveApiKey(endpoint) {
-  if (!endpoint) return process.env.HYDRA_DEFAULT_API_KEY || null;
-  try {
-    const { hostname } = new URL(endpoint);
-    const perHost = process.env[envKeyForHost(hostname)];
-    return perHost || process.env.HYDRA_DEFAULT_API_KEY || null;
-  } catch {
-    return process.env.HYDRA_DEFAULT_API_KEY || null;
-  }
+  if (!endpoint) return null;
+  return process.env[envKeyForEndpoint(endpoint)] || null;
 }
 
 /**
@@ -55,7 +61,7 @@ export async function resolveByBallotId(ballotId) {
   const apiKey = resolveApiKey(endpoint);
   if (!apiKey) {
     throw new HydraRegistryError(
-      `No API key resolved for ${endpoint} (set HYDRA_DEFAULT_API_KEY or per-host override)`,
+      `No API key configured for endpoint ${endpoint} — set ${envKeyForEndpoint(endpoint)} in env`,
       { code: "NO_API_KEY" }
     );
   }
@@ -71,7 +77,7 @@ export function resolveByEndpoint(endpoint) {
   const apiKey = resolveApiKey(endpoint);
   if (!apiKey) {
     throw new HydraRegistryError(
-      `No API key resolved for ${endpoint}`,
+      `No API key configured for endpoint ${endpoint} — set ${envKeyForEndpoint(endpoint)} in env`,
       { code: "NO_API_KEY" }
     );
   }

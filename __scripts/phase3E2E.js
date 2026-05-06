@@ -40,7 +40,7 @@ const force = Boolean(flags.force);
 const skipVotes = Boolean(flags.skipVotes);
 const keepOpen = Boolean(flags.keepOpen);
 const closeToken = flags.closeToken || process.env.HYDRA_CLOSE_TOKEN || "shutitdown";
-const backend = flags.backend || "http://localhost:3000";
+const backend = flags.backend || `http://localhost:${process.env.SERVER_PORT || 3000}`;
 
 function run(script, extra = []) {
   const args = [join(repoRoot, script), ...extra, "--backend", backend];

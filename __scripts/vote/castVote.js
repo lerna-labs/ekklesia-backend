@@ -24,7 +24,7 @@
 //                  skips this question without expressing a preference.
 //                  Proposal must have abstainAllowed: true.
 //   --skeyPath     override the fixture's keyPath
-//   --backend      backend base URL (default http://localhost:3000)
+//   --backend      backend base URL (default http://localhost:$SERVER_PORT, or :3000)
 
 import process from "process";
 import { fileURLToPath } from "url";
@@ -58,7 +58,7 @@ if (fixture.kind === "script") {
   process.exit(1);
 }
 const voterId = fixture.userId;
-const backend = flags.backend || "http://localhost:3000";
+const backend = flags.backend || `http://localhost:${process.env.SERVER_PORT || 3000}`;
 
 // Parse --selection into Hydra v2 unified selection (number[] or
 // SelectionEntry[]). An entry is {option,value} when the token contains

@@ -137,12 +137,13 @@ try {
       `[scaffoldHydraBallot] Hydra /prepare failed: ${err.message}` +
         (err.data ? `\n  upstream: ${JSON.stringify(err.data)}` : "")
     );
+    const apiKeyEnvVar = `HYDRA_API_KEY_${endpoint.replace(/[^a-z0-9]+/gi, "_").toUpperCase()}`;
     console.error(
       "\n  /prepare is NOT idempotent — it mints fresh tokens and spends\n" +
         "  admin wallet UTxOs on every call. Before retrying, confirm that\n" +
         "  no tokens were actually minted:\n" +
-        `    curl -s -H "x-api-key: $HYDRA_DEFAULT_API_KEY" \\\n` +
-        `         "$HYDRA_DEFAULT_ENDPOINT/ballot" | jq '.'\n` +
+        `    curl -s -H "x-api-key: $${apiKeyEnvVar}" \\\n` +
+        `         "${endpoint}/ballot" | jq '.'\n` +
         "  Check the admin L1 address on a preprod explorer, and if needed\n" +
         "  call POST /sweep on the Hydra service to recover residue before\n" +
         "  re-running this scaffold."

@@ -47,309 +47,356 @@ export async function aggregateVotes() {
   }
 
   const ballotCache = new Map();
-  async function loadBallot(id) {
-    const key = id.toString();
-    if (!ballotCache.has(key)) {
-      ballotCache.set(key, await Ballot.findById(id).lean());
-    }
-    return ballotCache.get(key);
-  }
 
   for (const proposalId of proposalIds) {
-    console.log("Processing proposal:", proposalId.toString());
-
-    const proposal = await Proposal.findById(proposalId);
-    if (!proposal) {
-      console.error(`Proposal not found: ${proposalId}`);
-      continue;
-    }
-
-    const ballot = await loadBallot(proposal.ballotId);
-    if (!ballot) {
-      console.warn(`Ballot missing for proposal ${proposalId} — skipping`);
-      continue;
-    }
-
-    if (ballot.source === "hydra" && !ballot.provisionalResultsEnabled) {
-      console.log(
-        `Skipping Hydra proposal ${proposalId}: provisional results disabled`
-      );
-      continue;
-    }
-
-    const existing = await Result.findOne({ proposalId }).lean();
-    if (existing?.source === "final") {
-      console.log(`Skipping proposal ${proposalId}: already finalized`);
-      continue;
-    }
-
-    const recentVotesCount = await Vote.countDocuments({
-      proposalId,
-      submittedAt: { $gte: twelveMinutesAgo, $lt: now },
+    await tallyProposalProvisional(proposalId, {
+      ballotCache,
+      requireRecentActivity: { since: twelveMinutesAgo, before: now },
     });
-    if (recentVotesCount === 0) {
-      console.log(`Skipping proposal ${proposalId}: no recent votes`);
-      continue;
-    }
-
-    const voteAggregation = await Vote.aggregate([
-      { $match: { proposalId } },
-      {
-        $lookup: {
-          from: "usercaches",
-          let: { userId: "$userId", ballotId: proposal.ballotId },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$userId", "$$userId"] },
-                    { $eq: ["$ballotId", "$$ballotId"] },
-                  ],
-                },
-              },
-            },
-          ],
-          as: "voterData",
-        },
-      },
-      {
-        $addFields: {
-          votingPower: {
-            $ifNull: [{ $arrayElemAt: ["$voterData.votingPower", 0] }, 1],
-          },
-        },
-      },
-      {
-        $unwind: {
-          path: "$submittedVote",
-          preserveNullAndEmptyArrays: false,
-        },
-      },
-      {
-        $group: {
-          _id: "$submittedVote",
-          count: { $sum: 1 },
-          votingPower: { $sum: "$votingPower" },
-        },
-      },
-      { $project: { _id: 1, count: 1, votingPower: 1 } },
-    ]);
-
-    const resultsWithLabels = proposal.voteOptions.map((option) => {
-      const match = voteAggregation.find((r) => r._id == option.id);
-      return {
-        id: option.id,
-        label: option.label,
-        count: match ? match.count : 0,
-        votingPower: match ? match.votingPower : 0,
-      };
-    });
-
-    if (proposal.requireAnswer !== true) {
-      const abstain = voteAggregation.find((r) => String(r._id) === "abstain");
-      resultsWithLabels.push({
-        id: "abstain",
-        label: "Abstain",
-        count: abstain ? abstain.count : 0,
-        votingPower: abstain ? abstain.votingPower : 0,
-      });
-    }
-
-    const byGroupAggregation = await Vote.aggregate([
-      { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
-      {
-        $lookup: {
-          from: "usercaches",
-          let: { userId: "$userId", ballotId: proposal.ballotId },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$userId", "$$userId"] },
-                    { $eq: ["$ballotId", "$$ballotId"] },
-                  ],
-                },
-              },
-            },
-          ],
-          as: "voterData",
-        },
-      },
-      {
-        $addFields: {
-          votingPower: {
-            $ifNull: [{ $arrayElemAt: ["$voterData.votingPower", 0] }, 1],
-          },
-          voterGroup: {
-            $ifNull: [{ $arrayElemAt: ["$voterData.voterGroup", 0] }, "default"],
-          },
-        },
-      },
-      { $unwind: { path: "$submittedVote", preserveNullAndEmptyArrays: false } },
-      {
-        $group: {
-          _id: { voterGroup: "$voterGroup", voteValue: "$submittedVote" },
-          count: { $sum: 1 },
-          votingPower: { $sum: "$votingPower" },
-        },
-      },
-    ]);
-
-    const resultsByGroup = {};
-    for (const row of byGroupAggregation) {
-      const groupKey = row._id.voterGroup;
-      if (!resultsByGroup[groupKey]) {
-        resultsByGroup[groupKey] = { results: [], totalVotes: 0 };
-      }
-      const option = proposal.voteOptions.find((o) => o.id == row._id.voteValue);
-      const label = option
-        ? option.label
-        : row._id.voteValue === "abstain"
-        ? "Abstain"
-        : String(row._id.voteValue);
-      resultsByGroup[groupKey].results.push({
-        id: row._id.voteValue,
-        label,
-        count: row.count,
-        votingPower: row.votingPower,
-      });
-      resultsByGroup[groupKey].totalVotes += row.count;
-    }
-    if (proposal.requireAnswer !== true) {
-      for (const groupKey of Object.keys(resultsByGroup)) {
-        const hasAbstain = resultsByGroup[groupKey].results.some((r) => r.id === "abstain");
-        if (!hasAbstain) {
-          const abstainRow = byGroupAggregation.find(
-            (r) => r._id.voterGroup === groupKey && r._id.voteValue === "abstain"
-          );
-          resultsByGroup[groupKey].results.push({
-            id: "abstain",
-            label: "Abstain",
-            count: abstainRow ? abstainRow.count : 0,
-            votingPower: abstainRow ? abstainRow.votingPower : 0,
-          });
-          if (abstainRow) resultsByGroup[groupKey].totalVotes += abstainRow.count;
-        }
-      }
-    }
-
-    // Augment per-group results with scale/ranked sub-objects and
-    // ballot-level participation. Pulls the raw Vote rows once and
-    // joins against UserCache for voterGroup + votingPower; the
-    // existing aggregations above don't expose enough structure for
-    // the helpers (which want per-voter rows, not pre-grouped tallies).
-    if (
-      proposal.voteType === "scale" ||
-      proposal.voteType === "ranked" ||
-      proposal.voteType === "likert" ||
-      proposal.voteType === "weighted"
-    ) {
-      const rawVotes = await Vote.find({
-        proposalId,
-        submittedAt: { $ne: null },
-      })
-        .select("userId vote submittedVote")
-        .lean();
-      const voterIds = rawVotes.map((v) => v.userId);
-      const voterRows = await UserCache.find({
-        ballotId: ballot._id,
-        userId: { $in: voterIds },
-      })
-        .select("userId voterGroup votingPower")
-        .lean();
-      const votersByUserId = new Map(voterRows.map((v) => [v.userId, v]));
-      const votesForHelpers = rawVotes.map((v) => ({
-        userId: v.userId,
-        vote: Array.isArray(v.submittedVote) ? v.submittedVote : v.vote,
-      }));
-
-      if (proposal.voteType === "scale") {
-        const samplesByGroup = bucketScaleSamplesByGroup(votesForHelpers, votersByUserId);
-        for (const [group, samples] of samplesByGroup.entries()) {
-          if (!resultsByGroup[group]) continue;
-          resultsByGroup[group].scale = computeScaleStats({
-            proposal,
-            samples,
-            voteWeighted: !!ballot.voteWeighted,
-          });
-        }
-      } else if (proposal.voteType === "ranked") {
-        const distByGroup = computeRankedDistribution({
-          proposal,
-          votes: votesForHelpers,
-          votersByUserId,
-        });
-        for (const [group, dist] of distByGroup.entries()) {
-          if (!resultsByGroup[group]) continue;
-          resultsByGroup[group].ranked = dist;
-        }
-      } else if (proposal.voteType === "likert") {
-        const votesByGroup = bucketLikertVotesByGroup(votesForHelpers, votersByUserId);
-        for (const [group, groupVotes] of votesByGroup.entries()) {
-          if (!resultsByGroup[group]) continue;
-          resultsByGroup[group].likert = computeLikertStats({
-            proposal,
-            votes: groupVotes,
-            votersByUserId,
-            voteWeighted: !!ballot.voteWeighted,
-          });
-        }
-      } else if (proposal.voteType === "weighted") {
-        const votesByGroup = bucketWeightedVotesByGroup(votesForHelpers, votersByUserId);
-        for (const [group, groupVotes] of votesByGroup.entries()) {
-          if (!resultsByGroup[group]) continue;
-          resultsByGroup[group].weighted = computeWeightedStats({
-            proposal,
-            votes: groupVotes,
-            votersByUserId,
-            voteWeighted: !!ballot.voteWeighted,
-          });
-        }
-      }
-    }
-
-    const [ballotParticipation, proposalParticipation] = await Promise.all([
-      computeBallotParticipation(ballot._id),
-      computeProposalParticipation(proposalId, ballot._id),
-    ]);
-
-    // Reconcile per-group totalVotes with distinct voter counts. The
-    // $unwind + $sum:1 aggregation above counts vote *targets*, which
-    // over-counts ranked (N rank slots per voter) and budget (M
-    // selections per voter). proposalParticipation.voterCount is the
-    // canonical distinct-voter count, so use that everywhere
-    // totalVotes appears for consistency with the field's name.
-    for (const groupKey of Object.keys(resultsByGroup)) {
-      const distinct = proposalParticipation.voterCount?.[groupKey];
-      if (typeof distinct === "number") {
-        resultsByGroup[groupKey].totalVotes = distinct;
-      }
-    }
-
-    await Result.updateOne(
-      { proposalId },
-      {
-        $set: {
-          results: resultsWithLabels,
-          resultsByGroup,
-          ballotParticipation,
-          proposalParticipation,
-          source: "provisional",
-          ballotSource: ballot.source,
-          ballotId: ballot._id,
-        },
-      },
-      { upsert: true }
-    );
-
-    console.log(
-      `[provisional] results for proposal ${proposalId} (${ballot.source}) updated`
-    );
   }
 
   console.log(`Finished processing ${proposalIds.length} proposals`);
+}
+
+/**
+ * Compute and upsert a provisional Result for a single proposal.
+ *
+ * Extracted from aggregateVotes() so one-off retabulation tooling can reuse
+ * the same logic without the cron's 12-minute lookback. Behavior is identical
+ * to what the cron writes; the only knob is `requireRecentActivity`, which
+ * mirrors the cron's "skip if no recent votes" early-exit. Manual recompute
+ * paths leave it undefined to consider every proposal.
+ *
+ * Skips:
+ *   - missing proposal/ballot
+ *   - Hydra ballots with provisionalResultsEnabled === false (no Vote mirror)
+ *   - proposals with an existing Result.source === "final" or "certified"
+ *     (authoritative tallies anchored on-chain or to an authority snapshot)
+ *
+ * @param {ObjectId|string} proposalId
+ * @param {object} [opts]
+ * @param {Map}    [opts.ballotCache]            Reused across calls to avoid
+ *                                               re-fetching the same ballot.
+ * @param {{since: Date, before: Date}} [opts.requireRecentActivity]
+ *                                               When set, skip if no Vote rows
+ *                                               for this proposal fall in the
+ *                                               window. Used by the cron.
+ * @param {boolean} [opts.dryRun]                Compute the tally and log a
+ *                                               summary, but skip the
+ *                                               Result.updateOne write.
+ * @returns {Promise<"updated"|"skipped">}
+ */
+export async function tallyProposalProvisional(proposalId, opts = {}) {
+  const ballotCache = opts.ballotCache || new Map();
+  const recent = opts.requireRecentActivity;
+
+  console.log("Processing proposal:", proposalId.toString());
+
+  const proposal = await Proposal.findById(proposalId);
+  if (!proposal) {
+    console.error(`Proposal not found: ${proposalId}`);
+    return "skipped";
+  }
+
+  const ballotKey = proposal.ballotId.toString();
+  if (!ballotCache.has(ballotKey)) {
+    ballotCache.set(ballotKey, await Ballot.findById(proposal.ballotId).lean());
+  }
+  const ballot = ballotCache.get(ballotKey);
+  if (!ballot) {
+    console.warn(`Ballot missing for proposal ${proposalId} — skipping`);
+    return "skipped";
+  }
+
+  if (ballot.source === "hydra" && !ballot.provisionalResultsEnabled) {
+    console.log(
+      `Skipping Hydra proposal ${proposalId}: provisional results disabled`
+    );
+    return "skipped";
+  }
+
+  const existing = await Result.findOne({ proposalId }).lean();
+  if (existing?.source === "final" || existing?.source === "certified") {
+    console.log(
+      `Skipping proposal ${proposalId}: already ${existing.source}`
+    );
+    return "skipped";
+  }
+
+  if (recent) {
+    const recentVotesCount = await Vote.countDocuments({
+      proposalId,
+      submittedAt: { $gte: recent.since, $lt: recent.before },
+    });
+    if (recentVotesCount === 0) {
+      console.log(`Skipping proposal ${proposalId}: no recent votes`);
+      return "skipped";
+    }
+  }
+
+  const voteAggregation = await Vote.aggregate([
+    { $match: { proposalId } },
+    {
+      $lookup: {
+        from: "usercaches",
+        let: { userId: "$userId", ballotId: proposal.ballotId },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$userId", "$$userId"] },
+                  { $eq: ["$ballotId", "$$ballotId"] },
+                ],
+              },
+            },
+          },
+        ],
+        as: "voterData",
+      },
+    },
+    {
+      $addFields: {
+        votingPower: {
+          $ifNull: [{ $arrayElemAt: ["$voterData.votingPower", 0] }, 1],
+        },
+      },
+    },
+    {
+      $unwind: {
+        path: "$submittedVote",
+        preserveNullAndEmptyArrays: false,
+      },
+    },
+    {
+      $group: {
+        _id: "$submittedVote",
+        count: { $sum: 1 },
+        votingPower: { $sum: "$votingPower" },
+      },
+    },
+    { $project: { _id: 1, count: 1, votingPower: 1 } },
+  ]);
+
+  const resultsWithLabels = proposal.voteOptions.map((option) => {
+    const match = voteAggregation.find((r) => r._id == option.id);
+    return {
+      id: option.id,
+      label: option.label,
+      count: match ? match.count : 0,
+      votingPower: match ? match.votingPower : 0,
+    };
+  });
+
+  if (proposal.requireAnswer !== true) {
+    const abstain = voteAggregation.find((r) => String(r._id) === "abstain");
+    resultsWithLabels.push({
+      id: "abstain",
+      label: "Abstain",
+      count: abstain ? abstain.count : 0,
+      votingPower: abstain ? abstain.votingPower : 0,
+    });
+  }
+
+  const byGroupAggregation = await Vote.aggregate([
+    { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
+    {
+      $lookup: {
+        from: "usercaches",
+        let: { userId: "$userId", ballotId: proposal.ballotId },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$userId", "$$userId"] },
+                  { $eq: ["$ballotId", "$$ballotId"] },
+                ],
+              },
+            },
+          },
+        ],
+        as: "voterData",
+      },
+    },
+    {
+      $addFields: {
+        votingPower: {
+          $ifNull: [{ $arrayElemAt: ["$voterData.votingPower", 0] }, 1],
+        },
+        voterGroup: {
+          $ifNull: [{ $arrayElemAt: ["$voterData.voterGroup", 0] }, "default"],
+        },
+      },
+    },
+    { $unwind: { path: "$submittedVote", preserveNullAndEmptyArrays: false } },
+    {
+      $group: {
+        _id: { voterGroup: "$voterGroup", voteValue: "$submittedVote" },
+        count: { $sum: 1 },
+        votingPower: { $sum: "$votingPower" },
+      },
+    },
+  ]);
+
+  const resultsByGroup = {};
+  for (const row of byGroupAggregation) {
+    const groupKey = row._id.voterGroup;
+    if (!resultsByGroup[groupKey]) {
+      resultsByGroup[groupKey] = { results: [], totalVotes: 0 };
+    }
+    const option = proposal.voteOptions.find((o) => o.id == row._id.voteValue);
+    const label = option
+      ? option.label
+      : row._id.voteValue === "abstain"
+      ? "Abstain"
+      : String(row._id.voteValue);
+    resultsByGroup[groupKey].results.push({
+      id: row._id.voteValue,
+      label,
+      count: row.count,
+      votingPower: row.votingPower,
+    });
+    resultsByGroup[groupKey].totalVotes += row.count;
+  }
+  if (proposal.requireAnswer !== true) {
+    for (const groupKey of Object.keys(resultsByGroup)) {
+      const hasAbstain = resultsByGroup[groupKey].results.some((r) => r.id === "abstain");
+      if (!hasAbstain) {
+        const abstainRow = byGroupAggregation.find(
+          (r) => r._id.voterGroup === groupKey && r._id.voteValue === "abstain"
+        );
+        resultsByGroup[groupKey].results.push({
+          id: "abstain",
+          label: "Abstain",
+          count: abstainRow ? abstainRow.count : 0,
+          votingPower: abstainRow ? abstainRow.votingPower : 0,
+        });
+        if (abstainRow) resultsByGroup[groupKey].totalVotes += abstainRow.count;
+      }
+    }
+  }
+
+  // Augment per-group results with scale/ranked sub-objects and
+  // ballot-level participation. Pulls the raw Vote rows once and
+  // joins against UserCache for voterGroup + votingPower; the
+  // existing aggregations above don't expose enough structure for
+  // the helpers (which want per-voter rows, not pre-grouped tallies).
+  if (
+    proposal.voteType === "scale" ||
+    proposal.voteType === "ranked" ||
+    proposal.voteType === "likert" ||
+    proposal.voteType === "weighted"
+  ) {
+    const rawVotes = await Vote.find({
+      proposalId,
+      submittedAt: { $ne: null },
+    })
+      .select("userId vote submittedVote")
+      .lean();
+    const voterIds = rawVotes.map((v) => v.userId);
+    const voterRows = await UserCache.find({
+      ballotId: ballot._id,
+      userId: { $in: voterIds },
+    })
+      .select("userId voterGroup votingPower")
+      .lean();
+    const votersByUserId = new Map(voterRows.map((v) => [v.userId, v]));
+    const votesForHelpers = rawVotes.map((v) => ({
+      userId: v.userId,
+      vote: Array.isArray(v.submittedVote) ? v.submittedVote : v.vote,
+    }));
+
+    if (proposal.voteType === "scale") {
+      const samplesByGroup = bucketScaleSamplesByGroup(votesForHelpers, votersByUserId);
+      for (const [group, samples] of samplesByGroup.entries()) {
+        if (!resultsByGroup[group]) continue;
+        resultsByGroup[group].scale = computeScaleStats({
+          proposal,
+          samples,
+          voteWeighted: !!ballot.voteWeighted,
+        });
+      }
+    } else if (proposal.voteType === "ranked") {
+      const distByGroup = computeRankedDistribution({
+        proposal,
+        votes: votesForHelpers,
+        votersByUserId,
+      });
+      for (const [group, dist] of distByGroup.entries()) {
+        if (!resultsByGroup[group]) continue;
+        resultsByGroup[group].ranked = dist;
+      }
+    } else if (proposal.voteType === "likert") {
+      const votesByGroup = bucketLikertVotesByGroup(votesForHelpers, votersByUserId);
+      for (const [group, groupVotes] of votesByGroup.entries()) {
+        if (!resultsByGroup[group]) continue;
+        resultsByGroup[group].likert = computeLikertStats({
+          proposal,
+          votes: groupVotes,
+          votersByUserId,
+          voteWeighted: !!ballot.voteWeighted,
+        });
+      }
+    } else if (proposal.voteType === "weighted") {
+      const votesByGroup = bucketWeightedVotesByGroup(votesForHelpers, votersByUserId);
+      for (const [group, groupVotes] of votesByGroup.entries()) {
+        if (!resultsByGroup[group]) continue;
+        resultsByGroup[group].weighted = computeWeightedStats({
+          proposal,
+          votes: groupVotes,
+          votersByUserId,
+          voteWeighted: !!ballot.voteWeighted,
+        });
+      }
+    }
+  }
+
+  const [ballotParticipation, proposalParticipation] = await Promise.all([
+    computeBallotParticipation(ballot._id),
+    computeProposalParticipation(proposalId, ballot._id),
+  ]);
+
+  // Reconcile per-group totalVotes with distinct voter counts. The
+  // $unwind + $sum:1 aggregation above counts vote *targets*, which
+  // over-counts ranked (N rank slots per voter) and budget (M
+  // selections per voter). proposalParticipation.voterCount is the
+  // canonical distinct-voter count, so use that everywhere
+  // totalVotes appears for consistency with the field's name.
+  for (const groupKey of Object.keys(resultsByGroup)) {
+    const distinct = proposalParticipation.voterCount?.[groupKey];
+    if (typeof distinct === "number") {
+      resultsByGroup[groupKey].totalVotes = distinct;
+    }
+  }
+
+  if (opts.dryRun) {
+    console.log(
+      `[provisional dry-run] would update proposal ${proposalId} (${ballot.source}); ${resultsWithLabels.length} option rows, ${Object.keys(resultsByGroup).length} group(s)`
+    );
+    return "updated";
+  }
+
+  await Result.updateOne(
+    { proposalId },
+    {
+      $set: {
+        results: resultsWithLabels,
+        resultsByGroup,
+        ballotParticipation,
+        proposalParticipation,
+        source: "provisional",
+        ballotSource: ballot.source,
+        ballotId: ballot._id,
+      },
+    },
+    { upsert: true }
+  );
+
+  console.log(
+    `[provisional] results for proposal ${proposalId} (${ballot.source}) updated`
+  );
+  return "updated";
 }
 
 /**

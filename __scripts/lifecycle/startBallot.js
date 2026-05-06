@@ -10,7 +10,7 @@
 //   --ballotId                     skip scaffold; use this existing ballot
 //   --force                        pass through to scaffold (re-prepare)
 //   --skipWait                     don't poll Koios for prepare tx confirmation
-//   --backend                      backend base URL (default http://localhost:3000)
+//   --backend                      backend base URL (default http://localhost:$SERVER_PORT, or :3000)
 //   --jwtUserId                    admin user id to mint a JWT with (uses
 //                                  ADMIN_USER_IDS[0] when unset)
 
@@ -32,7 +32,7 @@ dotenv.config({ path: join(repoRoot, `.env.${envName}`) });
 loadLocalOverrides(repoRoot);
 
 const { flags } = parseArgs();
-const backend = flags.backend || "http://localhost:3000";
+const backend = flags.backend || `http://localhost:${process.env.SERVER_PORT || 3000}`;
 const flavor = flags.flavor || "dreps";
 const state = flags.state || "live";
 const index = flags.index || "1";

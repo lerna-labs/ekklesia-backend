@@ -3,7 +3,7 @@ const path = require("path");
 module.exports = {
   apps: [
     {
-      name: "mainnet-server",
+      name: "app.ekklesia.vote",
       script: path.resolve(__dirname, "server.js"),
       watch: true,
       ignore_watch: ["node_modules", "logs", "backup", "scripts", "public", "preprod-logs", "mainnet-logs"],
@@ -31,7 +31,7 @@ module.exports = {
     },
     // Backup job - runs in both environments
     {
-      name: "mainnet-backup",
+      name: "app.ekklesia.vote-backup",
       script: path.resolve(__dirname, "backup/backup.js"),
       watch: false,
       autorestart: false,
@@ -50,7 +50,7 @@ module.exports = {
     },
     // Ten-minute job
     {
-      name: "mainnet-cron10min",
+      name: "app.ekklesia.vote-cron10min",
       script: path.resolve(__dirname, "crons/10min.js"),
       watch: false,
       autorestart: false,
@@ -69,7 +69,7 @@ module.exports = {
     },
     // Hourly job
     {
-      name: "mainnet-cron1h",
+      name: "app.ekklesia.vote-cron1h",
       script: path.resolve(__dirname, "crons/1h.js"),
       watch: false,
       autorestart: false,

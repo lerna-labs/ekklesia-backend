@@ -33,9 +33,10 @@ node __scripts/scaffold/scaffoldLegacyBallot.js --flavor dreps --state live
 # Seed voters and pin them to one ballot
 node __scripts/scaffold/seedVoters.js --ballotId 65f0deadbeef0000feedfacef
 
-# Full mixed demo against a preprod Hydra
+# Full mixed demo against a preprod Hydra. The API-key env-var name is
+# derived from the endpoint URL — non-alphanumerics → "_", upper-cased.
 HYDRA_DEFAULT_ENDPOINT=https://hydra.preprod.example \
-HYDRA_DEFAULT_API_KEY=… \
+HYDRA_API_KEY_HTTPS_HYDRA_PREPROD_EXAMPLE=… \
 node __scripts/scaffold/scaffoldMixedDemoSet.js
 
 # Same demo, Mongo-only (no Hydra)
