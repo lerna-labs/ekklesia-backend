@@ -68,9 +68,13 @@ export function verifyToken(req) {
     };
   }
 
-  // Verify token
+  // Verify token. Pin the algorithm explicitly — without this option
+  // `jsonwebtoken` would accept whatever algorithm the token's header
+  // claims, which exposes us to algorithm-confusion attacks if the
+  // library's defaults ever rotate (or if an attacker forges a token
+  // with `alg: "none"`).
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
 
     // Make sure the token contains the required fields
     if (!decoded || !decoded.userId) {

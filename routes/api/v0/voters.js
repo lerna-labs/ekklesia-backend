@@ -10,6 +10,7 @@ import { UserCache } from "../../../schema/UserCache.js";
 import { validateAddress } from "../../../helper/validateAddress.js";
 import { cacheControl } from "../../../helper/cacheControl.js";
 import { projectVoteEntries } from "../../../helper/voterDetailMapper.js";
+import { aggregationLimiter } from "../../../helper/rateLimiters.js";
 
 // helper
 const API_URL = process.env.API_URL;
@@ -38,7 +39,7 @@ const API_URL = process.env.API_URL;
  * @returns {Object} 400 - Error if query parameters are invalid (page, limit, sort, or direction)
  * @returns {Object} 500 - Server error while fetching voter list
  */
-router.get("/", cacheControl(300), async (req, res) => {
+router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
   const {
     page = 1,
     limit = 25, // Changed default from 10 to 25 to match frontend

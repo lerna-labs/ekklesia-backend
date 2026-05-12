@@ -412,13 +412,18 @@ paths:
                 votes:
                   type: array
                   items: { $ref: "#/components/schemas/VoteSelection" }
-                responderRole: { type: string }
                 nativeScript:
                   description: For multisig DReps — the native-script definition.
                   type: object
                 calidusDeclaration:
                   description: For CIP-151 pool hot-key votes.
                   type: object
+                # responderRole is no longer accepted on the body. The
+                # backend derives it from the authenticated voter's
+                # bech32 HRP (drep | pool | calidus | stake → drep |
+                # pool | pool | stake) so the prelim hash returned here
+                # matches the on-chain hash Hydra commits at /vote /
+                # /settle. Any client-supplied value is ignored.
       responses:
         "200":
           description: Existing active package returned or updated in place
@@ -842,6 +847,41 @@ paths:
         "400":
           description: Unknown facet key, unsortable sort target, or bad filter value
         "404": { description: Ballot not found }
+
+  /admin/me:
+    get:
+      tags: [Admin]
+      summary: Probe admin status for the authenticated session
+      description: |
+        Replaces the `isAdmin` boolean that used to ride on every
+        `GET /api/v0/session` response. Frontends call this endpoint only
+        on routes that need to gate admin UI. Returns 200 when the
+        authenticated voter is on the admin allowlist (or carries a
+        `role: "admin"` JWT claim); otherwise returns 404 so the
+        endpoint does not leak who is and isn't an admin.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Authenticated voter is an admin
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: { type: string, example: success }
+                  data:
+                    type: object
+                    required: [userId, isAdmin]
+                    properties:
+                      userId: { type: string }
+                      isAdmin: { type: boolean, enum: [true] }
+        "401":
+          description: No authenticated session (no/invalid JWT cookie or bearer)
+        "404":
+          description: Authenticated voter is not an admin
 
   /admin/ballots/import:
     post:

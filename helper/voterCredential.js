@@ -14,3 +14,25 @@ export function credentialHrp(bech32Id) {
   if (lower.startsWith("calidus")) return "calidus";
   return "unknown";
 }
+
+// Canonical evidence `responderRole` derived from the credential. Hydra
+// (post commit `2dc0650`) ignores any client-supplied responderRole and
+// re-derives this server-side before evidence hashing, so the backend
+// MUST match Hydra's mapping or the prelim hash returned at /draft will
+// diverge from the on-chain hash at settlement.
+//
+// Mapping per `.claude/trds/HYDRA_ROLE_SPACE_V1.md`:
+//   drep        → "drep"
+//   pool        → "pool"
+//   calidus     → "pool"  (calidus hot key represents the SPO)
+//   stake       → "stake"
+//   stake_test  → "stake" (testnet prefix, same role)
+//   anything else → null  (route layer should reject)
+export function responderRoleFor(bech32Id) {
+  const hrp = credentialHrp(bech32Id);
+  if (hrp === "drep") return "drep";
+  if (hrp === "pool") return "pool";
+  if (hrp === "calidus") return "pool";
+  if (hrp === "stake") return "stake";
+  return null;
+}

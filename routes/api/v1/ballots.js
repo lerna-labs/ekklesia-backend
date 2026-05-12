@@ -9,6 +9,7 @@ import validator from "validator";
 import mongoose from "mongoose";
 import crypto from "node:crypto";
 import blake from "blakejs";
+import { escapeRegex } from "../../../helper/escapeRegex.js";
 import { listUnified, getUnified } from "../../../helper/ballotAdapters/index.js";
 import { Ballot } from "../../../schema/Ballot.js";
 import { Proposal } from "../../../schema/Proposal.js";
@@ -71,8 +72,11 @@ router.get("/", async (req, res) => {
         message: "Search contains invalid characters",
       });
     }
-    const escaped = validator.escape(search);
-    filter.$or = [{ title: { $regex: new RegExp(escaped, "i") } }];
+    // Pass the regex as a string with $options:"i" — `new RegExp(...)`
+    // throws SyntaxError on unbalanced metachars (`(`, `[`, ...) and
+    // reflects the failing pattern in the 500. escapeRegex neutralizes
+    // every metachar so $regex receives a literal substring match.
+    filter.$or = [{ title: { $regex: escapeRegex(search), $options: "i" } }];
     if (validator.isMongoId(search)) {
       filter.$or.push({ _id: new mongoose.Types.ObjectId(search) });
     }
@@ -85,7 +89,7 @@ router.get("/", async (req, res) => {
         message: "Invalid voterType format",
       });
     }
-    filter.voterType = { $regex: new RegExp(`^${voterType}$`, "i") };
+    filter.voterType = { $regex: `^${escapeRegex(voterType)}$`, $options: "i" };
   }
 
   if (status) {

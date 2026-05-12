@@ -14,6 +14,8 @@ import mongoose from "mongoose";
 import { getBallot } from "../../../helper/middleWare.js";
 import { checkVotingPower } from "../../../helper/voterValidation.js";
 import { calculateSimpleMedian, calculateWeightedMedian } from "../../../helper/calculateMedians.js";
+import { escapeRegex } from "../../../helper/escapeRegex.js";
+import { aggregationLimiter } from "../../../helper/rateLimiters.js";
 
 /**
  * @route GET /api/v0/ballots
@@ -64,11 +66,13 @@ router.get("/", async (req, res) => {
       });
     }
 
-    // Create search criteria that matches either title or ID
-    const searchQuery = validator.escape(search);
-
-    // Set up the OR query
-    matchStage.$or = [{ title: { $regex: new RegExp(searchQuery, "i") } }];
+    // Create search criteria that matches either title or ID.
+    // Pass the pattern as a string with $options: "i" — never feed
+    // user-supplied bytes into `new RegExp(...)`, which throws a
+    // SyntaxError on unbalanced metacharacters (`(`, `[`, etc.) and
+    // reflects the failing pattern in the 500 message.
+    const searchPattern = escapeRegex(search);
+    matchStage.$or = [{ title: { $regex: searchPattern, $options: "i" } }];
 
     // Check if search might be a valid MongoDB ObjectID (24 hex characters)
     if (validator.isMongoId(search)) {
@@ -130,7 +134,7 @@ router.get("/", async (req, res) => {
         message: "Invalid voterType format",
       });
     }
-    matchStage.voterType = { $regex: new RegExp(`^${voterType}$`, "i") };
+    matchStage.voterType = { $regex: `^${escapeRegex(voterType)}$`, $options: "i" };
   }
 
   try {
@@ -353,7 +357,7 @@ router.get("/:ballotId", getBallot, async (req, res) => {
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  * @returns {Object} 500 - Server error
  */
-router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
+router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, res) => {
   const ballot = req.ballot.toObject();
   const voterToken = verifyToken(req);
   const userId = voterToken.userId || false;
@@ -441,11 +445,10 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       });
     }
 
-    // Sanitize search input
-    const searchQuery = validator.escape(search);
-
-    // Set up the OR query to match title or ID
-    matchStage.$or = [{ title: { $regex: new RegExp(searchQuery, "i") } }];
+    // Escape regex metacharacters and pass the pattern as a string
+    // so `new RegExp(...)` is never called with user-supplied bytes.
+    const searchPattern = escapeRegex(search);
+    matchStage.$or = [{ title: { $regex: searchPattern, $options: "i" } }];
 
     // Check if search might be a valid MongoDB ObjectID
     if (validator.isMongoId(search)) {

@@ -78,3 +78,52 @@ export const publicApiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Per-IP (or per-user, when authenticated) bucket for anonymous GET
+// traffic against the public read surface. Defaults to 120/min — high
+// enough that a busy SPA tab is fine, low enough that one shell loop
+// can't saturate the connection pool. Authenticated voters bucket by
+// userId so a NAT'd corp gateway doesn't spread the limit across
+// multiple users.
+export const publicGetLimiter = rateLimit({
+  windowMs: Number(process.env.PUBLIC_GET_WINDOW_MS) || 60 * 1000,
+  max: Number(process.env.PUBLIC_GET_MAX) || 120,
+  keyGenerator: (req, res) => req.auth?.userId || ipKeyGenerator(req, res),
+  message: {
+    status: "error",
+    message: "Rate limit exceeded",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Tighter bucket for endpoints that run a multi-stage Mongo aggregation
+// or a regex scan — these cost more per request, so a smaller window
+// keeps a single attacker IP from saturating the DB connection pool.
+export const aggregationLimiter = rateLimit({
+  windowMs: Number(process.env.AGGREGATION_WINDOW_MS) || 60 * 1000,
+  max: Number(process.env.AGGREGATION_MAX) || 30,
+  keyGenerator: (req, res) => req.auth?.userId || ipKeyGenerator(req, res),
+  message: {
+    status: "error",
+    message: "Rate limit exceeded (aggregation)",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Read-side limiter for GET /api/v0/session. Per-IP because the
+// session GET is the canonical "am I logged in?" probe and an attacker
+// with a forged JWT could otherwise enumerate every known userId to
+// learn login activity. 60/min keeps the SPA quiet and refuses bulk
+// enumeration.
+export const getSessionLimiter = rateLimit({
+  windowMs: Number(process.env.GET_SESSION_WINDOW_MS) || 60 * 1000,
+  max: Number(process.env.GET_SESSION_MAX) || 60,
+  message: {
+    status: "error",
+    message: "Too many session reads. Slow down.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});

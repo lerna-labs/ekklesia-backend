@@ -1,10 +1,13 @@
 // Broker-side vote endpoints for Hydra ballots (v1).
 //
 //   POST /api/v1/votes/:ballotId/draft
-//         body: { votes: VoteSelection[], responderRole?, nativeScript?,
-//                 calidusDeclaration? }
+//         body: { votes: VoteSelection[], nativeScript?, calidusDeclaration? }
 //         Reserves a nonce, stores a VotePackage in "draft"/"awaiting-
 //         signatures", returns the canonical signing payload.
+//         `responderRole` is derived server-side from the authenticated
+//         credential's HRP — client-supplied values on the body are
+//         ignored. Hydra likewise re-derives the role from credential
+//         HRP at settlement, so the two layers stay in agreement.
 //
 //   POST /api/v1/votes/:ballotId/signature
 //         body: { packageId, witness: { coseSign1Hex, coseKeyHex, ...? } }
@@ -49,7 +52,7 @@ import { User } from "../../../schema/User.js";
 import blake from "blakejs";
 import * as nonceManager from "../../../helper/nonceManager.js";
 import { forBallot, HydraClientError } from "../../../helper/hydraClient.js";
-import { credentialHrp } from "../../../helper/voterCredential.js";
+import { credentialHrp, responderRoleFor } from "../../../helper/voterCredential.js";
 import { voteWriteLimiter } from "../../../helper/rateLimiters.js";
 import { checkVotingWindow } from "../../../helper/votingWindow.js";
 
@@ -186,10 +189,25 @@ router.post("/:ballotId/draft", async (req, res) => {
   if (!ballot) return;
   if (!requireVotingOpen(res, ballot)) return;
 
-  const { votes, responderRole, calidusDeclaration } = req.body || {};
+  const { votes, calidusDeclaration } = req.body || {};
   let nativeScript = req.body?.nativeScript || null;
   if (!Array.isArray(votes) || votes.length === 0) {
     return res.status(400).json({ status: "error", code: ERROR_CODES.BAD_INPUT, message: "votes[] required" });
+  }
+
+  // Derive responderRole from the authenticated voter's bech32 prefix,
+  // not from the request body. A client supplying `responderRole: "CC"`
+  // (or any other string) used to land verbatim in the local evidence
+  // bundle and prelim hash, causing the prelim hash to diverge from
+  // Hydra's settlement-time hash — Hydra now re-derives the role from
+  // credential HRP. Mirror that mapping here so the two never drift.
+  const derivedResponderRole = responderRoleFor(session.userId);
+  if (!derivedResponderRole) {
+    return res.status(400).json({
+      status: "error",
+      code: ERROR_CODES.BAD_INPUT,
+      message: "Voter credential HRP is not a supported role",
+    });
   }
 
   // Shape + per-method constraint validation (friendly pre-flight so
@@ -286,7 +304,7 @@ router.post("/:ballotId/draft", async (req, res) => {
         voterId: session.userId,
         credentialHrp: credentialHrp(session.userId),
         votes,
-        responderRole,
+        responderRole: derivedResponderRole,
         reuseNonce: existing.nonce,
       });
 
@@ -307,7 +325,7 @@ router.post("/:ballotId/draft", async (req, res) => {
         voterId: session.userId,
         credentialHrp: credentialHrp(session.userId),
         votes,
-        responderRole,
+        responderRole: derivedResponderRole,
       });
       pkg = await VotePackage.create({
         ballotId: ballot._id,

@@ -7,10 +7,15 @@
 import { Router } from "express";
 import { cacheControl } from "../../../helper/cacheControl.js";
 import { readBallotResults, readProposalResult } from "../../../helper/resultReaders.js";
+import { aggregationLimiter } from "../../../helper/rateLimiters.js";
 
 const router = Router();
 
 router.use(cacheControl(30)); // 30s — fine-grained enough for polling, short enough that a /finalize write lands quickly
+// Results reads run a multi-stage Mongo aggregation per request and the
+// 30s cache only helps repeat callers. Tighter bucket so a single attacker
+// IP can't keep the aggregation pipeline busy.
+router.use(aggregationLimiter);
 
 router.get("/ballot/:ballotId", async (req, res) => {
   const result = await readBallotResults(req.params.ballotId);

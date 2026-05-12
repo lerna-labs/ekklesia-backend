@@ -6,7 +6,6 @@ const router = Router();
 import { Session } from "../../../schema/Session.js";
 import { User } from "../../../schema/User.js";
 import { VotePackage } from "../../../schema/VotePackage.js";
-import { userIsAdmin } from "../../../helper/adminAuth.js";
 
 // helper
 import jwt from "jsonwebtoken";
@@ -28,6 +27,7 @@ import { hydraVoterPing } from "../../../helper/hydra.js";
 import {
   nonceRequestLimiter,
   sessionVerificationLimiter,
+  getSessionLimiter,
 } from "../../../helper/rateLimiters.js";
 
 dayjs.extend(duration);
@@ -36,10 +36,18 @@ dayjs.extend(duration);
 import { isAuthenticated } from "../../../helper/middleWare.js";
 import { validateSessionRequest } from "../../../helper/middleWare.js";
 
-// JWT config at module load
+// JWT config at module load. Entropy-floor the secret so a weak or
+// empty value can't ship to production unnoticed; HS256 with a short
+// shared secret is brute-forceable in minutes.
 if (!process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET must be configured");
 }
+if (process.env.JWT_SECRET.length < 32) {
+  throw new Error(
+    "JWT_SECRET must be at least 32 characters (use `openssl rand -hex 32`)"
+  );
+}
+const JWT_ALGORITHM = "HS256";
 let JWT_MAX_AGE = process.env.JWT_MAX_AGE || "1d";
 if (!JWT_MAX_AGE.match(/^\d+[smhd]$/) && !JWT_MAX_AGE.match(/^\d+$/)) {
   console.warn(`Invalid JWT_MAX_AGE format: ${JWT_MAX_AGE}, defaulting to 1d`);
@@ -126,9 +134,11 @@ function validateScriptAddress(scriptAddress) {
 /**
  * @route GET /api/v0/session
  * @description Validate JWT and return userId plus User name/lastLogin when present.
+ *   Admin status is NOT returned here — frontends gate admin UI on
+ *   GET /api/v1/admin/me instead.
  * @access Private (requires authentication)
  */
-router.get("/", isAuthenticated, async (req, res) => {
+router.get("/", getSessionLimiter, isAuthenticated, async (req, res) => {
   const { userId } = req;
   let name;
   let lastLogin;
@@ -173,9 +183,12 @@ router.get("/", isAuthenticated, async (req, res) => {
     console.error("Error fetching pending packages for session GET:", err);
   }
 
+  // `isAdmin` is deliberately omitted from this payload. Admin gating
+  // lives on GET /api/v1/admin/me (200 for admins, 404 for everyone
+  // else), so a stolen voter JWT can't be used to enumerate which
+  // userIds carry admin rights.
   const payload = {
     userId,
-    isAdmin: userIsAdmin({ userId }),
   };
   if (name !== undefined) payload.name = name;
   if (lastLogin !== undefined) payload.lastLogin = lastLogin;
@@ -333,7 +346,7 @@ router.put("/", sessionVerificationLimiter, validateSessionRequest, async (req, 
       token = jwt.sign(
         { userId: validatedScriptAddress, signType, multiSig: true },
         process.env.JWT_SECRET,
-        { expiresIn: JWT_MAX_AGE }
+        { expiresIn: JWT_MAX_AGE, algorithm: JWT_ALGORITHM }
       );
     } catch (error) {
       console.error("Error creating JWT token:", error);
@@ -458,7 +471,7 @@ router.put("/", sessionVerificationLimiter, validateSessionRequest, async (req, 
     token = jwt.sign(
       { userId: addressBech32, signType },
       process.env.JWT_SECRET,
-      { expiresIn: JWT_MAX_AGE }
+      { expiresIn: JWT_MAX_AGE, algorithm: JWT_ALGORITHM }
     );
   } catch (error) {
     console.error("Error creating JWT token:", error);

@@ -1,4 +1,5 @@
 import express from "express";
+import helmet from "helmet";
 import { loadRoutes } from "./helper/loadRoutes.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -13,6 +14,8 @@ import {
 } from "./helper/dbManager.js";
 import cookieParser from "cookie-parser";
 import { v0Freeze } from "./helper/v0Freeze.js";
+import { normalizeQuery } from "./helper/normalizeQuery.js";
+import { publicGetLimiter } from "./helper/rateLimiters.js";
 import { createOgMetaMiddleware } from "./helper/og/ogMeta.js";
 import { ogBallotImage, ogProposalImage } from "./helper/og/ogImage.js";
 
@@ -35,8 +38,36 @@ try {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// JWT secret entropy floor. HS256 with a sub-256-bit secret is brute-
+// forceable in minutes; refuse to start so a weak or empty value cannot
+// ship to production unnoticed. Generate with `openssl rand -hex 32`.
+if (!process.env.JWT_SECRET) {
+  console.error("JWT_SECRET must be configured");
+  process.exit(1);
+}
+if (process.env.JWT_SECRET.length < 32) {
+  console.error(
+    "JWT_SECRET must be at least 32 characters (use `openssl rand -hex 32`)"
+  );
+  process.exit(1);
+}
+
 const app = express();
 const PORT = process.env.SERVER_PORT || 3000;
+
+// Security headers + server-stack disclosure. Helmet defaults cover
+// X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS, and
+// removal of X-Powered-By. CSP is left disabled here because the SPA
+// build emits inline scripts; enable it after building a per-build
+// nonce/hash policy or running Content-Security-Policy-Report-Only.
+app.disable("x-powered-by");
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 
 // Middleware
 // Extended query parser so `?filter[key]=value` nests into
@@ -53,6 +84,17 @@ app.use(
   })
 );
 app.use("/api", checkDatabaseConnectionMW); // Check database connection for all API routes
+// Per-IP rate cap on the entire /api surface — anonymous reads are
+// otherwise free, and the aggregation-heavy routes (proposals listing,
+// results, voters) can saturate the connection pool from one shell
+// loop. Mounted before normalizeQuery so a stream of malformed-query
+// 400s is also throttled.
+app.use("/api", publicGetLimiter);
+// Reject array/object-shaped values on known scalar query keys. Without
+// this, an extended-parser request like `?status[$ne]=null` lands in
+// route handlers as an object and crashes on `.toLowerCase()` (or
+// worse — leaks an unbounded query into Mongo). See helper/normalizeQuery.js.
+app.use("/api", normalizeQuery);
 app.use("/api/v0", v0Freeze); // Return 410 for legacy-ballot write endpoints; reads pass through
 
 // Start server

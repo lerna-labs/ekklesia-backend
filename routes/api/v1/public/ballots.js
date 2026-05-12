@@ -9,6 +9,7 @@ import mongoose from "mongoose";
 import { listUnified, getUnified } from "../../../../helper/ballotAdapters/index.js";
 import { requireApiKey, requireScope } from "../../../../helper/apiKeyAuth.js";
 import { publicApiLimiter } from "../../../../helper/rateLimiters.js";
+import { escapeRegex } from "../../../../helper/escapeRegex.js";
 
 const router = Router();
 
@@ -27,8 +28,9 @@ router.get("/", async (req, res) => {
     if (["$", "{", "}"].some((c) => search.includes(c))) {
       return res.status(400).json({ status: "error", message: "search contains invalid characters" });
     }
-    const escaped = validator.escape(search);
-    filter.$or = [{ title: { $regex: new RegExp(escaped, "i") } }];
+    // String-form $regex with escaped metachars; avoids the
+    // `new RegExp(user_input)` SyntaxError reflection path.
+    filter.$or = [{ title: { $regex: escapeRegex(search), $options: "i" } }];
     if (validator.isMongoId(search)) {
       filter.$or.push({ _id: new mongoose.Types.ObjectId(search) });
     }
@@ -37,7 +39,7 @@ router.get("/", async (req, res) => {
     if (!validator.isAlphanumeric(voterType)) {
       return res.status(400).json({ status: "error", message: "invalid voterType" });
     }
-    filter.voterType = { $regex: new RegExp(`^${voterType}$`, "i") };
+    filter.voterType = { $regex: `^${escapeRegex(voterType)}$`, $options: "i" };
   }
   if (status) {
     if (!["live", "closed", "upcoming"].includes(status.toLowerCase())) {

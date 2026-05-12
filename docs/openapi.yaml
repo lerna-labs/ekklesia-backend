@@ -1115,29 +1115,30 @@ paths:
       tags:
         - Session
       summary: Validate session
-      description: Validate JWT token and return voter ID plus user profile (name, lastLogin), admin flag, native-script context, and active vote-package summary when available
+      description: |
+        Validate JWT token and return voter ID plus user profile (name,
+        lastLogin), native-script context, and active vote-package summary
+        when available. Admin status is NOT returned here — clients that
+        need to gate admin UI should call `GET /api/v1/admin/me` instead.
+        Rate-limited per-IP (default 60 requests/minute).
       operationId: getSession
       security:
         - cookieAuth: []
         - bearerAuth: []
       responses:
         '200':
-          description: Voter ID, optional user profile, admin flag, native-script context, and pending vote packages
+          description: Voter ID, optional user profile, native-script context, and pending vote packages
           content:
             application/json:
               schema:
                 type: object
                 required:
                   - userId
-                  - isAdmin
                   - nativeScript
                   - pendingPackages
                 properties:
                   userId:
                     type: string
-                  isAdmin:
-                    type: boolean
-                    description: True when the session voter is on the admin allowlist.
                   name:
                     type: string
                     nullable: true
