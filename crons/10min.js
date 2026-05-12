@@ -29,6 +29,8 @@ import {
 } from "../helper/dbManager.js";
 import { Ballot } from "../schema/Ballot.js";
 import { aggregateVotes } from "./10minAggregateVotes.js";
+import { snapshotVotingPower } from "./15minVotingPower.js";
+import { reconcileVoteMirrors } from "./reconcileVoteMirrors.js";
 
 // connect db
 if (!isDatabaseConnected()) {
@@ -44,9 +46,11 @@ const ballotsStart = await Ballot.find({
   startupAt: null,
 });
 
+const { loadValidationScript } = await import("../helper/loadValidationScript.js");
+
 // process each ballot
 for (const ballot of ballotsStart) {
-  const { startupBallot } = await import("../config/" + ballot.startupScript);
+  const { startupBallot } = await loadValidationScript(ballot.startupScript);
   // run startup script
   const startupResult = await startupBallot(ballot._id);
   // update ballot status to live
@@ -57,8 +61,26 @@ for (const ballot of ballotsStart) {
   }
   console.log("STARTUP: Ballot", ballot._id, "completed");
 }
+// reconcile any hydra-confirmed VotePackages whose Vote-collection
+// mirror was interrupted (e.g. process restart between pkg.save() and
+// the inline syncVoteRecords call in submitPackage). Must run before
+// aggregateVotes so backfilled rows are visible to the discovery query.
+try {
+  await reconcileVoteMirrors();
+} catch (err) {
+  console.error("reconcileVoteMirrors failed:", err);
+}
+
 // aggregate votes
 await aggregateVotes();
+
+// refresh per-voter voting-power snapshots for snapshot-mode ballots.
+// Skipped for ballots whose source has transitioned to "uploaded".
+try {
+  await snapshotVotingPower();
+} catch (err) {
+  console.error("snapshotVotingPower failed:", err);
+}
 
 // ballot rollup 
 // !! this is not live yet and needs proper testing and rewriting - if automated rollups are even a thing
@@ -75,7 +97,7 @@ const ballotsClosed = await Ballot.find({
 for (const ballot of ballotsClosed) {
   console.log("ROLLUP: Ballot", ballot.name);
   // import finalization script
-  const { rollupBallot } = await import("../config/" + ballot.rollupScript);
+  const { rollupBallot } = await loadValidationScript(ballot.rollupScript);
   // run finalization script
   await rollupBallot(ballot._id);
 }

@@ -796,7 +796,7 @@ List live FAQs with optional search and filters.
 
 ### Proposal
 
-`_id`, `ballotId`, `ipfsHash`, `title`, `description`, `categories`, `tags`, `data`, `voteType` (default \| budget \| ranked \| scale \| preference), `voteIncrement`, `voterBudget`, `abstainAllowed`, `voteOptions` (array of `{ id, cost?, label }`), `commentCount`, `voteCount`, `votingPower`, `result`, `createdAt`, `updatedAt`.
+`_id`, `ballotId`, `ipfsHash`, `title`, `description`, `categories`, `tags`, `data`, `voteType` (choice \| multi-choice \| budget \| weighted \| ranked \| scale \| likert), `voteIncrement`, `voterBudget`, `minSelections`, `maxSelections`, `requireAnswer`, `voteOptions` (array of `{ id, label, cost?, description?, referenceUrl?, imageUrl?, metadata? }`), `commentCount`, `voteCount`, `votingPower`, `result`, `createdAt`, `updatedAt`.
 
 ### Vote
 

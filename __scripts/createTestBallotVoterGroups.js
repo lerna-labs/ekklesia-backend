@@ -89,13 +89,14 @@ async function main() {
     await ballot.save();
     console.log("Ballot created:", ballot._id.toString(), ballot.title);
 
-    // 2. Create one proposal (Yes / No; abstainAllowed so voters may submit "abstain" without it being in voteOptions)
+    // 2. Create one proposal (Yes / No). Abstain is allowed by default —
+    // voters submit { abstain: true } at the wire boundary without it
+    // being listed in voteOptions.
     const proposal = new Proposal({
         ballotId: ballot._id,
         title: "Test proposal: single choice",
         description: "One proposal for the test ballot.",
-        voteType: "default",
-        abstainAllowed: true,
+        voteType: "choice",
         voterBudget: 1,
         voteOptions: [
             { id: OPTION_YES, cost: 1, label: "Yes" },
@@ -156,7 +157,7 @@ async function main() {
     // 6. Log results as the frontend should display them
     const resultDoc = await Result.findOne({ proposalId: proposal._id }).lean();
     if (resultDoc?.results) {
-        // Dedupe by option id (cron can push abstain separately when abstainAllowed)
+        // Dedupe by option id (cron may push an abstain row separately)
         const byOption = new Map();
         for (const r of resultDoc.results) {
             const key = String(r.id);

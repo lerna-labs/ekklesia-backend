@@ -2,11 +2,32 @@ openapi: 3.0.3
 info:
   title: Ekklesia Voting Backend API
   description: |
-    API for the Ekklesia voting system backend. This API provides endpoints for managing ballots, proposals, votes, comments, and voter authentication.
-    
+    API for the Ekklesia voting system backend.
+
+    ## Versioning
+
+    - **`/api/v0`** — legacy, read-only archival surface. Writes to
+      ballot/proposal/vote/voter/transaction/dashboard resources return
+      HTTP 410 Gone. Session, comments, and FAQs remain live here.
+    - **`/api/v1`** — Hydra-backed live surface (broker endpoints, admin
+      lifecycle, unified ballot listing, public integrator endpoints).
+      See `openapi.v1.yaml` for the full v1 spec.
+
+    ## Unified listing
+
+    `GET /api/v1/ballots` aggregates across sources (legacy, hydra, future)
+    via pluggable adapters. Each row includes a `source` discriminator so
+    clients can render conditionally.
+
     ## Authentication
-    Most endpoints require authentication via JWT token. The token is obtained through the session endpoints and is sent via HTTP-only cookie or Authorization header.
-    
+
+    - Voter sessions: JWT via HTTP-only cookie or Authorization header.
+    - Admin (`/api/v1/admin/*`): same JWT, plus `role === "admin"` claim
+      or userId listed in `ADMIN_USER_IDS` env.
+    - Public (`/api/v1/public/*`): API key via `Authorization: Bearer <key>`
+      or `x-api-key`. Keys are scoped (`read:ballots`, `read:results`) and
+      rate-limited per key.
+
     ## Session (unified)
     A single set of session endpoints handles both standard and multisig authentication. For multisig, include `scriptAddress` in the request body on POST (nonce) and PUT (verify). Nonce and verify requests are rate-limited.
   version: 0.5.33
@@ -221,12 +242,51 @@ paths:
                       properties:
                         voterValidated:
                           type: boolean
+                          description: Voter eligibility flag (only when authenticated).
                         votingPower:
                           type: number
+                          description: Authenticated voter's individual voting power on this ballot (only when authenticated and eligible).
+                        votingPowerByGroup:
+                          type: object
+                          description: |
+                            Per-voter-group total voting power (canonical post-violet-clever-noether shape).
+                            Honors `Ballot.votingPowerSource` (script vs snapshot vs admin-uploaded);
+                            falls back to a one-shot live computation when no snapshot rows exist yet.
+                          additionalProperties:
+                            type: number
+                        eligibleVoterCountByGroup:
+                          type: object
+                          description: Per-voter-group count of eligible voters.
+                          additionalProperties:
+                            type: integer
+                        activeVotingPowerByGroup:
+                          type: object
+                          description: Per-voter-group voting power among voters who have actually submitted a vote.
+                          additionalProperties:
+                            type: number
+                        activeVoterCountByGroup:
+                          type: object
+                          description: Per-voter-group count of voters who have actually submitted a vote.
+                          additionalProperties:
+                            type: integer
+                        votingPowerSourceInfo:
+                          type: object
+                          description: |
+                            Provenance of the voting-power numbers for this ballot — which source
+                            actually populated the per-group fields (script-derived, snapshot row,
+                            admin-uploaded, or live fallback).
                         totalAllowedVoterCount:
                           type: number
+                          deprecated: true
+                          description: |
+                            Degenerate sum of `eligibleVoterCountByGroup` — kept populated for one
+                            release cycle so legacy frontends can migrate to the *ByGroup keys.
                         totalVotingPower:
                           type: number
+                          deprecated: true
+                          description: |
+                            Degenerate sum of `votingPowerByGroup` — kept populated for one
+                            release cycle so legacy frontends can migrate to the *ByGroup keys.
           '404':
             $ref: '#/components/responses/NotFound'
           '500':
@@ -546,9 +606,12 @@ paths:
                             items:
                               type: object
                               properties:
-                                value:
-                                  type: number
-                                  description: Vote option value/id
+                                id:
+                                  oneOf:
+                                    - type: number
+                                    - type: string
+                                      enum: [abstain]
+                                  description: Vote option id (matches `voteOptions[].id`); the literal "abstain" appears as an explicit bucket when the proposal allows abstaining.
                                 label:
                                   type: string
                                   description: Vote option label
@@ -647,6 +710,24 @@ paths:
             $ref: '#/components/responses/Forbidden'
           '404':
             $ref: '#/components/responses/NotFound'
+          '409':
+            description: |
+              Vote rejected because the ballot is outside its voting window.
+              `code` is `VOTING_WINDOW_NOT_OPEN` before `votePeriodStart` or
+              `VOTING_WINDOW_CLOSED` at/after `votePeriodEnd`.
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      example: error
+                    code:
+                      type: string
+                      enum: [VOTING_WINDOW_NOT_OPEN, VOTING_WINDOW_CLOSED]
+                    message:
+                      type: string
           '500':
             $ref: '#/components/responses/ServerError'
 
@@ -1034,20 +1115,27 @@ paths:
       tags:
         - Session
       summary: Validate session
-      description: Validate JWT token and return voter ID plus user profile (name, lastLogin) when available
+      description: |
+        Validate JWT token and return voter ID plus user profile (name,
+        lastLogin), native-script context, and active vote-package summary
+        when available. Admin status is NOT returned here — clients that
+        need to gate admin UI should call `GET /api/v1/admin/me` instead.
+        Rate-limited per-IP (default 60 requests/minute).
       operationId: getSession
       security:
         - cookieAuth: []
         - bearerAuth: []
       responses:
         '200':
-          description: Voter ID and optional user profile
+          description: Voter ID, optional user profile, native-script context, and pending vote packages
           content:
             application/json:
               schema:
                 type: object
                 required:
                   - userId
+                  - nativeScript
+                  - pendingPackages
                 properties:
                   userId:
                     type: string
@@ -1060,6 +1148,39 @@ paths:
                     format: date-time
                     nullable: true
                     description: Last login timestamp (from User)
+                  nativeScript:
+                    nullable: true
+                    description: |
+                      JSON definition of the multisig native script tied to this session
+                      (script address voter); null for ordinary key-based voters. Always
+                      present so the frontend can rely on the field.
+                    type: object
+                  pendingPackages:
+                    type: array
+                    description: |
+                      Up to 25 most-recently-updated non-terminal v1 vote packages owned
+                      by this voter, surfaced for the wallet-reconnect / multisig-coordination
+                      UX. Empty array when there are none.
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        ballotId:
+                          type: string
+                          nullable: true
+                        status:
+                          type: string
+                          enum: [draft, awaiting-signatures, awaiting-submission, broker-submitted, failed]
+                        nonce:
+                          type: integer
+                        signatureCount:
+                          type: integer
+                        isMultisig:
+                          type: boolean
+                        updatedAt:
+                          type: string
+                          format: date-time
         '401':
           $ref: '#/components/responses/Unauthorized'
     post:
@@ -1771,10 +1892,37 @@ paths:
                                   type: string
                                 title:
                                   type: string
+                                voteType:
+                                  type: string
+                                  enum: [choice, multi-choice, ranked, scale, likert, weighted, budget]
+                                  description: |
+                                    Voting method for the proposal. Drives the shape of the
+                                    `vote` array below — clients should dispatch on this rather
+                                    than sniffing array contents.
                                 vote:
                                   type: array
+                                  description: |
+                                    Per-vote-type projection of the voter's submission:
+                                    - `choice` / `multi-choice` / `ranked`: array of option labels (strings).
+                                    - `scale`: a single-element array carrying the numeric score (zero is preserved).
+                                    - `likert` / `weighted`: array of `{ option, optionLabel, value }` objects, one per voted-on option. `value` is the rating (likert) or point allocation (weighted).
+                                    - Any abstain (any voteType): `["Abstain"]`.
                                   items:
-                                    type: string
+                                    oneOf:
+                                      - type: string
+                                      - type: number
+                                      - type: object
+                                        properties:
+                                          option:
+                                            type: string
+                                            description: voteOption id
+                                          optionLabel:
+                                            type: string
+                                            description: Denormalized label for the option, copied from the proposal's voteOptions catalogue.
+                                          value:
+                                            type: number
+                                            description: Rating (likert) or integer point allocation (weighted).
+                                        required: [option, optionLabel, value]
                     ballotsVoted:
                       type: number
                       description: Number of ballots the voter has voted on
@@ -1949,7 +2097,39 @@ components:
           description: IPFS hash of the ballot metadata (optional, for decentralized storage)
         voterType:
           type: string
-          description: Type of voters eligible for this ballot (e.g., 'stake', 'drep', 'pool')
+          description: |
+            Legacy display label for eligible voters (e.g., 'stake', 'drep', 'pool', 'any').
+            Retained for backwards-compatible list filtering (`?voterType=`). The
+            authoritative per-group eligibility + power-source declaration lives in
+            `voterGroups`; new clients should prefer that field.
+        voterGroups:
+          type: array
+          description: |
+            Authoritative per-group eligibility + power-source declaration. A single
+            ballot can declare multiple groups simultaneously (e.g. RSS v2 enables
+            both `drep` and `pool`). `hydraPrepare` translates this into Hydra's
+            `roleWeighting` object at /prepare time. Valid (group, powerSource)
+            combinations:
+            - drep  → CredentialBased | StakeBased
+            - pool  → CredentialBased | StakeBased | PledgeBased
+            - stake → StakeBased
+          items:
+            type: object
+            required: [group, powerSource]
+            properties:
+              group:
+                type: string
+                enum: [drep, pool, stake]
+              powerSource:
+                type: string
+                enum: [CredentialBased, StakeBased, PledgeBased]
+              requirements:
+                description: |
+                  Optional per-group eligibility gate. Validator-interpreted;
+                  today only `stake` honors this. Accepts `mustExist: boolean`,
+                  `allowedPools: string[]`, and
+                  `tokenHoldings: [{policyId, assetName?, minQuantity}]`.
+                nullable: true
         voterDescription:
           type: string
           description: Human-readable description of who is eligible to vote in this ballot
@@ -2002,7 +2182,7 @@ components:
         Represents a registered proposal within a ballot. Proposals are items that voters can vote on.
         Each proposal belongs to a specific ballot and contains details about what's being voted on,
         along with configurable voting options. Proposals support multiple vote types including
-        default (Yes/No), budget (with cost constraints), ranked, scale (numeric range), and preference voting.
+        choice (single-pick Yes/No or candidate election), multi-choice (pick min..max), budget (knapsack with option costs), weighted (point allocation), ranked, scale (numeric range), and likert (per-option rating) voting.
       properties:
         _id:
           type: string
@@ -2036,41 +2216,71 @@ components:
           description: Additional structured data related to the proposal (format varies by proposal type)
         voteType:
           type: string
-          enum: [default, budget, ranked, scale, preference]
+          enum: [choice, multi-choice, budget, weighted, ranked, scale, likert]
           description: |
             Type of voting system for this proposal:
-            - "default": Standard voting with predefined options (Yes/No/Abstain)
-            - "budget": Voting with cost constraints where voters have a budget to allocate
-            - "ranked": Voters rank options in order of preference
-            - "scale": Numeric scale voting (e.g., 1-10) with configurable increment
-            - "preference": Voters express preferences among multiple options
+            - "choice": Single selection. 2 options maps to Hydra method "binary"; ≥3 options maps to "single-choice".
+            - "multi-choice": Pick min..max options. See minSelections/maxSelections.
+            - "budget": Knapsack — pick a subset whose Σ option.cost ≤ voterBudget. Backend validates cost cap.
+            - "weighted": Distribute voterBudget integer points across options; Σ value must equal voterBudget exactly.
+            - "ranked": Voters rank options in order of preference.
+            - "scale": Numeric scale voting (e.g., 1-10) with configurable increment.
+            - "likert": Rate each option independently on a 1-5 (or custom) grid.
+        minSelections:
+          type: number
+          nullable: true
+          description: Lower count bound for voteType "multi-choice" (default 1). Ignored for other types.
+        maxSelections:
+          type: number
+          nullable: true
+          description: Upper count bound for voteType "multi-choice" (defaults to voteOptions.length). Ignored for other types.
         voteIncrement:
           type: number
           description: Increment value for scale votes (e.g., 1 for integer scale, 0.5 for half-point scale)
         voterBudget:
           type: number
           description: Budget limit for voters in budget vote type (total cost of selected options cannot exceed this)
-        abstainAllowed:
+        requireAnswer:
           type: boolean
-          description: Whether voters can select an "abstain" option (if true, abstain cannot be combined with other votes)
+          default: false
+          description: "When true, voters must submit a selection — abstain is rejected. Default false (permissive): abstain is allowed."
         voteOptions:
           type: array
           items:
             type: object
+            required: [id, label]
             properties:
               id:
                 oneOf:
-                  - type: number
+                  - type: integer
                   - type: string
                     enum: [abstain]
-                description: Vote option ID (number) or "abstain" string
-              cost:
-                type: number
-                description: Cost of selecting this option (used in budget vote type, defaults to 1)
+                description: 'Integer option id. The string "abstain" is a legacy sentinel retained for back-compat only; production-authored ballots use the top-level `abstain: true` vote flag instead.'
               label:
                 type: string
-                description: Display label for this vote option (e.g., "Yes", "No", "Strongly Agree")
-          description: Array of available voting options for this proposal
+                maxLength: 120
+                description: Display label for this vote option (e.g., "Yes", "No", "Strongly Agree").
+              cost:
+                type: number
+                minimum: 0
+                default: 1
+                description: Per-option cost; only meaningful for voteType "budget". Defaults to 1.
+              description:
+                type: string
+                maxLength: 1000
+                description: Optional voter-facing blurb rendered alongside the label.
+              referenceUrl:
+                type: string
+                maxLength: 500
+                description: Optional canonical "learn more" link for this specific option.
+              imageUrl:
+                type: string
+                maxLength: 500
+                description: Optional thumbnail / portrait URL (e.g. candidate headshot).
+              metadata:
+                type: object
+                description: Free-form one-off attributes the frontend understands (e.g. candidate platform). No schema contract.
+          description: Array of available voting options for this proposal.
         commentCount:
           type: number
           description: Number of comments posted on this proposal (computed field)

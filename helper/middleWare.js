@@ -149,7 +149,12 @@ export async function getBallot(req, res, next) {
       let ballot = await Ballot.findOne({
         _id: ballotId,
       }).select(
-        "_id title description votePeriodStart votePeriodEnd voterType voteWeighted voterValidationScript voteFilters status"
+        "_id title description votePeriodStart votePeriodEnd voterType " +
+        "voteWeighted voterValidationScript voteFilters status source " +
+        "facets proposalSource votingPowerSource proposalPeriodStart " +
+        "proposalPeriodEnd voteAuthorityId ipfsHash hydraEndpoint " +
+        "hydraHeadId hydraHeadStatus ballotCid instancePolicyId " +
+        "provisionalResultsEnabled"
       );
       if (!ballot) {
         return res.status(404).json({
@@ -268,6 +273,18 @@ export function validateSessionRequest(req, res, next) {
     return res.status(400).json({
       status: "error",
       message: "Missing signType in request body",
+    });
+  }
+
+  // Payment-address logins are blocked at the session layer — the
+  // Hydra role space contracted to drep / pool / stake. Voters with
+  // an addr1... / addr_test1... must register via their stake
+  // credential instead.
+  if (signType === "addr" || signType === "addr_test") {
+    return res.status(400).json({
+      status: "error",
+      message:
+        "Payment addresses are not accepted. Use your stake credential (stake1... or stake_test1...) or one of: drep, pool.",
     });
   }
 

@@ -76,9 +76,23 @@ export async function validateVoter(userId, ballotId) {
         // check if pool is registered
         if (voterInfo[0].pool_status === "registered") {
             console.log("Voter is registered Pool: ", voterInfo[0].pool_status);
-            // Convert to BigInt for proper numeric comparison of large numbers
+            // BigInt for safe numeric compare on large lovelace values.
             const livePledge = BigInt(voterInfo[0].live_pledge || "0");
             const pledge = BigInt(voterInfo[0].pledge || "0");
+
+            // Zero-pledge case: pools that registered with `pledge: 0`
+            // are valid pools — they just contribute 0 weight under
+            // pledge-based voting. Distinguish from "not found" (which
+            // already returned above) so the frontend can show "found
+            // but ineligible by weight" rather than treating them as
+            // absent.
+            if (pledge === 0n) {
+                validated = true;
+                await saveVoterValidation(userId, ballotId, validated, "pool");
+                await saveVotingPower(userId, ballotId, "0", "pool");
+                console.log("Pool has 0 pledge — accepting with 0 weight");
+                return validated;
+            }
             if (livePledge >= pledge) {
                 validated = true;
                 await saveVoterValidation(userId, ballotId, validated, "pool");
@@ -168,3 +182,9 @@ export async function getTotalWeight(ballotId) {
 }
 
 
+
+// Per-voter power for snapshot/cron. Defaults to UserCache rows.
+// Override here if this script can enumerate the chain better than
+// the local UserCache (e.g. fetch all DReps from Koios, all pools,
+// etc.) and produce per-voter rows directly.
+export { computeFromUserCache as computePerVoterPower } from "../helper/votingPower/computeFromUserCache.js";

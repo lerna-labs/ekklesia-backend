@@ -7,21 +7,20 @@
  * @module helper/koios
  */
 
-/** @type {string} Koios API base URL (e.g. https://api.koios.rest). */
-const API_URL = process.env.API_URL;
-
-/** @type {string} Bearer token for Koios API authentication. */
-const API_TOKEN = process.env.API_TOKEN;
-
-// Fail fast if Koios is not configured (required by all exported API helpers).
-if (!API_URL) {
-    console.error("API_URL is not set in the environment variables.");
-    throw new Error("API URL is not set!");
+/**
+ * Lazily read Koios config. Importing this module no longer requires
+ * API_URL / API_TOKEN — each exported function calls these getters, which
+ * throw only when the function is actually invoked.
+ */
+function apiUrl() {
+    const v = process.env.API_URL;
+    if (!v) throw new Error("API URL is not set!");
+    return v;
 }
-
-if (!API_TOKEN) {
-    console.error("API_TOKEN is not set in the environment variables.");
-    throw new Error("API Token is not set!");
+function apiToken() {
+    const v = process.env.API_TOKEN;
+    if (!v) throw new Error("API Token is not set!");
+    return v;
 }
 
 /**
@@ -64,11 +63,11 @@ if (!API_TOKEN) {
  */
 export async function fetchDrepName(drepId) {
     try {
-        const response = await fetch(`${API_URL}/drep_info?registered=eq.true`,
+        const response = await fetch(`${apiUrl()}/drep_info?registered=eq.true`,
             {
                 method: "POST",
                 headers: {
-                    "Authorization": `Bearer ${API_TOKEN}`,
+                    "Authorization": `Bearer ${apiToken()}`,
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
@@ -138,11 +137,11 @@ export async function fetchDrepName(drepId) {
  */
 export async function validateDrep(drepId) {
     try {
-        const response = await fetch(`${API_URL}/drep_info?registered=eq.true`,
+        const response = await fetch(`${apiUrl()}/drep_info?registered=eq.true`,
             {
                 method: "POST",
                 headers: {
-                    "Authorization": `Bearer ${API_TOKEN}`,
+                    "Authorization": `Bearer ${apiToken()}`,
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
@@ -225,11 +224,11 @@ async function fetchHandleKoios(address) {
         return null;
     }
     try {
-        const response = await fetch(`${API_URL}/${endpoint}?policy_id=eq.${handlePolicyId}`,
+        const response = await fetch(`${apiUrl()}/${endpoint}?policy_id=eq.${handlePolicyId}`,
             {
                 method: "POST",
                 headers: {
-                    "Authorization": `Bearer ${API_TOKEN}`,
+                    "Authorization": `Bearer ${apiToken()}`,
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify(body),
@@ -241,11 +240,11 @@ async function fetchHandleKoios(address) {
             return null;
         }
         try {
-            const getHandleMetadataResponse = await fetch(`${API_URL}/asset_info`,
+            const getHandleMetadataResponse = await fetch(`${apiUrl()}/asset_info`,
                 {
                     method: "POST",
                     headers: {
-                        "Authorization": `Bearer ${API_TOKEN}`,
+                        "Authorization": `Bearer ${apiToken()}`,
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify({
@@ -302,12 +301,12 @@ export async function fetchHandle(address) {
 export async function getScript(scriptHash) {
     try {
         // Make an authenticated POST request to Koios script_info endpoint
-        const scripts = await fetch(API_URL + "/script_info", {
+        const scripts = await fetch(apiUrl() + "/script_info", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 Prefer: "count=exact", // Request exact count in response headers
-                authorization: `Bearer ${API_TOKEN}`,
+                authorization: `Bearer ${apiToken()}`,
             },
             body: JSON.stringify({ _script_hashes: [scriptHash] }),
         });
@@ -355,11 +354,11 @@ export async function getScript(scriptHash) {
 export async function fetchCalidusKey(poolBech32) {
     try {
         const response = await fetch(
-            `${API_URL}/pool_calidus_keys?pool_id_bech32=eq.${poolBech32}`,
+            `${apiUrl()}/pool_calidus_keys?pool_id_bech32=eq.${poolBech32}`,
             {
                 headers: {
                     "Content-Type": "application/json",
-                    authorization: `Bearer ${API_TOKEN}`,
+                    authorization: `Bearer ${apiToken()}`,
                 },
             }
         );
@@ -417,12 +416,12 @@ export async function fetchPoolTotals() {
 
     try {
         const requestTotalCount = await fetch(
-            `${API_URL}/pool_list?pool_status=eq.registered&select=pool_status,pool_id_bech32&limit=1`,
+            `${apiUrl()}/pool_list?pool_status=eq.registered&select=pool_status,pool_id_bech32&limit=1`,
             {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
-                    authorization: `Bearer ${API_TOKEN}`,
+                    authorization: `Bearer ${apiToken()}`,
                     prefer: "count=exact",
                 },
             }
@@ -444,12 +443,12 @@ export async function fetchPoolTotals() {
             console.log(`Fetching Pool page ${page}/${Math.ceil(totalCount / limit)}`);
 
             const requestPoolList = await fetch(
-                `${API_URL}/pool_list?pool_status=eq.registered&select=pool_id_bech32,pool_status&offset=${offset}&limit=${limit}`,
+                `${apiUrl()}/pool_list?pool_status=eq.registered&select=pool_id_bech32,pool_status&offset=${offset}&limit=${limit}`,
                 {
                     method: "GET",
                     headers: {
                         "Content-Type": "application/json",
-                        authorization: `Bearer ${API_TOKEN}`,
+                        authorization: `Bearer ${apiToken()}`,
                         prefer: "count=exact",
                     },
                 }
@@ -457,12 +456,12 @@ export async function fetchPoolTotals() {
             const pools = await requestPoolList.json();
 
             const requestPoolData = await fetch(
-                `${API_URL}/pool_info?select=pool_id_bech32,pledge,live_pledge,voting_power,active_stake`,
+                `${apiUrl()}/pool_info?select=pool_id_bech32,pledge,live_pledge,voting_power,active_stake`,
                 {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        authorization: `Bearer ${API_TOKEN}`,
+                        authorization: `Bearer ${apiToken()}`,
                     },
                     body: JSON.stringify({
                         _pool_bech32_ids: pools.map((pool) => pool.pool_id_bech32),
@@ -541,12 +540,12 @@ export async function fetchAllDReps() {
 
     try {
         const requestTotalCount = await fetch(
-            `${API_URL}/drep_list?registered=eq.true&select=drep_id,registered&limit=1`,
+            `${apiUrl()}/drep_list?registered=eq.true&select=drep_id,registered&limit=1`,
             {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
-                    authorization: `Bearer ${API_TOKEN}`,
+                    authorization: `Bearer ${apiToken()}`,
                     prefer: "count=exact",
                 },
             }
@@ -567,12 +566,12 @@ export async function fetchAllDReps() {
         try {
             console.log(`Fetching DRep page ${page}/${Math.ceil(totalCount / limit)}`);
             const requestDreps = await fetch(
-                `${API_URL}/drep_list?registered=eq.true&select=drep_id,registered&offset=${offset}&limit=${limit}`,
+                `${apiUrl()}/drep_list?registered=eq.true&select=drep_id,registered&offset=${offset}&limit=${limit}`,
                 {
                     method: "GET",
                     headers: {
                         "Content-Type": "application/json",
-                        authorization: `Bearer ${API_TOKEN}`,
+                        authorization: `Bearer ${apiToken()}`,
                         prefer: "count=exact",
                     },
                 }
@@ -580,12 +579,12 @@ export async function fetchAllDReps() {
             const drepsJSON = await requestDreps.json();
 
             const requestDrepInfo = await fetch(
-                `${API_URL}/drep_info?select=drep_id,registered,amount`,
+                `${apiUrl()}/drep_info?select=drep_id,registered,amount`,
                 {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        authorization: `Bearer ${API_TOKEN}`,
+                        authorization: `Bearer ${apiToken()}`,
                     },
                     body: JSON.stringify({
                         _drep_ids: drepsJSON.map((drep) => drep.drep_id),

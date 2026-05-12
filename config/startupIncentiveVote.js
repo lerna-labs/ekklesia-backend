@@ -30,7 +30,7 @@ export async function startupBallot(ballotId) {
     for (const pool of poolTotals.poolData) {
         await UserCache.findOneAndUpdate(
             { ballotId: ballotId, userId: pool.pool_id_bech32 },
-            { votingPower: pool.live_pledge, validated: true, voterGroup: "SPOs" },
+            { votingPower: pool.live_pledge, validated: true, voterGroup: "pool" },
             { upsert: true }
         );
     }
@@ -48,7 +48,7 @@ export async function startupBallot(ballotId) {
     for (const drep of dreps) {
         await UserCache.findOneAndUpdate(
             { ballotId: ballotId, userId: drep.drep_id },
-            { votingPower: drep.amount, validated: true, voterGroup: "DReps" },
+            { votingPower: drep.amount, validated: true, voterGroup: "drep" },
             { upsert: true }
         );
     }

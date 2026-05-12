@@ -74,15 +74,19 @@ export async function validateVoter(userId, ballotId) {
       return validated;
     }
 
-    // check if voter is registered
-    if (voterInfo[0].registered === true) {
-      console.log("Voter is registered DRep: ", voterInfo[0].registered);
+    // Koios `/drep_info` returns `drep_status: "registered" | "retired" | "unregistered"`.
+    // Older versions returned a boolean `registered` — accept both for
+    // resilience across Koios upgrades.
+    const isRegistered =
+      voterInfo[0].drep_status === "registered" || voterInfo[0].registered === true;
+    if (isRegistered) {
+      console.log("Voter is registered DRep:", userId);
       validated = true;
       await saveVoterValidation(userId, ballotId, validated, "drep");
       await saveVotingPower(userId, ballotId, voterInfo[0].amount, "drep");
       return validated;
     } else {
-      console.log("Voter is not registered DRep: ", voterInfo[0].registered);
+      console.log("Voter is not a registered DRep:", userId, "status=", voterInfo[0].drep_status);
       validated = false;
       await saveVoterValidation(userId, ballotId, validated, "drep");
       await saveVotingPower(userId, ballotId, 0, "drep");
@@ -177,3 +181,9 @@ export async function getTotalWeight() {
 }
 
 
+
+// Per-voter power for snapshot/cron. Defaults to UserCache rows.
+// Override here if this script can enumerate the chain better than
+// the local UserCache (e.g. fetch all DReps from Koios, all pools,
+// etc.) and produce per-voter rows directly.
+export { computeFromUserCache as computePerVoterPower } from "../helper/votingPower/computeFromUserCache.js";

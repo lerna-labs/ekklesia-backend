@@ -14,6 +14,8 @@ import mongoose from "mongoose";
 import { getBallot } from "../../../helper/middleWare.js";
 import { checkVotingPower } from "../../../helper/voterValidation.js";
 import { calculateSimpleMedian, calculateWeightedMedian } from "../../../helper/calculateMedians.js";
+import { escapeRegex } from "../../../helper/escapeRegex.js";
+import { aggregationLimiter } from "../../../helper/rateLimiters.js";
 
 /**
  * @route GET /api/v0/ballots
@@ -64,11 +66,13 @@ router.get("/", async (req, res) => {
       });
     }
 
-    // Create search criteria that matches either title or ID
-    const searchQuery = validator.escape(search);
-
-    // Set up the OR query
-    matchStage.$or = [{ title: { $regex: new RegExp(searchQuery, "i") } }];
+    // Create search criteria that matches either title or ID.
+    // Pass the pattern as a string with $options: "i" — never feed
+    // user-supplied bytes into `new RegExp(...)`, which throws a
+    // SyntaxError on unbalanced metacharacters (`(`, `[`, etc.) and
+    // reflects the failing pattern in the 500 message.
+    const searchPattern = escapeRegex(search);
+    matchStage.$or = [{ title: { $regex: searchPattern, $options: "i" } }];
 
     // Check if search might be a valid MongoDB ObjectID (24 hex characters)
     if (validator.isMongoId(search)) {
@@ -130,7 +134,7 @@ router.get("/", async (req, res) => {
         message: "Invalid voterType format",
       });
     }
-    matchStage.voterType = { $regex: new RegExp(`^${voterType}$`, "i") };
+    matchStage.voterType = { $regex: `^${escapeRegex(voterType)}$`, $options: "i" };
   }
 
   try {
@@ -279,10 +283,14 @@ router.get("/:ballotId", getBallot, async (req, res) => {
 
   // check if voter token is present
   const voterToken = verifyToken(req);
-  // import voter validation from ballot
-  const { validateVoter, allowedVoterCount, getTotalWeight } = await import(
-    "../../../config/" + ballot.voterValidationScript
+  // import voter validation from ballot. Use loadValidationScript so
+  // dev edits to config/*.js are picked up without restarting the
+  // server (production caches forever).
+  const { loadValidationScript } = await import(
+    "../../../helper/loadValidationScript.js"
   );
+  const { validateVoter, allowedVoterCount, getTotalWeight } =
+    await loadValidationScript(ballot.voterValidationScript);
   if (voterToken.userId) {
     // check if voter is valid voter
     ballot.voterValidated = await validateVoter(voterToken.userId, ballot._id);
@@ -292,11 +300,30 @@ router.get("/:ballotId", getBallot, async (req, res) => {
     }
   }
 
-  // get total voter count for ballot
-  ballot.totalAllowedVoterCount = await allowedVoterCount(ballot._id);
+  // Per-group voting power (canonical, post-violet-clever-noether).
+  // The snapshot reader honors Ballot.votingPowerSource — script vs
+  // snapshot vs admin-uploaded — and falls back to a one-shot live
+  // computation when no snapshot rows exist yet (e.g. cron hasn't
+  // run for a freshly created ballot).
+  //
+  // New shape lives under explicit per-group keys; the legacy scalar
+  // fields are kept populated as degenerate sums for one release
+  // cycle so the frontend can migrate without a hard break.
+  const { readBallotPower, scalarTotals } = await import(
+    "../../../helper/votingPower/snapshotReader.js"
+  );
+  const power = await readBallotPower(ballot);
+  ballot.votingPowerByGroup = power.totalVotingPower;       // per-group object
+  ballot.eligibleVoterCountByGroup = power.eligibleVoterCount;
+  ballot.activeVotingPowerByGroup = power.activeVotingPower;
+  ballot.activeVoterCountByGroup = power.activeVoterCount;
+  ballot.votingPowerSourceInfo = power.votingPowerSource;
 
-  // get total weight count for ballot
-  ballot.totalVotingPower = await getTotalWeight(ballot._id);
+  // Deprecated scalar fields — kept populated for one release cycle.
+  // Frontends should migrate to the *ByGroup keys above.
+  const scalars = scalarTotals(power);
+  ballot.totalAllowedVoterCount = scalars.totalAllowedVoterCount;
+  ballot.totalVotingPower = scalars.totalVotingPower;
 
   // cleanup ballot data
   delete ballot.voterValidationScript;
@@ -330,7 +357,7 @@ router.get("/:ballotId", getBallot, async (req, res) => {
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  * @returns {Object} 500 - Server error
  */
-router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
+router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, res) => {
   const ballot = req.ballot.toObject();
   const voterToken = verifyToken(req);
   const userId = voterToken.userId || false;
@@ -418,11 +445,10 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       });
     }
 
-    // Sanitize search input
-    const searchQuery = validator.escape(search);
-
-    // Set up the OR query to match title or ID
-    matchStage.$or = [{ title: { $regex: new RegExp(searchQuery, "i") } }];
+    // Escape regex metacharacters and pass the pattern as a string
+    // so `new RegExp(...)` is never called with user-supplied bytes.
+    const searchPattern = escapeRegex(search);
+    matchStage.$or = [{ title: { $regex: searchPattern, $options: "i" } }];
 
     // Check if search might be a valid MongoDB ObjectID
     if (validator.isMongoId(search)) {
@@ -445,20 +471,14 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
     }));
   }
 
-  // Add tags filter if provided (filter by array containing at least one of the specified tags)
-  if (tags) {
-    const tagsList = tags.split(',').map(tag => tag.trim());
-    if (tagsList.length > 0) {
-      matchStage.tags = { $in: tagsList };
-    }
-  }
-
-  // Add categories filter if provided (filter by array containing at least one of the specified categories)
-  if (categories) {
-    const categoriesList = categories.split(',').map(category => category.trim());
-    if (categoriesList.length > 0) {
-      matchStage.categories = { $in: categoriesList };
-    }
+  // tags + categories query params are no-ops now: the legacy
+  // free-form Proposal.tags/categories arrays were dropped in favor
+  // of per-ballot Ballot.facets[]. Frontend should migrate to the
+  // v1 facet query: /api/v1/proposals/ballot/:ballotId?filter[<key>]=<csv>
+  if (tags || categories) {
+    console.warn(
+      "[v0 ballots] tags/categories query params ignored; use v1 facet filter instead"
+    );
   }
 
   // Build base aggregation pipeline with common stages
@@ -666,9 +686,10 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
     $project: {
       _id: 1,
       title: 1,
-      description: 1,
-      categories: 1,
-      tags: 1,
+      summary: 1,
+      rationale: 1,
+      authors: 1,
+      version: 1,
       ipfsHash: 1,
       data: 1,
       ballotId: 1,
@@ -676,7 +697,7 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
       voterBudget: 1,
       voteOptions: 1,
       voteIncrement: 1,
-      abstainAllowed: 1,
+      requireAnswer: 1,
       commentCount: 1,
       voteCount: {
         $size: {
@@ -834,22 +855,13 @@ router.get("/:ballotId/proposals/", getBallot, async (req, res) => {
   * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
   * @returns {Object} 500 - Server error
   */
+// Returns enum options declared on the ballot's "category" facet (if
+// present). Replaces the legacy proposal-derived enumeration —
+// per-proposal categories were dropped in favor of Ballot.facets[].
 router.get("/:ballotId/categories", getBallot, async (req, res) => {
   const ballot = req.ballot.toObject();
-  try {
-    // Fetch all proposals for the ballot and extract unique categories
-    const proposals = await Proposal.find({ ballotId: ballot._id }).select("categories");
-    const categories = [...new Set(proposals.flatMap((proposal) => proposal.categories))];
-
-    // Return the list of unique categories
-    return res.status(200).json(categories);
-  } catch (error) {
-    console.error("Error fetching categories:", error);
-    return res.status(500).json({
-      status: "error",
-      message: "Server error while fetching categories",
-    });
-  }
+  const categoryFacet = (ballot.facets || []).find((f) => f.key === "category");
+  return res.status(200).json(categoryFacet?.options || []);
 });
 
 /**
@@ -863,22 +875,14 @@ router.get("/:ballotId/categories", getBallot, async (req, res) => {
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  * @returns {Object} 500 - Server error
  */
+// Returns enum options declared on the ballot's "tag" facet (if
+// present). Same migration as /categories above. If a ballot was
+// historically used with only free-form tags, define a "tag" enum
+// facet at import time to surface them here.
 router.get("/:ballotId/tags", getBallot, async (req, res) => {
   const ballot = req.ballot.toObject();
-  try {
-    // Fetch all proposals for the ballot and extract unique tags
-    const proposals = await Proposal.find({ ballotId: ballot._id }).select("tags");
-    const tags = [...new Set(proposals.flatMap((proposal) => proposal.tags))];
-
-    // Return the list of unique tags
-    return res.status(200).json(tags);
-  } catch (error) {
-    console.error("Error fetching tags:", error);
-    return res.status(500).json({
-      status: "error",
-      message: "Server error while fetching tags",
-    });
-  }
+  const tagFacet = (ballot.facets || []).find((f) => f.key === "tag");
+  return res.status(200).json(tagFacet?.options || []);
 });
 
 export default router;

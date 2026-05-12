@@ -9,7 +9,8 @@ const { Schema } = mongoose;
  * @property {String} title - Title of the ballot
  * @property {String} description - Description of the ballot
  * @property {String} ipfsHash - IPFS hash of the ballot metadata (optional, null if not stored on IPFS)
- * @property {String} voterType - Type of voters eligible for this ballot (e.g., 'stake', 'drep', 'pool')
+ * @property {String} voterType - Display label for eligible voters (e.g., 'stake', 'drep', 'pool', 'any'). Human-readable; the authoritative role + power-source declaration lives in `voterGroups`.
+ * @property {Array<{group: String, powerSource: String}>} voterGroups - Per-group eligibility + power-source declaration. `group` is one of "drep" / "pool" / "stake"; `powerSource` is one of Hydra's RoleWeighting values ("CredentialBased" / "StakeBased" / "PledgeBased"), subject to the valid-combinations rule (stake → StakeBased only; drep → CredentialBased or StakeBased; pool → CredentialBased / StakeBased / PledgeBased). hydraPrepare.js translates this array into Hydra's `roleWeighting` object at /prepare time.
  * @property {String} voterDescription - Human-readable description of eligible voters
  * @property {Boolean} voteWeighted - Whether the voting is weighted (default: false) - needed for UI displays mainly
  * @property {Date} votePeriodStart - Start date and time of the voting period
@@ -47,6 +48,50 @@ const ballotSchema = new Schema(
       type: String,
       required: true,
     },
+    // Per-group eligibility + power source. Array so a single ballot
+    // can declare, e.g., "DReps by delegated voting power AND SPOs by
+    // pledge" in one shot. hydraPrepare.js translates this into Hydra's
+    // roleWeighting object at /prepare time. Valid (group, powerSource)
+    // combinations are enforced by the CompiledBallot validator:
+    //   drep  → CredentialBased | StakeBased
+    //   pool  → CredentialBased | StakeBased | PledgeBased
+    //   stake → StakeBased
+    voterGroups: {
+      type: [
+        {
+          _id: false,
+          group: {
+            type: String,
+            enum: ["drep", "pool", "stake"],
+            required: true,
+          },
+          powerSource: {
+            type: String,
+            enum: ["CredentialBased", "StakeBased", "PledgeBased"],
+            required: true,
+          },
+          // Optional per-group eligibility criteria. Validator-
+          // interpreted; the only group with requirements support
+          // today is `stake`, which accepts:
+          //   mustExist: boolean
+          //     — stake address seen on chain (account_info returns
+          //       a row OR account_utxos non-empty). Default true.
+          //   allowedPools: string[]
+          //     — voter must be delegated to a pool in this allow-
+          //       list. Omit / null = any pool accepted.
+          //   tokenHoldings: Array<{ policyId, assetName?, minQuantity }>
+          //     — voter must hold ≥ minQuantity of each entry.
+          //       assetName absent = any asset under the policy.
+          // Drep + pool groups ignore this field for now; their
+          // requirement surface is the existing per-group validator.
+          requirements: {
+            type: mongoose.Schema.Types.Mixed,
+            default: null,
+          },
+        },
+      ],
+      default: [],
+    },
     voterDescription: {
       type: String,
       required: true,
@@ -76,6 +121,29 @@ const ballotSchema = new Schema(
     voteAuthorityAddress: {
       type: String,
       required: true,
+    },
+    // Display-only link to the authority's announcement / blog post
+    // interpreting the result. Set via
+    //   POST /api/v1/admin/ballots/:id/certify
+    // either as part of a full certification (snapshot + narrative) or
+    // narrative-only. The frontend renders `label` as a link to `url`.
+    authorityNarrative: {
+      type: new mongoose.Schema(
+        {
+          url: { type: String, required: true },
+          label: { type: String, required: true },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
+    // Version number of the currently-active CertifiedSnapshot for this
+    // ballot. History (older versions) stays on the CertifiedSnapshot
+    // collection; this is a cheap-read pointer to the newest. `null`
+    // until the authority certifies at least once.
+    currentCertifiedVersion: {
+      type: Number,
+      default: null,
     },
     proposalPeriodStart: {
       type: Date,
@@ -115,6 +183,180 @@ const ballotSchema = new Schema(
       default: "upcoming",
       required: true,
     },
+    source: {
+      type: String,
+      enum: ["legacy", "hydra"],
+      default: "legacy",
+      required: true,
+    },
+    hydraEndpoint: {
+      type: String,
+      default: null,
+    },
+    hydraHeadId: {
+      type: String,
+      default: null,
+    },
+    // Raw Hydra head state, mirrored from /head-info. Distinct from
+    // `status` above, which is the user-facing ballot lifecycle.
+    hydraHeadStatus: {
+      type: String,
+      enum: [
+        null,
+        "Idle",
+        "Initializing",
+        "Open",
+        "Closing",
+        "Closed",
+        "Final",
+        "FanoutPossible",
+      ],
+      default: null,
+    },
+    ballotCid: {
+      type: String,
+      default: null,
+    },
+    instancePolicyId: {
+      type: String,
+      default: null,
+    },
+    // Asset names (hex) produced by Hydra /prepare. The (600) definition
+    // token is never spent; the (601) instance token gets committed into
+    // the head at /start and spent at /finalize.
+    definitionAssetName: {
+      type: String,
+      default: null,
+    },
+    instanceAssetName: {
+      type: String,
+      default: null,
+    },
+    // L1 tx hash from Hydra /prepare. Recorded so operators can monitor
+    // confirmation on an explorer before proceeding to /start — the commit
+    // UTxOs produced by /prepare need to be visible on-chain first.
+    prepareTxHash: {
+      type: String,
+      default: null,
+    },
+    prepareTxSubmittedAt: {
+      type: Date,
+      default: null,
+    },
+    // UTxO refs Hydra returned in `commitUtxos` — what /start needs.
+    commitUtxos: {
+      type: Array,
+      default: [],
+    },
+    // Slot at which the mint policy locks (== voting window open).
+    timelockSlot: {
+      type: Number,
+      default: null,
+    },
+    // 28-byte blake2b_256(namespace).slice(0,28) as hex — shared across
+    // (600) and (601) asset names.
+    ballotFingerprint: {
+      type: String,
+      default: null,
+    },
+    provisionalResultsEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    provisionalResultsConfig: {
+      type: Object,
+      default: null,
+    },
+
+    // Authority for this ballot's per-voter voting power. See
+    // .claude/plans/violet-clever-noether.md for the full design.
+    //
+    //   "script"    — recompute live on every read (small ballots only)
+    //   "snapshot"  — cron writes per-voter rows by calling the script.
+    //                 Provisional / best-effort. Default for new ballots.
+    //   "uploaded"  — admin uploaded an authoritative per-voter snapshot.
+    //                 Scripts are no longer called for this ballot.
+    //
+    // Transition to "uploaded" via POST /api/v1/admin/ballots/:id/voting-power.
+    // Re-uploadable for corrections; each upload is archived to
+    // ImportedBallotPayload.
+    votingPowerSource: {
+      type: new Schema(
+        {
+          type: {
+            type: String,
+            enum: ["script", "snapshot", "uploaded"],
+            default: "snapshot",
+          },
+          scriptName: { type: String, default: null },
+          uploadedAt: { type: Date, default: null },
+          uploadedBy: { type: String, default: null },
+          uploadCid: { type: String, default: null },
+        },
+        { _id: false }
+      ),
+      default: () => ({ type: "snapshot" }),
+    },
+
+    // Origin of the ballot definition when imported from a proposals
+    // module (push via API key) or uploaded as a compiled JSON file by
+    // an admin. Null for scaffold-created or legacy ballots.
+    //
+    // `importMethod` distinguishes push (API key, proposals module owns
+    // the transform) from upload (admin JWT, admin owns the file).
+    //
+    // Upsert key: (moduleId, externalBallotId) — the proposals module
+    // can re-push updates up until the ballot goes live.
+    proposalSource: {
+      moduleId: { type: String, default: null },
+      moduleUrl: { type: String, default: null },
+      externalBallotId: { type: String, default: null },
+      version: { type: String, default: null },
+      importedAt: { type: Date, default: null },
+      importMethod: {
+        type: String,
+        enum: [null, "push", "upload"],
+        default: null,
+      },
+      importedBy: { type: String, default: null }, // admin userId or ApiKey.keyPrefix
+    },
+
+    // Dynamic sort/filter dimensions. Declared once per ballot so the
+    // frontend can render filter UIs without hardcoding ballot-type
+    // logic. Proposals reference these keys on their
+    // externalProposal.snapshot.facets map. Once the ballot goes live,
+    // the facets array is frozen with everything else.
+    //
+    // Rules (enforced by helper/facets/validate.js at import time):
+    //   - option strings must not contain `,` (CSV is the wire format)
+    //   - multi: true implies sortable: false
+    //   - at most one facet may declare defaultSort
+    //   - proposals can only carry facet keys declared here
+    facets: {
+      type: [
+        {
+          _id: false,
+          key: { type: String, required: true },
+          label: { type: String, required: true },
+          type: {
+            type: String,
+            enum: ["enum", "number", "string", "boolean", "date"],
+            required: true,
+          },
+          multi: { type: Boolean, default: false },
+          options: { type: [String], default: [] },
+          unit: { type: String, default: null },
+          sortable: { type: Boolean, default: false },
+          filterable: { type: Boolean, default: true },
+          defaultSort: {
+            type: String,
+            enum: [null, "asc", "desc"],
+            default: null,
+          },
+        },
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
@@ -139,6 +381,7 @@ const ballotSchema = new Schema(
 // Indexes for faster queries
 ballotSchema.index({ title: 1 });
 ballotSchema.index({ voterType: 1 });
+ballotSchema.index({ source: 1 });
 
 const Ballot = mongoose.model("Ballot", ballotSchema);
 export { Ballot };

@@ -76,8 +76,7 @@ const proposal1 = new Proposal({
             { name: "CIP-50 FAQ", url: "https://incentives.solutions/cip-50-faq" },
         ]
     },
-    abstainAllowed: true,
-    voteType: "default",
+    voteType: "choice",
     voteBudget: 1,
     voteOptions: [
         { id: 1, cost: 1, label: "Yes" },
@@ -96,7 +95,6 @@ const proposal2 = new Proposal({
             { name: "Chart showing Stake/Wallets affected by values of L (snapshot from 15 October, 2025)", url: "https://raw.githubusercontent.com/Cerkoryn/governance-reference/refs/heads/main/L_values.png" },
         ]
     },
-    abstainAllowed: true,
     voteType: "scale",
     voteIncrement: 1,
     voteBudget: 1,
@@ -121,8 +119,7 @@ const proposal3 = new Proposal({
             { name: "CIP-163 FAQ", url: "https://incentives.solutions/cip-163-faq" },
         ]
     },
-    abstainAllowed: true,
-    voteType: "default",
+    voteType: "choice",
     voteBudget: 1,
     voteOptions: [
         { id: 1, cost: 1, label: "Yes" },
@@ -143,7 +140,6 @@ const proposal4 = new Proposal({
             },
         ]
     },
-    abstainAllowed: true,
     voteType: "scale",
     voteIncrement: 1,
     voteBudget: 1,
@@ -165,7 +161,6 @@ const proposal5 = new Proposal({
             { name: "CIP-23 Misconceptions", url: "https://incentives.solutions/misconception-pool-min-fee-is-applied-to-all-blocks-in-an-epoch" },
         ]
     },
-    abstainAllowed: true,
     voteType: "scale",
     voteIncrement: 1,
     voteBudget: 1,

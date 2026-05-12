@@ -7,6 +7,7 @@ import { FAQ } from "../../../schema/FAQ.js";
 
 // helper
 import { cacheControl } from "../../../helper/cacheControl.js";
+import { escapeRegex } from "../../../helper/escapeRegex.js";
 import validator from "validator";
 
 /**
@@ -62,13 +63,12 @@ router.get("/", cacheControl(300), async (req, res) => {
       });
     }
 
-    // Sanitize search input
-    const searchQuery = validator.escape(search);
-
-    // Create search criteria that matches either title or content
+    // Escape regex metacharacters and pass as a string pattern, so
+    // user input like `(` or `[` can never reach `new RegExp(...)`.
+    const searchPattern = escapeRegex(search);
     matchStage.$or = [
-      { title: { $regex: new RegExp(searchQuery, "i") } },
-      { content: { $regex: new RegExp(searchQuery, "i") } },
+      { title: { $regex: searchPattern, $options: "i" } },
+      { content: { $regex: searchPattern, $options: "i" } },
     ];
   }
 

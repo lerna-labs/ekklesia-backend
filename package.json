@@ -1,6 +1,6 @@
 {
   "name": "ekklesia-backend",
-  "version": "0.6.1",
+  "version": "0.9.0",
   "main": "server.js",
   "scripts": {
     "start:dev": "NODE_ENV=development nodemon --watch '**/*.js' --ignore 'node_modules/' server.js",
@@ -12,13 +12,15 @@
   "type": "module",
   "keywords": [],
   "author": "Mad Orkestra & Adam Dean for Lerna Labs",
-  "homepage": "https://github.com/lernalabs/ekklesia-backend",
+  "homepage": "https://github.com/lerna-labs/ekklesia-backend",
   "license": "Apache-2.0",
   "description": "Ekklesia Voting Backend",
   "dependencies": {
     "@emurgo/cardano-serialization-lib-nodejs": "^15.0.3",
+    "@lerna-labs/ekklesia-helpers": "^1.0.0",
     "@meshsdk/common": "^1.9.0-beta.100",
     "@meshsdk/core": "^1.9.0-beta.100",
+    "@resvg/resvg-js": "^2.6.2",
     "autocannon": "^8.0.0",
     "bech32": "^2.0.0",
     "blakejs": "^1.2.1",
@@ -28,12 +30,14 @@
     "cors": "^2.8.5",
     "dayjs": "^1.11.19",
     "dotenv": "^17.2.3",
-    "express-rate-limit": "^8.3.1",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.3.1",
     "fast-sort": "^3.4.1",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "merkletreejs": "^0.6.0",
     "mongoose": "^9.2.4",
+    "satori": "^0.12.2",
     "validator": "^13.15.26"
   },
   "devDependencies": {

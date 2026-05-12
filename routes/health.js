@@ -7,7 +7,14 @@ import { isDatabaseConnected } from "../helper/dbManager.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import fs from "fs/promises";
-import { hydraGetStatus } from "../helper/hydra.js";
+
+// NOTE on Hydra: this endpoint deliberately does NOT report a
+// system-wide "hydra: connected" status. Each ballot can be bound to
+// its own Hydra instance via Ballot.hydraEndpoint / hydraRegistry, so
+// a single boolean would be misleading. Per-ballot Hydra reachability
+// lives on the admin endpoints
+// (GET /api/v1/admin/ballots/:id/head-info) where the right endpoint
+// is known.
 
 // Get application version from package.json
 const __filename = fileURLToPath(import.meta.url);
@@ -33,10 +40,16 @@ const versionFrontendPath = join(__dirname, "../public/version.json");
  * @returns {Object} 500 - Server error
  */
 router.get("/", async (req, res) => {
+  // Public health endpoint. Intentionally omits anything that helps
+  // an attacker target known CVEs or reason about deployment shape:
+  //   - nodeVersion          → reveals known-vulnerable runtime versions
+  //   - process.memoryUsage  → load / capacity hints
+  //   - process.uptime       → recent-restart / deploy timing
+  //   - NODE_ENV             → "production" vs "development" leak
+  // Keep only what an external monitor or client needs to verify the
+  // service is reachable on the right network with a known API version.
   const currentTime = new Date();
-  const uptime = process.uptime();
 
-  // Get server version from package.json
   let serverVersion = "unknown";
   try {
     const packageData = await fs.readFile(packageServerPath, "utf8");
@@ -46,7 +59,6 @@ router.get("/", async (req, res) => {
     console.error(`Failed to read package.json: ${error.message}`);
   }
 
-  // get frontend version from package.json
   let frontendVersion = "unknown";
   try {
     const packageData = await fs.readFile(versionFrontendPath, "utf8");
@@ -56,52 +68,15 @@ router.get("/", async (req, res) => {
     console.error(`Failed to read frontend/package.json: ${error.message}`);
   }
 
-  // Format uptime in a human-readable way
-  const formatUptime = (seconds) => {
-    const days = Math.floor(seconds / (3600 * 24));
-    const hours = Math.floor((seconds % (3600 * 24)) / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-
-    return `${days}d ${hours}h ${minutes}m ${secs}s`;
-  };
-
-  // Check Hydra Status
-  let hydraStatus = await hydraGetStatus();
-
   return res.json({
     status: "operational",
     message: "System is operational",
     timestamp: currentTime.toISOString(),
-    environment: process.env.NODE_ENV,
     network: process.env.NETWORK_NAME,
     networkId: parseInt(process.env.NETWORK_ID),
-
-    server: {
-      uptime: formatUptime(uptime),
-      uptimeSeconds: uptime,
-      version: serverVersion,
-      nodeVersion: process.version,
-      memoryUsage: {
-        rss: `${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB`,
-        heapTotal: `${Math.round(
-          process.memoryUsage().heapTotal / 1024 / 1024
-        )} MB`,
-        heapUsed: `${Math.round(
-          process.memoryUsage().heapUsed / 1024 / 1024
-        )} MB`,
-      },
-    },
+    server: { version: serverVersion },
     frontend: frontendVersion,
-    database: {
-      status: isDatabaseConnected() ? "connected" : "disconnected",
-      message: isDatabaseConnected()
-        ? "Database connection is healthy"
-        : "Database connection is down, attempting to reconnect automatically",
-    },
-    // hydra: {
-    //   health: hydraStatus,
-    // },
+    database: isDatabaseConnected() ? "connected" : "disconnected",
   });
 });
 

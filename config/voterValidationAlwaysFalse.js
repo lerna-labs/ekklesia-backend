@@ -25,3 +25,9 @@ export async function getTotalWeight() {
 }
 
 
+
+// Per-voter power for snapshot/cron. Defaults to UserCache rows.
+// Override here if this script can enumerate the chain better than
+// the local UserCache (e.g. fetch all DReps from Koios, all pools,
+// etc.) and produce per-voter rows directly.
+export { computeFromUserCache as computePerVoterPower } from "../helper/votingPower/computeFromUserCache.js";

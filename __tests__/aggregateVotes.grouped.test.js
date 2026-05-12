@@ -76,9 +76,12 @@ function makeProposal(ballotId, options = {}) {
     ballotId,
     title: "Test proposal",
     description: "Test",
-    voteType: "default",
+    voteType: "choice",
     voteOptions: voteOptions || defaultOptions,
-    abstainAllowed,
+    // Legacy test helper kept its `abstainAllowed` input; translate to
+    // the v2 schema's inverted flag. abstainAllowed=false (the default
+    // here) means the question requires an answer.
+    requireAnswer: abstainAllowed === false,
   };
 }
 
@@ -92,6 +95,12 @@ function makeUserCaches(ballotId, list) {
   }));
 }
 
+// Probe the URI once at suite boot. If the server isn't reachable within a
+// short window (e.g. no local Mongo, Docker service name like `mongo` that
+// only resolves inside a container), skip the suite and emit a clear
+// warning — do not hang the whole test run.
+let mongoReady = false;
+
 const runDescribe = mongoUri ? describe : describe.skip;
 runDescribe("aggregateVotes grouped results", () => {
   const runId = Date.now();
@@ -99,11 +108,20 @@ runDescribe("aggregateVotes grouped results", () => {
   beforeAll(async () => {
     if (!mongoUri) return;
     mongoose.set("strictQuery", true);
-    await mongoose.connect(mongoUri);
-  });
+    try {
+      await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 2000 });
+      mongoReady = true;
+    } catch (err) {
+      console.warn(
+        `[aggregateVotes.grouped] skipping: MongoDB unreachable at ${mongoUri} (${err.message}). ` +
+          `Start a local Mongo (docs repo: 'cd ~/ekklesia/docs && docker compose -f docker-compose.test.yml up -d mongo') ` +
+          `or set MONGODB_URI_TEST to a reachable server.`
+      );
+    }
+  }, 10_000);
 
   afterAll(async () => {
-    if (!mongoUri) return;
+    if (!mongoReady) return;
     try {
       const ballots = await Ballot.find({ title: new RegExp("^" + BALLOT_TITLE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + runId) }).lean();
       const ballotIds = ballots.map((b) => b._id);
@@ -124,7 +142,14 @@ runDescribe("aggregateVotes grouped results", () => {
     }
   });
 
-  test("two groups (drep/pool): overall and resultsByGroup", async () => {
+  // Wrapper that skips a test body when Mongo isn't available.
+  const maybeTest = (name, fn) =>
+    test(name, async () => {
+      if (!mongoReady) return;
+      await fn();
+    });
+
+  maybeTest("two groups (drep/pool): overall and resultsByGroup", async () => {
     const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId));
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
 
@@ -185,7 +210,7 @@ runDescribe("aggregateVotes grouped results", () => {
     expect(pool.results.find((r) => r.id === 2)).toEqual({ id: 2, label: "No", count: 3, votingPower: 12 });
   });
 
-  test("abstain vote: abstain in results and in drep group", async () => {
+  maybeTest("abstain vote: abstain in results and in drep group", async () => {
     const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + " abstain"));
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: true }));
 
@@ -231,7 +256,9 @@ runDescribe("aggregateVotes grouped results", () => {
 
     const drep = result.resultsByGroup.drep;
     expect(drep).toBeDefined();
-    expect(drep.totalVotes).toBe(5);
+    // totalVotes counts distinct PARTICIPATING voters (non-abstain).
+    // 5 drep voters total, 1 abstained → 4 participate.
+    expect(drep.totalVotes).toBe(4);
     const drepAbstain = drep.results.find((r) => r.id === "abstain");
     expect(drepAbstain).toEqual({ id: "abstain", label: "Abstain", count: 1, votingPower: 10 });
 
@@ -242,9 +269,12 @@ runDescribe("aggregateVotes grouped results", () => {
     expect(poolAbstain).toBeDefined();
     expect(poolAbstain.count).toBe(0);
     expect(poolAbstain.votingPower).toBe(0);
+
+    // proposalParticipation excludes the drep abstainer.
+    expect(result.proposalParticipation.voterCount).toEqual({ drep: 4, pool: 5 });
   });
 
-  test("default group: voter with no group appears in default group", async () => {
+  maybeTest("stake group: voter in stake group appears in stake bucket", async () => {
     const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + " default"));
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
 
@@ -258,8 +288,8 @@ runDescribe("aggregateVotes grouped results", () => {
       voterGroup: "pool",
       votingPower: power,
     }));
-    const defaultVoter = { userId: "voter-default-1", voterGroup: "default", votingPower: 7 };
-    await UserCache.insertMany(makeUserCaches(ballot._id, [...drepVoters, ...poolVoters, defaultVoter]));
+    const stakeVoter = { userId: "voter-stake-1", voterGroup: "stake", votingPower: 7 };
+    await UserCache.insertMany(makeUserCaches(ballot._id, [...drepVoters, ...poolVoters, stakeVoter]));
 
     const votes = [
       { userId: "voter-drep-1", submittedVote: [1], vote: [1] },
@@ -272,7 +302,7 @@ runDescribe("aggregateVotes grouped results", () => {
       { userId: "voter-pool-3", submittedVote: [2], vote: [2] },
       { userId: "voter-pool-4", submittedVote: [2], vote: [2] },
       { userId: "voter-pool-5", submittedVote: [2], vote: [2] },
-      { userId: "voter-default-1", submittedVote: [1], vote: [1] },
+      { userId: "voter-stake-1", submittedVote: [1], vote: [1] },
     ].map((v) => ({
       ballotId: ballot._id,
       proposalId: proposal._id,
@@ -292,10 +322,10 @@ runDescribe("aggregateVotes grouped results", () => {
     expect(no.count).toBe(5);
     expect(no.votingPower).toBe(102);
 
-    expect(result.resultsByGroup.default).toBeDefined();
-    const defaultGroup = result.resultsByGroup.default;
-    expect(defaultGroup.totalVotes).toBe(1);
-    expect(defaultGroup.results.find((r) => r.id === 1)).toEqual({ id: 1, label: "Yes", count: 1, votingPower: 7 });
+    expect(result.resultsByGroup.stake).toBeDefined();
+    const stakeGroup = result.resultsByGroup.stake;
+    expect(stakeGroup.totalVotes).toBe(1);
+    expect(stakeGroup.results.find((r) => r.id === 1)).toEqual({ id: 1, label: "Yes", count: 1, votingPower: 7 });
 
     const drep = result.resultsByGroup.drep;
     expect(drep.results.find((r) => r.id === 1)).toEqual({ id: 1, label: "Yes", count: 3, votingPower: 60 });

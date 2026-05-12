@@ -63,9 +63,13 @@ router.get("/:proposalId", cacheControl(300), getProposal, async (req, res) => {
   // fetch ballot details
   const ballot = await Ballot.findOne({ _id: proposal.ballotId });
 
-  // get total voter count
-  const { allowedVoterCount, getTotalWeight } = await import(
-    "../../../config/" + ballot.voterValidationScript
+  // get total voter count (loadValidationScript so dev edits to
+  // config/*.js are picked up without a full server restart)
+  const { loadValidationScript } = await import(
+    "../../../helper/loadValidationScript.js"
+  );
+  const { allowedVoterCount, getTotalWeight } = await loadValidationScript(
+    ballot.voterValidationScript
   );
   const totalVoterCount = await allowedVoterCount(ballot._id);
   const totalVotingPower = await getTotalWeight(ballot._id);
@@ -166,7 +170,7 @@ router.get("/:proposalId/results/grouped", getProposal, async (req, res) => {
     {
       $addFields: {
         votingPower: { $ifNull: [{ $arrayElemAt: ["$voterData.votingPower", 0] }, 1] },
-        voterGroup: { $ifNull: [{ $arrayElemAt: ["$voterData.voterGroup", 0] }, "default"] },
+        voterGroup: { $ifNull: [{ $arrayElemAt: ["$voterData.voterGroup", 0] }, "stake"] },
       },
     },
     { $unwind: { path: "$submittedVote", preserveNullAndEmptyArrays: false } },
@@ -192,7 +196,7 @@ router.get("/:proposalId/results/grouped", getProposal, async (req, res) => {
     });
     groups[groupKey].totalVotes += row.count;
   }
-  if (proposal.abstainAllowed) {
+  if (proposal.requireAnswer !== true) {
     for (const groupKey of Object.keys(groups)) {
       if (!groups[groupKey].results.some((r) => r.value === "abstain")) {
         const abstainRow = byGroupAggregation.find(
@@ -284,19 +288,34 @@ router.get("/:proposalId/results", getProposal, async (req, res) => {
     },
   ]);
 
+  // voteOptions items use `id` (not `value`) per the Proposal schema —
+  // matching against `option.value` here would always miss and zero
+  // out every row.
   const resultsWithLabels = proposal.voteOptions.map((option) => {
-    // Find if there's a matching result from the aggregation
     const matchingResult = voteAggregation.find(
-      (result) => result._id == option.value
+      (result) => String(result._id) === String(option.id)
     );
 
     return {
-      value: option.value,
+      id: option.id,
       label: option.label,
       count: matchingResult ? matchingResult.count : 0,
       votingPower: matchingResult ? matchingResult.votingPower : 0,
     };
   });
+
+  // Include the abstain bucket explicitly when the proposal allows it
+  // — the aggregation produces `_id: "abstain"` rows but voteOptions
+  // doesn't list them, so they were getting dropped.
+  if (proposal.requireAnswer !== true) {
+    const abstainAgg = voteAggregation.find((r) => r._id === "abstain");
+    resultsWithLabels.push({
+      id: "abstain",
+      label: "Abstain",
+      count: abstainAgg ? abstainAgg.count : 0,
+      votingPower: abstainAgg ? abstainAgg.votingPower : 0,
+    });
+  }
 
   // response object
   const response = proposal;

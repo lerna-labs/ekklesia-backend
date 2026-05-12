@@ -209,7 +209,14 @@ export async function getSubmittedVotes(userId) {
         (el) => el.value === proposal.vote
       )?.label;
 
-      proposal.description = proposal.data?.description;
+      // Lift summary/rationale out of `data` if a legacy vote payload
+      // tucked them there; canonical Proposal fields take precedence.
+      if (!proposal.summary && proposal.data?.summary) {
+        proposal.summary = proposal.data.summary;
+      }
+      if (!proposal.rationale && proposal.data?.rationale) {
+        proposal.rationale = proposal.data.rationale;
+      }
       // remove data.voteOptions from proposal object
       delete proposal.data;
     });

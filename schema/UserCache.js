@@ -10,7 +10,7 @@ const { Schema } = mongoose;
  * @property {String} userId - The ID of the user who is validated
  * @property {Boolean} validated - Whether the user has been validated for this ballot
  * @property {Number} votingPower - The calculated voting power of the user for this ballot
- * @property {String} voterGroup - Optional group for this user on this ballot (e.g. "drep", "pool", "default"); used for results by group
+ * @property {String} voterGroup - Group for this user on this ballot — one of "drep", "pool", "stake"; used for results by group
  * @property {Date} createdAt - Timestamp when the validation record was created (immutable)
  * @property {Date} updatedAt - Timestamp when the validation record was last updated
  *
@@ -45,8 +45,16 @@ const userCacheSchema = new Schema(
     },
     voterGroup: {
       type: String,
-      default: "default",
-    }
+      enum: ["drep", "pool", "stake"],
+      default: "stake",
+    },
+    // Last committed Hydra voter-token nonce. Reserved optimistically during
+    // draft creation and committed on Hydra acceptance; cleared/rolled back on
+    // failure. Null for legacy ballots.
+    nonce: {
+      type: Number,
+      default: null,
+    },
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
