@@ -1,5 +1,31 @@
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 
+// IMPORTANT: in express-rate-limit v8 the helper signature is
+// `ipKeyGenerator(ip: string, ipv6Subnet?: number)`. It returns the
+// IP normalized (IPv6 collapsed to a /56 subnet by default). Pass
+// `req.ip` — NOT `(req, res)`. When given the wrong shape the helper
+// returns its first argument verbatim, so each request becomes a
+// different `req` object → MemoryStore keys by object identity →
+// every request gets a fresh bucket and the limiter never trips.
+// See `.claude/issues/51.md` for the regression that taught us this.
+//
+// The three keyGenerator shapes below are named + exported solely so
+// the security tests can lock the invariant in place without booting
+// the full middleware stack.
+
+export function ipFallbackKey(req) {
+  return ipKeyGenerator(req.ip);
+}
+export function userOrIpKey(req) {
+  return req.auth?.userId || ipKeyGenerator(req.ip);
+}
+export function importerOrIpKey(req) {
+  return req.auth?.id || req.auth?.userId || ipKeyGenerator(req.ip);
+}
+export function apiKeyOrIpKey(req) {
+  return req.apiKey?.id || ipKeyGenerator(req.ip);
+}
+
 /**
  * Rate limiter for nonce requests (POST /session).
  * 5 requests per minute per IP.
@@ -35,7 +61,7 @@ export const sessionVerificationLimiter = rateLimit({
 export const voteWriteLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
-  keyGenerator: (req, res) => req.auth?.userId || ipKeyGenerator(req, res),
+  keyGenerator: userOrIpKey,
   message: {
     status: "error",
     message: "Too many vote operations. Slow down.",
@@ -51,8 +77,7 @@ export const voteWriteLimiter = rateLimit({
 export const ballotImportLimiter = rateLimit({
   windowMs: Number(process.env.BALLOT_IMPORT_WINDOW_MS) || 60 * 1000,
   max: Number(process.env.BALLOT_IMPORT_MAX) || 30,
-  keyGenerator: (req, res) =>
-    req.auth?.id || req.auth?.userId || ipKeyGenerator(req, res),
+  keyGenerator: importerOrIpKey,
   message: {
     status: "error",
     message: "Ballot import rate limit exceeded.",
@@ -70,7 +95,7 @@ export const publicApiLimiter = rateLimit({
     req.apiKey?.rateLimit?.max ||
     Number(process.env.PUBLIC_API_MAX) ||
     120,
-  keyGenerator: (req, res) => req.apiKey?.id || ipKeyGenerator(req, res),
+  keyGenerator: apiKeyOrIpKey,
   message: {
     status: "error",
     message: "Public API rate limit exceeded for this key.",
@@ -88,7 +113,7 @@ export const publicApiLimiter = rateLimit({
 export const publicGetLimiter = rateLimit({
   windowMs: Number(process.env.PUBLIC_GET_WINDOW_MS) || 60 * 1000,
   max: Number(process.env.PUBLIC_GET_MAX) || 120,
-  keyGenerator: (req, res) => req.auth?.userId || ipKeyGenerator(req, res),
+  keyGenerator: userOrIpKey,
   message: {
     status: "error",
     message: "Rate limit exceeded",
@@ -103,7 +128,7 @@ export const publicGetLimiter = rateLimit({
 export const aggregationLimiter = rateLimit({
   windowMs: Number(process.env.AGGREGATION_WINDOW_MS) || 60 * 1000,
   max: Number(process.env.AGGREGATION_MAX) || 30,
-  keyGenerator: (req, res) => req.auth?.userId || ipKeyGenerator(req, res),
+  keyGenerator: userOrIpKey,
   message: {
     status: "error",
     message: "Rate limit exceeded (aggregation)",
