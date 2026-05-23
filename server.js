@@ -74,8 +74,15 @@ app.use(
 // req.query.filter.key — Express 5's default "simple" parser leaves
 // those keys as literal strings.
 app.set("query parser", "extended");
-app.use(express.json()); // json parser
-app.use(express.urlencoded({ extended: true })); // urlencoded parser
+// JSON body parser. The CompiledBallot import endpoint
+// (POST /api/v1/admin/ballots/import) can carry several hundred KB once a
+// real ballot has its proposal set; the default 100 KB cap 413s those.
+// 10 MB covers a fully-loaded payload (MAX.proposals × MAX.rationale ≈ 5 MB
+// of rationale text plus headroom) without being unbounded. All routes that
+// accept bodies sit behind rate limiters and admin/scope auth, so a larger
+// global cap is not exposed to anonymous traffic in practice.
+app.use(express.json({ limit: "10mb" })); // json parser
+app.use(express.urlencoded({ extended: true, limit: "10mb" })); // urlencoded parser
 app.use(cookieParser()); // cookie parser
 app.use(
   cors({
