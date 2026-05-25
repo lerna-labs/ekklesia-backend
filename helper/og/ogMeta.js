@@ -11,9 +11,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import mongoose from "mongoose";
-import { Ballot } from "../../schema/Ballot.js";
-import { Proposal } from "../../schema/Proposal.js";
+import { resolveBallot, resolveProposal } from "../idResolver.js";
 import { rendererVersion } from "./ogImage.js";
 
 const TITLE_SUFFIX = "Ekklesia";
@@ -107,14 +105,16 @@ function publicUrl() {
   return withScheme.replace(/\/+$/, "");
 }
 
-function isObjectId(s) {
-  return typeof s === "string" && mongoose.isValidObjectId(s);
-}
-
-async function buildBallotMeta(ballotId) {
-  if (!isObjectId(ballotId)) return null;
-  const ballot = await Ballot.findById(ballotId).lean();
-  if (!ballot) return null;
+async function buildBallotMeta(ballotIdOrExternal) {
+  // Resolve either the canonical _id or the upstream externalBallotId.
+  // The id used in og:url / og:image is always the canonical _id so
+  // OG cards de-dup correctly across the alias.
+  const resolved = await resolveBallot(ballotIdOrExternal, {
+    selectFields: { _id: 1, title: 1, description: 1, updatedAt: 1 },
+  }).catch(() => null);
+  if (!resolved || resolved.ambiguous) return null;
+  const ballot = resolved.doc;
+  const canonicalId = String(ballot._id);
 
   const ts = ballot.updatedAt ? new Date(ballot.updatedAt).getTime() : 0;
   const v = rendererVersion();
@@ -124,18 +124,28 @@ async function buildBallotMeta(ballotId) {
     ballot.description || `Cast your vote on ${ballot.title}.`,
     DESC_LIMIT
   );
-  const url = `${base}/ballots/${ballotId}`;
-  const image = `${base}/og/ballot/${ballotId}.png?v=${ts}-${v}`;
-  return { title, description, url, image, cacheKey: `b-v${v}-${ballotId}-${ts}` };
+  const url = `${base}/ballots/${canonicalId}`;
+  const image = `${base}/og/ballot/${canonicalId}.png?v=${ts}-${v}`;
+  return { title, description, url, image, cacheKey: `b-v${v}-${canonicalId}-${ts}` };
 }
 
-async function buildProposalMeta(ballotId, proposalId) {
-  if (!isObjectId(ballotId) || !isObjectId(proposalId)) return null;
-  const proposal = await Proposal.findById(proposalId).lean();
-  if (!proposal) return null;
-  if (proposal.ballotId?.toString() !== ballotId) return null;
-  const ballot = await Ballot.findById(ballotId).lean();
-  if (!ballot) return null;
+async function buildProposalMeta(ballotIdOrExternal, proposalIdOrExternal) {
+  // Proposal lookup is parent-scoped to the resolved ballot _id so an
+  // upstream proposal id reused across ballots can never collide.
+  const bRes = await resolveBallot(ballotIdOrExternal, {
+    selectFields: { _id: 1, title: 1 },
+  }).catch(() => null);
+  if (!bRes || bRes.ambiguous) return null;
+  const ballot = bRes.doc;
+  const canonicalBallotId = String(ballot._id);
+
+  const pRes = await resolveProposal(proposalIdOrExternal, {
+    ballotId: canonicalBallotId,
+    selectFields: { _id: 1, title: 1, description: 1, updatedAt: 1 },
+  }).catch(() => null);
+  if (!pRes || pRes.ambiguous) return null;
+  const proposal = pRes.doc;
+  const canonicalProposalId = String(proposal._id);
 
   const ts = proposal.updatedAt ? new Date(proposal.updatedAt).getTime() : 0;
   const v = rendererVersion();
@@ -148,9 +158,15 @@ async function buildProposalMeta(ballotId, proposalId) {
     proposal.description || `One of the proposals on the "${ballot.title}" ballot.`,
     DESC_LIMIT
   );
-  const url = `${base}/ballots/${ballotId}/proposals/${proposalId}`;
-  const image = `${base}/og/proposal/${proposalId}.png?v=${ts}-${v}`;
-  return { title, description, url, image, cacheKey: `p-v${v}-${proposalId}-${ts}` };
+  const url = `${base}/ballots/${canonicalBallotId}/proposals/${canonicalProposalId}`;
+  const image = `${base}/og/proposal/${canonicalProposalId}.png?v=${ts}-${v}`;
+  return {
+    title,
+    description,
+    url,
+    image,
+    cacheKey: `p-v${v}-${canonicalProposalId}-${ts}`,
+  };
 }
 
 /**

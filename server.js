@@ -18,6 +18,7 @@ import { normalizeQuery } from "./helper/normalizeQuery.js";
 import { publicGetLimiter } from "./helper/rateLimiters.js";
 import { createOgMetaMiddleware } from "./helper/og/ogMeta.js";
 import { ogBallotImage, ogProposalImage } from "./helper/og/ogImage.js";
+import { spaCanonicalRedirect } from "./helper/spaCanonicalRedirect.js";
 
 // Initialize console with timestamps
 initializeConsole();
@@ -115,6 +116,21 @@ async function startServer() {
 
     // Serve static files from the public directory (SvelteKit assets)
     app.use(express.static(join(__dirname, "public")));
+
+    // SEO canonical 301 — when the user arrives at a SPA URL whose
+    // :ballotId or :proposalId segment is the upstream proposals-module
+    // identifier, redirect to the canonical _id URL before the SPA
+    // boots. Falls through to the SPA on any non-match / failure.
+    // Mounted ahead of OG cards so they receive the canonical id.
+    app.get(
+      [
+        "/ballots/:ballotId",
+        "/ballots/:ballotId/proposals",
+        "/ballots/:ballotId/proposals/:proposalId",
+        "/ballots/:ballotId/proposals/:proposalId/results",
+      ],
+      spaCanonicalRedirect
+    );
 
     // Per-ballot / per-proposal OpenGraph cards. Slots between
     // express.static (so /social.png and other shipped assets keep their

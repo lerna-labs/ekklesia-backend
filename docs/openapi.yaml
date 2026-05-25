@@ -30,6 +30,30 @@ info:
 
     ## Session (unified)
     A single set of session endpoints handles both standard and multisig authentication. For multisig, include `scriptAddress` in the request body on POST (nonce) and PUT (verify). Nonce and verify requests are rate-limited.
+
+    ## Dual-id resolution (`:ballotId` / `:proposalId`)
+
+    Every path parameter that names a ballot or proposal accepts **either**:
+
+    - the canonical Mongo `_id` (24-char hex), **or**
+    - the upstream identifier the originating proposals module assigned at
+      import time — `proposalSource.externalBallotId` for ballots,
+      `externalProposal.id` for proposals.
+
+    The internal `_id` always wins on tie. When an external id matches
+    more than one row and no internal-id tiebreaker is available, the
+    endpoint returns **`409 ID_COLLISION`** with the candidate `_id`s
+    so the caller can re-issue against the canonical key.
+
+    When a request resolves via the external id, JSON responses include
+    an additional top-level `canonical` field (the canonical API URL)
+    and the HTTP response carries `Link: <…>; rel="canonical"`. SPA
+    routes (e.g. `/ballots/<bId>/proposals/<pId>`) are 301-redirected
+    to the canonical URL by the SPA fallback so search engines only
+    index one URL per resource.
+
+    Schema: see `BallotIdOrExternal` / `ProposalIdOrExternal`. Response:
+    see `ConflictExternalIdCollision`.
   version: 0.5.33
   contact:
     name: Adam Dean, Mad Orkestra
@@ -221,15 +245,14 @@ paths:
         tags:
           - Ballots
         summary: Get a specific ballot
-        description: Get a specific ballot by ID with voter validation if token is present
+        description: |
+          Get a specific ballot by ID with voter validation if token is
+          present. `ballotId` accepts either the canonical `_id` or the
+          upstream `proposalSource.externalBallotId` (see top-level
+          "Dual-id resolution" note).
         operationId: getBallot
         parameters:
-          - name: ballotId
-            in: path
-            required: true
-            description: The ID of the ballot to retrieve
-            schema:
-              type: string
+          - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
         responses:
           '200':
             description: The ballot object with additional voter-specific data if authenticated
@@ -289,6 +312,8 @@ paths:
                             release cycle so legacy frontends can migrate to the *ByGroup keys.
           '404':
             $ref: '#/components/responses/NotFound'
+          '409':
+            $ref: '#/components/responses/ConflictExternalIdCollision'
           '500':
             $ref: '#/components/responses/ServerError'
       /proposals:
@@ -299,12 +324,7 @@ paths:
           description: Get all proposals for a specific ballot with filtering, sorting, and pagination
           operationId: getBallotProposals
           parameters:
-            - name: ballotId
-              in: path
-              required: true
-              description: The ID of the ballot
-              schema:
-                type: string
+            - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
             - name: page
               in: query
               description: Page number for pagination
@@ -400,12 +420,7 @@ paths:
           description: Get all unique categories from proposals in a specific ballot
           operationId: getBallotCategories
           parameters:
-            - name: ballotId
-              in: path
-              required: true
-              description: The ID of the ballot
-              schema:
-                type: string
+            - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
           responses:
             '200':
               description: List of unique categories
@@ -427,12 +442,7 @@ paths:
           description: Get all unique tags from proposals in a specific ballot
           operationId: getBallotTags
           parameters:
-            - name: ballotId
-              in: path
-              required: true
-              description: The ID of the ballot
-              schema:
-                type: string
+            - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
           responses:
             '200':
               description: List of unique tags
@@ -453,15 +463,14 @@ paths:
         tags:
           - Proposals
         summary: Get a proposal by ID
-        description: Get a proposal by ID with voting statistics and user vote if authenticated
+        description: |
+          Get a proposal by ID with voting statistics and user vote if
+          authenticated. `proposalId` accepts either the canonical
+          `_id` or the upstream `externalProposal.id` (see top-level
+          "Dual-id resolution" note).
         operationId: getProposal
         parameters:
-          - name: proposalId
-            in: path
-            required: true
-            description: The ID of the proposal to retrieve
-            schema:
-              type: string
+          - $ref: '#/components/parameters/ProposalIdOrExternalAsProposalId'
         responses:
           '200':
             description: The proposal object with additional voting statistics
@@ -498,6 +507,8 @@ paths:
             $ref: '#/components/responses/BadRequest'
           '404':
             $ref: '#/components/responses/NotFound'
+          '409':
+            $ref: '#/components/responses/ConflictExternalIdCollision'
           '500':
             $ref: '#/components/responses/ServerError'
       /comments:
@@ -508,12 +519,7 @@ paths:
           description: Get all comments for a specific proposal sorted by creation date
           operationId: getProposalComments
           parameters:
-            - name: proposalId
-              in: path
-              required: true
-              description: The ID of the proposal
-              schema:
-                type: string
+            - $ref: '#/components/parameters/ProposalIdOrExternalAsProposalId'
           responses:
             '200':
               description: List of comments for the proposal
@@ -535,12 +541,7 @@ paths:
           description: Get voting results for a proposal broken down by voter group. Returns stored results when available, otherwise computes on-the-fly.
           operationId: getProposalResultsGrouped
           parameters:
-            - name: proposalId
-              in: path
-              required: true
-              description: The ID of the proposal
-              schema:
-                type: string
+            - $ref: '#/components/parameters/ProposalIdOrExternalAsProposalId'
           responses:
             '200':
               description: Results per voter group
@@ -585,12 +586,7 @@ paths:
           description: Get voting results for a specific proposal with vote counts and voting power
           operationId: getProposalResults
           parameters:
-            - name: proposalId
-              in: path
-              required: true
-              description: The ID of the proposal
-              schema:
-                type: string
+            - $ref: '#/components/parameters/ProposalIdOrExternalAsProposalId'
           responses:
             '200':
               description: The proposal object with voting results
@@ -636,12 +632,7 @@ paths:
           description: Get a shortened version of a proposal without detailed data
           operationId: getProposalShort
           parameters:
-            - name: proposalId
-              in: path
-              required: true
-              description: The ID of the proposal to retrieve
-              schema:
-                type: string
+            - $ref: '#/components/parameters/ProposalIdOrExternalAsProposalId'
           responses:
             '200':
               description: The proposal object without detailed data
@@ -666,12 +657,7 @@ paths:
           - cookieAuth: []
           - bearerAuth: []
         parameters:
-          - name: proposalId
-            in: path
-            required: true
-            description: ID of the proposal to vote on
-            schema:
-              type: string
+          - $ref: '#/components/parameters/ProposalIdOrExternalAsProposalId'
         requestBody:
           required: true
           content:
@@ -1410,12 +1396,7 @@ paths:
           - cookieAuth: []
           - bearerAuth: []
         parameters:
-          - name: ballotId
-            in: path
-            required: true
-            description: ID of the ballot to checkout
-            schema:
-              type: string
+          - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
         requestBody:
           required: true
           content:
@@ -1455,12 +1436,7 @@ paths:
           - cookieAuth: []
           - bearerAuth: []
         parameters:
-          - name: ballotId
-            in: path
-            required: true
-            description: ID of the ballot
-            schema:
-              type: string
+          - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
         requestBody:
           required: true
           content:
@@ -1515,12 +1491,7 @@ paths:
             - cookieAuth: []
             - bearerAuth: []
           parameters:
-            - name: ballotId
-              in: path
-              required: true
-              description: ID of the ballot to checkout
-              schema:
-                type: string
+            - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
           requestBody:
             required: true
             content:
@@ -1562,12 +1533,7 @@ paths:
             - cookieAuth: []
             - bearerAuth: []
           parameters:
-            - name: ballotId
-              in: path
-              required: true
-              description: ID of the ballot
-              schema:
-                type: string
+            - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
           requestBody:
             required: true
             content:
@@ -1636,12 +1602,7 @@ paths:
               - cookieAuth: []
               - bearerAuth: []
             parameters:
-              - name: ballotId
-                in: path
-                required: true
-                description: ID of the ballot
-                schema:
-                  type: string
+              - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
               - name: transactionId
                 in: path
                 required: true
@@ -2612,6 +2573,37 @@ components:
         in an array until all required signatures are collected.
       additionalProperties: true
 
+    BallotIdOrExternal:
+      type: string
+      maxLength: 128
+      description: |
+        Canonical Mongo `_id` (24-char hex) **or** the upstream
+        `proposalSource.externalBallotId` set at import time. See the
+        top-level "Dual-id resolution" note. Internal `_id` always
+        wins on tie.
+
+    ProposalIdOrExternal:
+      type: string
+      maxLength: 128
+      description: |
+        Canonical Mongo `_id` (24-char hex) **or** the upstream
+        `externalProposal.id` set at import time. Scoped to the parent
+        ballot when the path carries `:ballotId`; otherwise an
+        ambiguous external id returns 409 `ID_COLLISION`.
+
+    CanonicalEnvelope:
+      type: object
+      description: |
+        Mixin used by routes that may have been addressed via an
+        upstream external id. When present, `canonical` is the API
+        URL for the same resource keyed by its canonical `_id`. The
+        accompanying HTTP response carries `Link: <canonical>; rel="canonical"`.
+        Absent when the request was already canonical.
+      properties:
+        canonical:
+          type: string
+          description: Canonical API URL for this resource keyed by `_id`.
+
     Pagination:
       type: object
       description: |
@@ -2697,3 +2689,69 @@ components:
                 example: error
               message:
                 type: string
+
+    ConflictExternalIdCollision:
+      description: |
+        The supplied id matches multiple rows via the upstream
+        external id and no internal `_id` tiebreaker is available.
+        Re-issue the request using the canonical `_id` from
+        `candidates[]`.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [status, code, message, candidates]
+            properties:
+              status:
+                type: string
+                example: error
+              code:
+                type: string
+                example: ID_COLLISION
+              message:
+                type: string
+              candidates:
+                type: array
+                description: Canonical `_id`s of the matching rows.
+                items:
+                  type: string
+
+  parameters:
+    BallotIdOrExternalAsBallotId:
+      name: ballotId
+      in: path
+      required: true
+      description: |
+        Canonical Mongo `_id` (24-char hex) **or** the upstream
+        `proposalSource.externalBallotId` set by the originating
+        proposals module at import time. See the top-level "Dual-id
+        resolution" note. Returns 409 `ID_COLLISION` if an external id
+        matches multiple rows.
+      schema:
+        $ref: '#/components/schemas/BallotIdOrExternal'
+
+    BallotIdOrExternalAsId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Canonical Mongo `_id` (24-char hex) **or** the upstream
+        `proposalSource.externalBallotId`. See the top-level "Dual-id
+        resolution" note. Returns 409 `ID_COLLISION` on ambiguous
+        external-id matches.
+      schema:
+        $ref: '#/components/schemas/BallotIdOrExternal'
+
+    ProposalIdOrExternalAsProposalId:
+      name: proposalId
+      in: path
+      required: true
+      description: |
+        Canonical Mongo `_id` (24-char hex) **or** the upstream
+        `externalProposal.id` set by the originating proposals module
+        at import time. See the top-level "Dual-id resolution" note.
+        When the parent ballot is in the path, the lookup is scoped to
+        it (no collision); when called bare, an ambiguous external id
+        returns 409 `ID_COLLISION`.
+      schema:
+        $ref: '#/components/schemas/ProposalIdOrExternal'

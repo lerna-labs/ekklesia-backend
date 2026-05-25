@@ -6,6 +6,7 @@ import { Proposal } from "../../../schema/Proposal.js";
 import { User } from "../../../schema/User.js";
 import { Vote } from "../../../schema/Vote.js";
 import { verifyToken } from "../../../helper/verifyToken.js";
+import { resolveProposal } from "../../../helper/idResolver.js";
 
 const router = Router();
 
@@ -137,14 +138,15 @@ router.get("/", async (req, res) => {
       });
     }
 
+    // Accept either the canonical Mongo `_id` or the upstream
+    // `externalProposal.id` set at import time. Validation is
+    // loosened from "must be 24-char ObjectId" to "non-empty short
+    // string"; the resolver discriminates internally.
     const proposalTerm = proposalId.trim();
-    if (
-      !mongoose.Types.ObjectId.isValid(proposalTerm) ||
-      proposalTerm.length !== 24
-    ) {
+    if (proposalTerm.length === 0 || proposalTerm.length > 128) {
       return res.status(400).json({
         status: "error",
-        message: "Invalid proposal parameter. Must be a valid ObjectId.",
+        message: "Invalid proposal parameter.",
       });
     }
 
@@ -178,13 +180,25 @@ router.get("/", async (req, res) => {
       });
     }
 
-    const proposal = await Proposal.findById(proposalTerm).select("proposerId voteId").lean();
-    if (!proposal) {
+    const pRes = await resolveProposal(proposalTerm, {
+      selectFields: "_id proposerId voteId",
+    });
+    if (!pRes) {
       return res.status(404).json({
         status: "error",
         message: "Proposal not found",
       });
     }
+    if (pRes.ambiguous) {
+      return res.status(409).json({
+        status: "error",
+        code: "ID_COLLISION",
+        message:
+          "External proposal id matches multiple proposals; use the canonical _id",
+        candidates: pRes.ambiguous,
+      });
+    }
+    const proposal = pRes.doc;
 
     const vote = proposal.voteId
       ? await Vote.findById(proposal.voteId).select("admins").lean()
@@ -197,7 +211,9 @@ router.get("/", async (req, res) => {
       return res.status(400).json({ status: "error", message: statusFilter.message });
     }
 
-    const proposalObjectId = new mongoose.Types.ObjectId(proposalTerm);
+    // Use the resolved canonical _id (already an ObjectId), not the
+    // raw user-supplied term — which may have been an external id.
+    const proposalObjectId = proposal._id;
     const sortDirection = direction === "asc" ? 1 : -1;
     const skip = (page - 1) * limit;
 
@@ -386,15 +402,28 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ status: "error", message: "Comment content must be at most 2000 characters." });
     }
 
+    // Accept either canonical _id or upstream externalProposal.id.
     const proposalIdTrim = proposalId.trim();
-    if (!mongoose.Types.ObjectId.isValid(proposalIdTrim) || proposalIdTrim.length !== 24) {
-      return res.status(400).json({ status: "error", message: "Invalid proposalId. Must be a valid ObjectId." });
+    if (proposalIdTrim.length === 0 || proposalIdTrim.length > 128) {
+      return res.status(400).json({ status: "error", message: "Invalid proposalId." });
     }
 
-    const proposal = await Proposal.findById(proposalIdTrim).select("status voteId").lean();
-    if (!proposal) {
+    const pRes = await resolveProposal(proposalIdTrim, {
+      selectFields: "_id status voteId",
+    });
+    if (!pRes) {
       return res.status(404).json({ status: "error", message: "Proposal not found" });
     }
+    if (pRes.ambiguous) {
+      return res.status(409).json({
+        status: "error",
+        code: "ID_COLLISION",
+        message:
+          "External proposal id matches multiple proposals; use the canonical _id",
+        candidates: pRes.ambiguous,
+      });
+    }
+    const proposal = pRes.doc;
     if (proposal.status !== "live") {
       return res.status(400).json({
         status: "error",
@@ -419,7 +448,7 @@ router.post("/", async (req, res) => {
       }
       const parentComment = await Comment.findOne({
         _id: parentIdStr,
-        proposalId: new mongoose.Types.ObjectId(proposalIdTrim),
+        proposalId: proposal._id,
       }).lean();
       if (!parentComment) {
         return res.status(404).json({ status: "error", message: "Parent comment not found" });
@@ -433,7 +462,10 @@ router.post("/", async (req, res) => {
     }
 
     const doc = {
-      proposalId: new mongoose.Types.ObjectId(proposalIdTrim),
+      // proposal._id is already the canonical ObjectId, regardless of
+      // whether the caller passed the canonical id or the upstream
+      // externalProposal.id.
+      proposalId: proposal._id,
       userId,
       content: contentStr,
       status: "live",

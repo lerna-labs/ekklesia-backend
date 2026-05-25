@@ -55,6 +55,7 @@ import { forBallot, HydraClientError } from "../../../helper/hydraClient.js";
 import { credentialHrp, responderRoleFor } from "../../../helper/voterCredential.js";
 import { voteWriteLimiter } from "../../../helper/rateLimiters.js";
 import { checkVotingWindow } from "../../../helper/votingWindow.js";
+import { resolveBallot } from "../../../helper/idResolver.js";
 
 const router = Router();
 
@@ -148,11 +149,24 @@ function requireSession(req, res) {
 }
 
 async function requireHydraBallot(req, res) {
-  const ballot = await Ballot.findById(req.params.ballotId);
-  if (!ballot) {
+  // Accept the canonical _id or the upstream externalBallotId. The
+  // broker downstream addresses Hydra by the canonical _id, so the
+  // resolver flattens the alias before any in-head call runs.
+  const result = await resolveBallot(req.params.ballotId);
+  if (!result) {
     res.status(404).json({ status: "error", message: "Ballot not found" });
     return null;
   }
+  if (result.ambiguous) {
+    res.status(409).json({
+      status: "error",
+      code: "ID_COLLISION",
+      message: "External ballot id matches multiple ballots; use the canonical _id",
+      candidates: result.ambiguous,
+    });
+    return null;
+  }
+  const ballot = result.doc;
   if (ballot.source !== "hydra") {
     res.status(400).json({
       status: "error",

@@ -1,8 +1,8 @@
 // Reads legacy ballots from the local Mongo Ballot collection.
 // Pre-Hydra ballots (source === "legacy") are served here in read-only mode.
 
-import mongoose from "mongoose";
 import { Ballot } from "../../schema/Ballot.js";
+import { resolveBallot } from "../idResolver.js";
 
 export const source = "legacy";
 
@@ -66,10 +66,22 @@ export async function list({ filter = {}, sort = { votePeriodEnd: -1 }, skip = 0
   return { items: docs.map(toUnified), total };
 }
 
+/**
+ * Resolve by canonical `_id` or upstream `proposalSource.externalBallotId`,
+ * scoped to legacy rows so cross-adapter external-id reuse can't trigger
+ * a 409 here. The dispatcher walks adapters in order and passes the
+ * first hit through.
+ *
+ * Ambiguity is propagated via a `__ambiguous` marker so the dispatcher
+ * can render 409 instead of swallowing the conflict as a 404.
+ */
 export async function get(id) {
-  if (!mongoose.isValidObjectId(id)) return null;
-  const doc = await Ballot.findOne({ _id: id, ...ownershipMatch() }).lean();
-  return doc ? toUnified(doc) : null;
+  const result = await resolveBallot(id, {
+    extraFilter: ownershipMatch(),
+  });
+  if (!result) return null;
+  if (result.ambiguous) return { __ambiguous: result.ambiguous };
+  return toUnified(result.doc);
 }
 
 /**
