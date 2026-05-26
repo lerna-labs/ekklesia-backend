@@ -1717,7 +1717,17 @@ paths:
             default: 25
         - name: search
           in: query
-          description: Search term for voter ID
+          description: |
+            Case-insensitive substring match against either the
+            bech32 / CIP-129 `userId` OR the resolved display
+            `name` (DRep metadata name or Cardano Handle) from the
+            User collection. Regex metacharacters are escaped. A
+            single leading `$` is stripped before matching so a
+            user typing a handle as they see it rendered
+            (`$adam`) still matches the bare stored name
+            (`adam`); the match is substring-based so DRep
+            names that legitimately start with `$` are still
+            findable either way.
           required: false
           schema:
             type: string

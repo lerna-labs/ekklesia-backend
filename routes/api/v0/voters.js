@@ -23,7 +23,7 @@ const API_URL = process.env.API_URL;
  * @param {Object} req.query
  * @param {number} [req.query.page=1] - Page number for pagination (minimum: 1)
  * @param {number} [req.query.limit=25] - Number of items per page (minimum: 1, maximum: 100)
- * @param {string} [req.query.search=''] - Search term for voter ID (case-insensitive regex match, special regex characters escaped)
+ * @param {string} [req.query.search=''] - Search term matched (case-insensitive substring, special regex characters escaped) against the bech32/CIP-129 userId OR the resolved display name (DRep name or Cardano handle) from the User collection. A leading `$` is stripped so users typing a handle as they see it rendered (`$adam`) still match the bare stored name (`adam`).
  * @param {string} [req.query.sort='votes'] - Sort field: 'userId', 'votes', 'lastLogin', or 'lastVoteAt' (default: 'votes')
  * @param {string} [req.query.direction='desc'] - Sort direction: 'asc' or 'desc' (default: 'desc')
  *
@@ -112,14 +112,71 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
       return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     };
 
-    // Add search by voter ID if provided
-    const searchRegex = search
-      ? new RegExp(`${escapeRegex(search)}`, "i")
+    // Cardano handles are stored bare in User.name (`adam`) but the
+    // frontend renders them with a leading `$` (`$adam`). Strip a
+    // single leading `$` from the search input so users typing what
+    // they see still match. Stripping happens BEFORE regex escape so
+    // we don't quote the `$` and then "strip" something that's no
+    // longer there.
+    //
+    // Safe for DReps whose on-chain metadata name literally includes
+    // a leading `$` (e.g. a DRep deliberately tying their name to a
+    // handle) because the match below is an unanchored case-insensitive
+    // substring — `adam` is still contained in `$adam`, so stripping
+    // can only ever widen the match set, never miss one.
+    const normalizedSearch = search.startsWith("$")
+      ? search.slice(1)
+      : search;
+
+    // Case-insensitive substring match. Used against `userId` AND the
+    // joined `User.name` further down — see the $or stage in the
+    // pipelines below. Empty string after $-stripping means the user
+    // typed only `$`, treat that as "no filter".
+    const searchRegex = normalizedSearch
+      ? new RegExp(`${escapeRegex(normalizedSearch)}`, "i")
       : null;
 
-    if (search) {
-      matchConditions.userId = searchRegex;
-    }
+    // Stages used to filter grouped voters by `userId` OR resolved
+    // `User.name`. Only built when the user actually supplied a search
+    // term — for the unsearched listing we keep the original flow
+    // (cheaper, no per-voter User join during count/sort).
+    //
+    // We can't push this filter up into the initial Vote $match: a
+    // voter's NAME lives on the User collection, not on each Vote row,
+    // so we have to $lookup post-$group. That's also why the join is
+    // gated behind `search` — for big directories we don't want to pay
+    // the per-row lookup on every list call.
+    const searchStages = searchRegex
+      ? [
+        {
+          $lookup: {
+            from: "users",
+            localField: "_id",
+            foreignField: "_id",
+            as: "userSearchData",
+          },
+        },
+        {
+          $addFields: {
+            searchName: {
+              $cond: {
+                if: { $gt: [{ $size: "$userSearchData" }, 0] },
+                then: { $arrayElemAt: ["$userSearchData.name", 0] },
+                else: null,
+              },
+            },
+          },
+        },
+        {
+          $match: {
+            $or: [
+              { _id: searchRegex },
+              { searchName: searchRegex },
+            ],
+          },
+        },
+      ]
+      : [];
 
     // First count total unique voters with filters applied
     const countResult = await Vote.aggregate([
@@ -131,13 +188,7 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
           _id: "$userId",
         },
       },
-      ...(search
-        ? [
-          {
-            $match: { _id: searchRegex },
-          },
-        ]
-        : []),
+      ...searchStages,
       {
         $count: "total",
       },
