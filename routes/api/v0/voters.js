@@ -3,10 +3,10 @@ import { Router } from "express";
 const router = Router();
 
 // schema import
-import { Session } from "../../../schema/Session.js";
 import { Vote } from "../../../schema/Vote.js";
 import { Ballot } from "../../../schema/Ballot.js";
 import { UserCache } from "../../../schema/UserCache.js";
+import { User } from "../../../schema/User.js";
 import { validateAddress } from "../../../helper/validateAddress.js";
 import { cacheControl } from "../../../helper/cacheControl.js";
 import { projectVoteEntries } from "../../../helper/voterDetailMapper.js";
@@ -88,9 +88,21 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
   }
 
   try {
-    // Build match conditions for filtering
+    // Build match conditions for filtering.
+    //
+    // The `userId: { $type: "string" }` guard drops two flavors of
+    // garbage from the directory:
+    //   1. Pre-rename Vote rows that still carry the legacy `voterId`
+    //      field and no `userId` — those used to collapse into a single
+    //      `{ userId: null, votes: <count> }` bucket because $group
+    //      treats missing fields as null. Backfill via
+    //      __scripts/backfillVoteUserId.js promotes them; this filter
+    //      keeps the API honest until the script runs and after, as a
+    //      defense-in-depth guard against any future regression.
+    //   2. Anything else where the field was nulled out by hand.
     let matchConditions = {
       submittedAt: { $ne: null },
+      userId: { $type: "string" },
     };
 
     // Escape special regex characters in search string
@@ -155,41 +167,44 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
         : []),
     ];
 
-    // Add lookup for last login data if sorting by lastLogin
+    // Add lookup for last login data if sorting by lastLogin.
+    //
+    // Joins against `users` (User._id is the bech32/CIP-129 voter id).
+    // The previous implementation joined against `sessions`, but the
+    // sessions collection has a 1-hour TTL (schema/Session.js:54) —
+    // it's the auth-challenge handshake, not a persistent login
+    // record. Voters inactive for more than an hour appeared as
+    // lastLogin: null in the directory. routes/api/v0/session.js
+    // upserts User.lastLogin on every successful login, so User is
+    // the durable source.
     if (sort === "lastLogin") {
       pipeline.push(
         {
           $lookup: {
-            from: "sessions",
-            let: { userId: "$_id" },
-            pipeline: [
-              {
-                $match: {
-                  $expr: { $eq: ["$userId", "$$userId"] },
-                },
-              },
-              { $sort: { updatedAt: -1 } },
-              { $limit: 1 },
-              { $project: { _id: 0, updatedAt: 1 } },
-            ],
-            as: "sessionData",
+            from: "users",
+            localField: "_id",
+            foreignField: "_id",
+            as: "userData",
           },
         },
         {
           $addFields: {
             lastLogin: {
               $cond: {
-                if: { $gt: [{ $size: "$sessionData" }, 0] },
-                then: { $arrayElemAt: ["$sessionData.updatedAt", 0] },
+                if: { $gt: [{ $size: "$userData" }, 0] },
+                then: { $arrayElemAt: ["$userData.lastLogin", 0] },
                 else: null,
               },
             },
-            // Add a separate field to handle null sorting
+            // Separate field for sortable handling of nulls. Voters
+            // with no User row (historical voters who haven't logged in
+            // since the User collection landed) sort to the epoch end
+            // of whichever direction was requested.
             lastLoginSortValue: {
               $cond: {
-                if: { $gt: [{ $size: "$sessionData" }, 0] },
-                then: { $arrayElemAt: ["$sessionData.updatedAt", 0] },
-                else: new Date(0), // Use epoch date for sorting nulls first in ascending order
+                if: { $gt: [{ $size: "$userData" }, 0] },
+                then: { $arrayElemAt: ["$userData.lastLogin", 0] },
+                else: new Date(0),
               },
             },
           },
@@ -233,23 +248,25 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
       });
     }
 
-    // Only fetch lastLogin separately if we're not already sorting by it
-    // (since in that case we already have the data)
+    // Only fetch lastLogin separately if we're not already sorting by
+    // it — when sort === "lastLogin" the in-pipeline $lookup above
+    // already attached lastLogin to each row.
+    //
+    // Source is `users.lastLogin` (upserted by /api/v0/session on
+    // every successful login), NOT `sessions.updatedAt`. Sessions
+    // expire after 1h via TTL and represent the nonce handshake, not
+    // a durable login record.
     if (sort !== "lastLogin") {
-      // Get the last login for each voter
       const userIds = voters.map((voter) => voter.userId);
-      const lastLogins = await Session.find({
-        userId: { $in: userIds },
-      }).sort({ updatedAt: -1 });
+      const users = await User.find({ _id: { $in: userIds } }).select(
+        "_id lastLogin"
+      );
 
       const lastLoginMap = {};
-      lastLogins.forEach((login) => {
-        if (!lastLoginMap[login.userId]) {
-          lastLoginMap[login.userId] = login.updatedAt;
-        }
+      users.forEach((u) => {
+        lastLoginMap[u._id] = u.lastLogin || null;
       });
 
-      // Add last login to each voter
       voters.forEach((voter) => {
         voter.lastLogin = lastLoginMap[voter.userId] || null;
       });
@@ -548,15 +565,13 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
   );
   voterData.lastVoteDate = votes.length > 0 ? votes[0].votedAt : null;
 
-  // get last login for the voter
-  const lastLogin = await Session.findOne({
-    userId: userIdValidated,
-  }).sort({ updatedAt: -1 });
-  if (lastLogin) {
-    voterData.lastLogin = lastLogin.updatedAt;
-  } else {
-    voterData.lastLogin = null;
-  }
+  // Last login comes from the User collection (durable, upserted on
+  // every successful /api/v0/session PUT). The Sessions collection
+  // TTLs after 1 hour and was returning null for anyone inactive
+  // since the request window — that wasn't a "never logged in"
+  // signal, it was a "session record already expired" signal.
+  const user = await User.findById(userIdValidated).select("lastLogin");
+  voterData.lastLogin = user?.lastLogin || null;
 
   // Return the voter data
   return res.status(200).json(voterData);
