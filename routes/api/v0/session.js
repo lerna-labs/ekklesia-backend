@@ -500,7 +500,12 @@ router.put("/", sessionVerificationLimiter, validateSessionRequest, async (req, 
   }
 
   try {
-    const update = { lastLogin: new Date() };
+    // Stamp nameFetchedAt unconditionally — it tracks "we tried to
+    // resolve a name," not "we got one." Without this stamp, the
+    // backfill cron (crons/voterNameBackfill.js) would re-hit Koios
+    // on a voter who just logged in but whose drep metadata returned
+    // no displayable name.
+    const update = { lastLogin: new Date(), nameFetchedAt: new Date() };
     if (userName != null) update.name = userName;
     await User.findOneAndUpdate(
       { _id: addressBech32 },

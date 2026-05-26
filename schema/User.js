@@ -36,6 +36,16 @@ const userSchema = new Schema(
       type: Date,
       default: null,
     },
+    // Last time we attempted a name resolve for this voter. Stamped by
+    // crons/voterNameBackfill.js whether the fetch returned a name or
+    // null — gates how often the cron retries an unresolved voter.
+    // Login-time name fetches (routes/api/v0/session.js) also bump
+    // this so the cron doesn't redundantly hit Koios right after a
+    // login. Null means never tried.
+    nameFetchedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

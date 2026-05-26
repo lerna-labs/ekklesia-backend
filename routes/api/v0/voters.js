@@ -24,7 +24,7 @@ const API_URL = process.env.API_URL;
  * @param {number} [req.query.page=1] - Page number for pagination (minimum: 1)
  * @param {number} [req.query.limit=25] - Number of items per page (minimum: 1, maximum: 100)
  * @param {string} [req.query.search=''] - Search term for voter ID (case-insensitive regex match, special regex characters escaped)
- * @param {string} [req.query.sort='votes'] - Sort field: 'userId', 'votes', or 'lastLogin' (default: 'votes')
+ * @param {string} [req.query.sort='votes'] - Sort field: 'userId', 'votes', 'lastLogin', or 'lastVoteAt' (default: 'votes')
  * @param {string} [req.query.direction='desc'] - Sort direction: 'asc' or 'desc' (default: 'desc')
  *
  * @returns {Object} 200 - Response object containing:
@@ -32,6 +32,8 @@ const API_URL = process.env.API_URL;
  *     - userId: ID of the voter
  *     - votes: Number of votes cast by this voter
  *     - lastLogin: ISO 8601 timestamp of last login (null if never logged in)
+ *     - lastVoteAt: ISO 8601 timestamp of the voter's most recent submitted vote (always set — every voter in the directory has at least one submitted vote)
+ *     - name: Display name (drep name or Cardano handle) when resolved; null otherwise
  *   - pagination: Object with total, page, limit, totalPages
  *   OR
  *   - status: "msg"
@@ -68,7 +70,7 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
   }
 
   // Validate sort parameters
-  const validSortFields = ["userId", "votes", "lastLogin"];
+  const validSortFields = ["userId", "votes", "lastLogin", "lastVoteAt"];
   const validDirections = ["asc", "desc"];
 
   if (!validSortFields.includes(sort)) {
@@ -156,6 +158,12 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
         $group: {
           _id: "$userId",
           votes: { $sum: 1 },
+          // Most recent submitted vote per voter. Free piggyback on
+          // the existing $group — every Vote row is already being
+          // scanned for the count. Surfaced unconditionally so
+          // frontend can render the column even when sorting by
+          // something else; also drives sort=lastVoteAt below.
+          lastVoteAt: { $max: "$submittedAt" },
         },
       },
       ...(search
@@ -196,6 +204,18 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
                 else: null,
               },
             },
+            // Surface name from the same User join so the directory
+            // can render "Display Name (drep1y…)" instead of just
+            // the bech32. Null for voters with no User row or with
+            // an unresolved name — crons/voterNameBackfill.js fills
+            // those in over time.
+            name: {
+              $cond: {
+                if: { $gt: [{ $size: "$userData" }, 0] },
+                then: { $arrayElemAt: ["$userData.name", 0] },
+                else: null,
+              },
+            },
             // Separate field for sortable handling of nulls. Voters
             // with no User row (historical voters who haven't logged in
             // since the User collection landed) sort to the epoch end
@@ -223,6 +243,12 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
     } else if (sort === "lastLogin") {
       // Fixed sort syntax - use the pre-computed field
       pipeline.push({ $sort: { lastLoginSortValue: sortOrder, _id: 1 } });
+    } else if (sort === "lastVoteAt") {
+      // lastVoteAt is always present on every grouped row (every
+      // voter in the directory has at least one submittedAt by the
+      // $match filter), so no null-handling field is needed — sort
+      // the accumulator directly.
+      pipeline.push({ $sort: { lastVoteAt: sortOrder, _id: 1 } });
     }
 
     // Add pagination
@@ -235,6 +261,13 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
           userId: "$_id",
           votes: 1,
           lastLogin: 1,
+          lastVoteAt: 1,
+          // Only the sort=lastLogin branch populates `name` in the
+          // pipeline (via the $lookup above); the other branches
+          // attach it post-aggregation. Keep it in the projection
+          // regardless — Mongo silently drops fields that aren't
+          // present, so this is a no-op when name wasn't joined.
+          name: 1,
         },
       }
     );
@@ -259,16 +292,26 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
     if (sort !== "lastLogin") {
       const userIds = voters.map((voter) => voter.userId);
       const users = await User.find({ _id: { $in: userIds } }).select(
-        "_id lastLogin"
+        "_id lastLogin name"
       );
 
-      const lastLoginMap = {};
+      const userById = new Map();
       users.forEach((u) => {
-        lastLoginMap[u._id] = u.lastLogin || null;
+        userById.set(u._id, u);
       });
 
       voters.forEach((voter) => {
-        voter.lastLogin = lastLoginMap[voter.userId] || null;
+        const u = userById.get(voter.userId);
+        voter.lastLogin = u?.lastLogin || null;
+        voter.name = u?.name || null;
+      });
+    } else {
+      // sort=lastLogin path joined User in the aggregation. Make sure
+      // `name` is at least explicitly null when the join missed (the
+      // $project keeps the field, but a doc without a User row never
+      // had name set, so it'd be absent from JSON).
+      voters.forEach((voter) => {
+        if (voter.name === undefined) voter.name = null;
       });
     }
 
@@ -353,6 +396,7 @@ router.get("/types", cacheControl(300), async (req, res) => {
  * @returns {Object} 200 - Voter object containing:
  *   - voterType: Type of voter ("stake", "drep", or "pool")
  *   - userId: Validated voter ID (CIP129 format if applicable)
+ *   - name: Display name (drep name or Cardano handle) when resolved; null otherwise
  *   - votes: Array of ballot objects the voter has voted on, each containing:
  *     - _id: Ballot ID
  *     - title: Ballot title
@@ -563,15 +607,30 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
     (count, ballot) => count + ballot.proposals.length,
     0
   );
-  voterData.lastVoteDate = votes.length > 0 ? votes[0].votedAt : null;
 
-  // Last login comes from the User collection (durable, upserted on
-  // every successful /api/v0/session PUT). The Sessions collection
-  // TTLs after 1 hour and was returning null for anyone inactive
-  // since the request window — that wasn't a "never logged in"
-  // signal, it was a "session record already expired" signal.
-  const user = await User.findById(userIdValidated).select("lastLogin");
+  // lastVoteDate used to read `votes[0].votedAt`, but `votedAt` is
+  // not a field on the projected ballot summary above (the schema
+  // field is `submittedAt` on Vote, not `votedAt`), so this always
+  // returned undefined / null. Query the real value directly from
+  // the Vote collection — the existing { userId, submittedAt } index
+  // makes this a single B-tree seek.
+  const lastVote = await Vote.findOne(
+    { userId: userIdValidated, submittedAt: { $ne: null } }
+  )
+    .sort({ submittedAt: -1 })
+    .select("submittedAt")
+    .lean();
+  voterData.lastVoteDate = lastVote?.submittedAt || null;
+
+  // Last login + display name come from the User collection (durable,
+  // upserted on every successful /api/v0/session PUT, and topped up
+  // for historical voters by crons/voterNameBackfill.js). The Sessions
+  // collection TTLs after 1 hour and was returning null for anyone
+  // inactive since the request window — that wasn't a "never logged
+  // in" signal, it was a "session record already expired" signal.
+  const user = await User.findById(userIdValidated).select("lastLogin name");
   voterData.lastLogin = user?.lastLogin || null;
+  voterData.name = user?.name || null;
 
   // Return the voter data
   return res.status(200).json(voterData);
