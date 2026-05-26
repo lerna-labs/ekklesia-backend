@@ -382,6 +382,16 @@ const ballotSchema = new Schema(
 ballotSchema.index({ title: 1 });
 ballotSchema.index({ voterType: 1 });
 ballotSchema.index({ source: 1 });
+// Dual-id resolution: lets every route lookup accept the upstream
+// proposals-module identifier in place of the canonical Mongo _id.
+// Sparse because legacy / scaffold rows leave proposalSource.* null.
+// Non-unique by deliberate decision — the same upstream id can
+// legitimately reappear on a new ballot over time; the resolver
+// returns 409 on collision rather than failing writes.
+ballotSchema.index(
+  { "proposalSource.externalBallotId": 1 },
+  { sparse: true, name: "externalBallotId_lookup" }
+);
 
 const Ballot = mongoose.model("Ballot", ballotSchema);
 export { Ballot };

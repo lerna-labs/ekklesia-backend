@@ -9,6 +9,7 @@ import { Transaction } from "../schema/Transaction.js";
 // helper imports
 import { verifyToken } from "../helper/verifyToken.js";
 import { validateAddress } from "../helper/validateAddress.js";
+import { resolveBallot, resolveProposal } from "../helper/idResolver.js";
 import { PublicKey } from "@emurgo/cardano-serialization-lib-nodejs";
 
 /**
@@ -126,52 +127,55 @@ export async function getTransaction(req, res, next) {
  * - req.ballotId: The validated ballot ID
  */
 export async function getBallot(req, res, next) {
-  // get ballotId from request
+  // The ID param can be either the canonical Mongo `_id` or the
+  // upstream `proposalSource.externalBallotId` set by the proposals
+  // module at import time. `resolveBallot` handles both and reports
+  // ambiguity for the rare cross-module collision case.
   const ballotId = req.params.ballotId;
-  if (!ballotId) {
+  if (!ballotId || typeof ballotId !== "string" || ballotId.length > 128) {
     return res.status(400).json({
       status: "error",
       message: "Ballot ID is required",
     });
   }
 
-  if (ballotId) {
-    // check if ballotId is a valid mongo id
-    if (!validator.isMongoId(ballotId)) {
-      return res.status(400).json({
-        status: "error",
-        message: "Invalid Ballot ID",
-      });
-    }
-
-    // find ballot in database
-    try {
-      let ballot = await Ballot.findOne({
-        _id: ballotId,
-      }).select(
+  try {
+    const result = await resolveBallot(ballotId, {
+      lean: false, // callers (e.g. /api/v0/ballots/:id) do .toObject()
+      selectFields:
         "_id title description votePeriodStart votePeriodEnd voterType " +
         "voteWeighted voterValidationScript voteFilters status source " +
         "facets proposalSource votingPowerSource proposalPeriodStart " +
         "proposalPeriodEnd voteAuthorityId ipfsHash hydraEndpoint " +
         "hydraHeadId hydraHeadStatus ballotCid instancePolicyId " +
-        "provisionalResultsEnabled"
-      );
-      if (!ballot) {
-        return res.status(404).json({
-          status: "error",
-          message: "Ballot not found",
-        });
-      }
+        "provisionalResultsEnabled",
+    });
 
-      req.ballot = ballot;
-      req.ballotId = ballotId;
-      return next();
-    } catch (error) {
-      return res.status(500).json({
+    if (!result) {
+      return res.status(404).json({
         status: "error",
-        message: "Internal Server Error",
+        message: "Ballot not found",
       });
     }
+    if (result.ambiguous) {
+      return res.status(409).json({
+        status: "error",
+        code: "ID_COLLISION",
+        message:
+          "External ballot id matches multiple ballots; use the canonical _id",
+        candidates: result.ambiguous,
+      });
+    }
+
+    req.ballot = result.doc;
+    req.ballotId = String(result.doc._id);
+    req.ballotResolvedFrom = result.source; // 'internal' | 'external'
+    return next();
+  } catch (error) {
+    return res.status(500).json({
+      status: "error",
+      message: "Internal Server Error",
+    });
   }
 }
 
@@ -195,45 +199,55 @@ export async function getBallot(req, res, next) {
  * - req.proposalId: The validated proposal ID
  */
 export async function getProposal(req, res, next) {
-  const { proposalId } = req.params;
-  // Check if proposalId is provided
-  if (!proposalId) {
+  const { proposalId, ballotId } = req.params;
+  // The ID param can be either the canonical Mongo `_id` or the
+  // upstream `externalProposal.id` set by the proposals module at
+  // import time. When the path also carries `:ballotId`, the lookup
+  // is scoped to that parent — the only realistic external-id
+  // collision path (same upstream id reused across ballots).
+  if (
+    !proposalId ||
+    typeof proposalId !== "string" ||
+    proposalId.length > 128
+  ) {
     return res.status(400).json({
       status: "error",
       message: "Proposal ID is required",
     });
   }
-  // Validate the proposalId format
-  if (!validator.isAlphanumeric(proposalId)) {
-    return res.status(400).json({
+
+  try {
+    const result = await resolveProposal(proposalId, {
+      ballotId, // may be undefined; resolver ignores when so
+      lean: false,
+    });
+
+    if (!result) {
+      return res.status(404).json({
+        status: "error",
+        message: "Proposal not found",
+      });
+    }
+    if (result.ambiguous) {
+      return res.status(409).json({
+        status: "error",
+        code: "ID_COLLISION",
+        message:
+          "External proposal id matches multiple proposals; use the canonical _id",
+        candidates: result.ambiguous,
+      });
+    }
+
+    req.proposal = result.doc.toObject();
+    req.proposalId = result.doc._id;
+    req.proposalResolvedFrom = result.source; // 'internal' | 'external'
+    return next();
+  } catch (error) {
+    return res.status(500).json({
       status: "error",
-      message: "Invalid proposal ID format",
+      message: "Internal Server Error",
     });
   }
-
-  // check length of proposalId
-  if (proposalId.length !== 24) {
-    return res.status(400).json({
-      status: "error",
-      message: "Invalid proposal ID length",
-    });
-  }
-
-  // get proposalData from the database
-  const proposalData = await Proposal.findOne({ _id: proposalId });
-  if (!proposalData) {
-    return res.status(404).json({
-      status: "error",
-      message: "Proposal not found",
-    });
-  }
-  // Check if the proposalId is a valid ObjectId
-
-  // store the proposalId in the request object for later use
-  req.proposal = proposalData.toObject();
-  req.proposalId = proposalData._id;
-
-  next();
 }
 
 /**

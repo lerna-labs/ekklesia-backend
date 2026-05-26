@@ -24,6 +24,26 @@ info:
       endpoints.
     - Same JWT + admin allowlist/claim for `/admin/*`.
     - API key (Bearer or x-api-key) for `/public/*`.
+
+    ## Dual-id resolution (`:id` / `:ballotId` / `:proposalId` / `:qid`)
+
+    Every path parameter that names a ballot or proposal accepts either:
+
+    - the canonical Mongo `_id` (24-char hex), or
+    - the upstream identifier the proposals module assigned at import
+      time — `proposalSource.externalBallotId` for ballots,
+      `externalProposal.id` for proposals.
+
+    Internal `_id` always wins on tie. An ambiguous external-id match
+    that has no internal-id tiebreaker returns **`409 ID_COLLISION`**
+    with the candidate `_id`s. Responses to requests that resolved via
+    an external id carry an additional top-level `canonical` field
+    (canonical API URL) and a `Link: <…>; rel="canonical"` header.
+    SPA URLs are 301-redirected to the canonical form by the SPA
+    fallback so search engines only index one URL per resource.
+
+    Schema: `BallotIdOrExternal` / `ProposalIdOrExternal`. Response:
+    `ConflictExternalIdCollision`.
   version: 1.0.0
   contact:
     name: Adam Dean, Mad Orkestra
@@ -147,21 +167,26 @@ paths:
         Cache-Control varies by status: `closed` → `max-age=3600`, `live` →
         `max-age=120`, `upcoming` → `max-age=30`. Results are **not** embedded —
         call `/results/ballot/{id}` separately.
+
+        `id` accepts either the canonical `_id` or the upstream
+        `proposalSource.externalBallotId`. When resolved via external id,
+        the response includes a top-level `canonical` field and a
+        `Link: <…>; rel="canonical"` header.
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
         "200":
           description: Ballot
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data: { $ref: "#/components/schemas/UnifiedBallot" }
+                allOf:
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/UnifiedBallot" }
+                  - $ref: '#/components/schemas/CanonicalEnvelope'
         "404": { description: Not found }
+        "409": { $ref: '#/components/responses/ConflictExternalIdCollision' }
 
   /ballots/{id}/questions/{qid}/content:
     get:
@@ -180,25 +205,24 @@ paths:
               → per-proposal content blob (this endpoint).
 
         Cache-Control mirrors `/ballots/{id}` and varies by ballot status.
+
+        `id` and `qid` each accept the canonical `_id` or the upstream
+        external id. Proposal lookup is scoped to the parent ballot.
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-        - in: path
-          name: qid
-          required: true
-          description: Proposal id (must belong to the ballot).
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
+        - $ref: '#/components/parameters/ProposalIdOrExternalAsQid'
       responses:
         "200":
-          description: Canonical content bytes
+          description: |
+            Canonical content bytes. When either segment resolved via
+            external id, the response carries `Link: <…>; rel="canonical"`.
           content:
             application/json:
               schema:
                 type: object
                 description: Canonical proposal content blob; byte stream is the authoritative artifact.
         "404": { description: Ballot or proposal not found }
+        "409": { $ref: '#/components/responses/ConflictExternalIdCollision' }
 
   /ballots/{id}/archive:
     get:
@@ -213,11 +237,14 @@ paths:
 
         The response is served with `Content-Disposition: attachment` so
         browsers download instead of preview.
+
+        `id` accepts either the canonical `_id` or the upstream
+        `proposalSource.externalBallotId`. The downloaded bundle's
+        internal `ballot.id` is always the canonical `_id`; when the
+        caller used the external id, a `Link: <…>; rel="canonical"`
+        header is also set.
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
         "200":
           description: Audit bundle
@@ -249,6 +276,7 @@ paths:
                         sha256: { type: string }
                   readme: { type: string, description: Verification recipe + chain-of-custody notes. }
         "404": { description: Ballot not found }
+        "409": { $ref: '#/components/responses/ConflictExternalIdCollision' }
 
   /ballots/{id}/certified:
     get:
@@ -264,11 +292,13 @@ paths:
           shape includes per-proposal tallies and snapshot metadata.
         - `certified: false` → no active certification. `narrative` may
           still be set if a narrative-only publication exists.
+
+        `id` accepts either the canonical `_id` or the upstream
+        `proposalSource.externalBallotId`. When resolved via external
+        id, the response includes a top-level `canonical` field and a
+        `Link: <…>; rel="canonical"` header.
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
         "200":
           description: Certification state
@@ -322,6 +352,7 @@ paths:
                             type: array
                             items: { $ref: "#/components/schemas/CertifiedHistoryEntry" }
         "404": { description: Ballot not found }
+        "409": { $ref: '#/components/responses/ConflictExternalIdCollision' }
 
   /results/ballot/{ballotId}:
     get:
@@ -331,32 +362,35 @@ paths:
         Served with `Cache-Control: public, max-age=30` so clients can poll
         cheaply while the cron updates provisional tallies every ~10 min.
         Final tallies land the moment `/admin/ballots/{id}/finalize` completes.
+        `ballotId` accepts the canonical `_id` or upstream
+        `proposalSource.externalBallotId`.
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
       responses:
         "200":
           description: Array of Result rows
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items: { $ref: "#/components/schemas/Result" }
+                allOf:
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Result" }
+                  - $ref: '#/components/schemas/CanonicalEnvelope'
+        "404": { description: Ballot not found }
+        "409": { $ref: '#/components/responses/ConflictExternalIdCollision' }
 
   /results/proposal/{proposalId}:
     get:
       tags: [Results]
       summary: Single proposal result — anonymous, short-cached
+      description: |
+        `proposalId` accepts the canonical `_id` or upstream
+        `externalProposal.id`.
       parameters:
-        - in: path
-          name: proposalId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/ProposalIdOrExternalAsProposalId'
       responses:
         "200":
           description: OK
@@ -397,10 +431,7 @@ paths:
         releases the nonce so the next fresh /draft reuses the same value.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
       requestBody:
         required: true
         content:
@@ -456,10 +487,7 @@ paths:
       summary: Append a signature; submits to Hydra when threshold is met
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
       requestBody:
         required: true
         content:
@@ -507,10 +535,7 @@ paths:
         confirmed state.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
       responses:
         "200":
           description: Voter's per-ballot state
@@ -577,10 +602,7 @@ paths:
       summary: Manual retry of submission for a package in awaiting-submission
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
       requestBody:
         required: true
         content:
@@ -617,10 +639,7 @@ paths:
         `signedPayloadJson`, `multisig`).
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
         - in: query
           name: status
           description: Exact-match status filter; takes precedence over `includeTerminal`.
@@ -658,10 +677,7 @@ paths:
       summary: Current VotePackage state for the session voter
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
         - in: path
           name: packageId
           required: true
@@ -699,10 +715,7 @@ paths:
         TTL sweep also uses this semantic on long-idle packages.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
         - in: path
           name: packageId
           required: true
@@ -736,10 +749,7 @@ paths:
         `voterType`, `voteWeighted`) so the detail page can render
         facet labels without a second roundtrip.
       parameters:
-        - in: path
-          name: proposalId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/ProposalIdOrExternalAsProposalId'
       responses:
         "200":
           description: Proposal + parent ballot sidecar
@@ -787,10 +797,7 @@ paths:
         ballot goes live, so the filter UI can safely cache the
         facet list for the ballot's lifetime.
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
         - in: query
           name: sort
           description: "Facet key to sort by. Must have `sortable: true`."
@@ -948,10 +955,7 @@ paths:
       summary: Call Hydra /prepare, stamp Hydra metadata on the Ballot
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       requestBody:
         content:
           application/json:
@@ -977,10 +981,7 @@ paths:
         the ballot and flips the user-facing status to `live`.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       requestBody:
         content:
           application/json:
@@ -1012,10 +1013,7 @@ paths:
         for inspection and one-off re-tallies.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
         "200":
           description: Tally written
@@ -1038,10 +1036,7 @@ paths:
         `remaining === 0` before proceeding to `/settle/finalize`.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
         "200":
           description: Burn batch result
@@ -1064,10 +1059,7 @@ paths:
         `/settle/close`.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
         "200":
           description: Finalize succeeded
@@ -1088,10 +1080,7 @@ paths:
         mirror to reflect FINAL on the Hydra side.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       requestBody:
         required: true
         content:
@@ -1127,10 +1116,7 @@ paths:
         current staging directory.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
         "200":
           description: Recovered
@@ -1150,10 +1136,7 @@ paths:
         write Result rows.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
         "200":
           description: Burn result
@@ -1169,10 +1152,7 @@ paths:
       summary: Hydra in-head queue observability passthrough
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
         "200":
           description: Queue status
@@ -1187,10 +1167,7 @@ paths:
       summary: Hydra in-head queue maintenance passthrough
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       requestBody:
         content:
           application/json:
@@ -1209,10 +1186,7 @@ paths:
       summary: Hydra head-info passthrough
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
         "200":
           description: Head info
@@ -1234,10 +1208,7 @@ paths:
         `ImportedBallotPayload`.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       requestBody:
         required: true
         content:
@@ -1317,10 +1288,7 @@ paths:
         canonical JSON) short-circuit to the existing version.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       requestBody:
         required: true
         content:
@@ -1411,10 +1379,7 @@ paths:
       summary: Public ballot detail
       security: [{ apiKeyHeader: [] }, { bearerAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
         "200": { description: OK }
         "404": { description: Not found }
@@ -1425,10 +1390,7 @@ paths:
       summary: All Result rows for a ballot (provisional + final)
       security: [{ apiKeyHeader: [] }, { bearerAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
       responses:
         "200":
           description: Array of results
@@ -1447,10 +1409,7 @@ paths:
       summary: Single proposal result
       security: [{ apiKeyHeader: [] }, { bearerAuth: [] }]
       parameters:
-        - in: path
-          name: proposalId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/ProposalIdOrExternalAsProposalId'
       responses:
         "200": { description: OK }
         "404": { description: No results yet }
@@ -1985,3 +1944,96 @@ components:
               count: { type: integer }
               votingPower: { type: number }
         resultsByGroup: { type: object, nullable: true }
+
+    BallotIdOrExternal:
+      type: string
+      maxLength: 128
+      description: |
+        Canonical Mongo `_id` (24-char hex) **or** the upstream
+        `proposalSource.externalBallotId`. See the top-level "Dual-id
+        resolution" note. Internal `_id` always wins on tie.
+
+    ProposalIdOrExternal:
+      type: string
+      maxLength: 128
+      description: |
+        Canonical Mongo `_id` (24-char hex) **or** the upstream
+        `externalProposal.id`. Scoped to the parent ballot when the
+        path carries `:ballotId`; otherwise an ambiguous external id
+        returns 409 `ID_COLLISION`.
+
+    CanonicalEnvelope:
+      type: object
+      description: |
+        Mixin used by routes that may have been addressed via an
+        upstream external id. When present, `canonical` is the API
+        URL for the same resource keyed by its canonical `_id`. The
+        response also carries `Link: <…>; rel="canonical"`. Absent
+        when the request was already canonical.
+      properties:
+        canonical:
+          type: string
+
+  parameters:
+    BallotIdOrExternalAsBallotId:
+      name: ballotId
+      in: path
+      required: true
+      description: |
+        Either the canonical `_id` or the upstream
+        `proposalSource.externalBallotId`. 409 `ID_COLLISION` on
+        ambiguous external-id matches.
+      schema:
+        $ref: '#/components/schemas/BallotIdOrExternal'
+
+    BallotIdOrExternalAsId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Either the canonical `_id` or the upstream
+        `proposalSource.externalBallotId`. 409 `ID_COLLISION` on
+        ambiguous external-id matches.
+      schema:
+        $ref: '#/components/schemas/BallotIdOrExternal'
+
+    ProposalIdOrExternalAsProposalId:
+      name: proposalId
+      in: path
+      required: true
+      description: |
+        Either the canonical `_id` or the upstream
+        `externalProposal.id`. Scoped to the parent ballot when one is
+        in the path; otherwise an ambiguous external id returns 409.
+      schema:
+        $ref: '#/components/schemas/ProposalIdOrExternal'
+
+    ProposalIdOrExternalAsQid:
+      name: qid
+      in: path
+      required: true
+      description: |
+        Either the canonical proposal `_id` or the upstream
+        `externalProposal.id`. Resolved under the parent ballot in
+        the path, so collisions are not possible.
+      schema:
+        $ref: '#/components/schemas/ProposalIdOrExternal'
+
+  responses:
+    ConflictExternalIdCollision:
+      description: |
+        The supplied id matches multiple rows via the upstream
+        external id and no internal `_id` tiebreaker is available.
+        Re-issue with the canonical `_id` from `candidates[]`.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [status, code, message, candidates]
+            properties:
+              status: { type: string, example: error }
+              code: { type: string, example: ID_COLLISION }
+              message: { type: string }
+              candidates:
+                type: array
+                items: { type: string }

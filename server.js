@@ -18,6 +18,7 @@ import { normalizeQuery } from "./helper/normalizeQuery.js";
 import { publicGetLimiter } from "./helper/rateLimiters.js";
 import { createOgMetaMiddleware } from "./helper/og/ogMeta.js";
 import { ogBallotImage, ogProposalImage } from "./helper/og/ogImage.js";
+import { spaCanonicalRedirect } from "./helper/spaCanonicalRedirect.js";
 
 // Initialize console with timestamps
 initializeConsole();
@@ -74,8 +75,15 @@ app.use(
 // req.query.filter.key — Express 5's default "simple" parser leaves
 // those keys as literal strings.
 app.set("query parser", "extended");
-app.use(express.json()); // json parser
-app.use(express.urlencoded({ extended: true })); // urlencoded parser
+// JSON body parser. The CompiledBallot import endpoint
+// (POST /api/v1/admin/ballots/import) can carry several hundred KB once a
+// real ballot has its proposal set; the default 100 KB cap 413s those.
+// 10 MB covers a fully-loaded payload (MAX.proposals × MAX.rationale ≈ 5 MB
+// of rationale text plus headroom) without being unbounded. All routes that
+// accept bodies sit behind rate limiters and admin/scope auth, so a larger
+// global cap is not exposed to anonymous traffic in practice.
+app.use(express.json({ limit: "10mb" })); // json parser
+app.use(express.urlencoded({ extended: true, limit: "10mb" })); // urlencoded parser
 app.use(cookieParser()); // cookie parser
 app.use(
   cors({
@@ -108,6 +116,21 @@ async function startServer() {
 
     // Serve static files from the public directory (SvelteKit assets)
     app.use(express.static(join(__dirname, "public")));
+
+    // SEO canonical 301 — when the user arrives at a SPA URL whose
+    // :ballotId or :proposalId segment is the upstream proposals-module
+    // identifier, redirect to the canonical _id URL before the SPA
+    // boots. Falls through to the SPA on any non-match / failure.
+    // Mounted ahead of OG cards so they receive the canonical id.
+    app.get(
+      [
+        "/ballots/:ballotId",
+        "/ballots/:ballotId/proposals",
+        "/ballots/:ballotId/proposals/:proposalId",
+        "/ballots/:ballotId/proposals/:proposalId/results",
+      ],
+      spaCanonicalRedirect
+    );
 
     // Per-ballot / per-proposal OpenGraph cards. Slots between
     // express.static (so /social.png and other shipped assets keep their
