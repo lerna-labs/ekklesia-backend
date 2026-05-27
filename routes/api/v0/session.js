@@ -17,12 +17,8 @@ import {
   isPartyToScript,
 } from "../../../helper/verifySignature.js";
 import { validateAddress, getAddressType } from "../../../helper/validateAddress.js";
-import { getScript } from "@lerna-labs/ekklesia-helpers/cardano";
-import {
-  fetchCalidusKey,
-  fetchDrepName,
-  fetchHandle,
-} from "../../../helper/koios.js";
+import { getScript, fetchName } from "@lerna-labs/ekklesia-helpers/cardano";
+import { fetchCalidusKey } from "../../../helper/koios.js";
 import { hydraVoterPing } from "../../../helper/hydra.js";
 import {
   nonceRequestLimiter,
@@ -488,13 +484,16 @@ router.put("/", sessionVerificationLimiter, validateSessionRequest, async (req, 
     console.error("Error clearing nonces:", error);
   }
 
+  // Generic name resolution. @lerna-labs/ekklesia-helpers' `fetchName`
+  // routes by bech32 prefix — drep → metadata name, stake → Cardano
+  // Handle, pool → pool metadata name/ticker — so SPO voters (whether
+  // they signed in via a Calidus key or a pool cold key, both of which
+  // land here as `pool1…`) get a display name on the same code path
+  // as DReps and stake voters. Failure is non-fatal: the cron picks up
+  // anything that comes back null on a 24h retry.
   let userName;
   try {
-    if (req.signType === "drep") {
-      userName = await fetchDrepName(addressBech32);
-    } else if (req.signType === "stake") {
-      userName = await fetchHandle(addressBech32);
-    }
+    userName = await fetchName(addressBech32);
   } catch (error) {
     console.error("Error fetching user name:", error);
   }

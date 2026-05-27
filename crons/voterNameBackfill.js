@@ -1,9 +1,9 @@
 // Throttled name backfill for voters whose User row has no name yet.
 //
-// The voter directory surfaces `User.name` (drep name / handle) next
-// to each bech32 id. That field is populated at login time by
-// routes/api/v0/session.js, which calls fetchDrepName / fetchHandle.
-// Two populations bypass that path:
+// The voter directory surfaces `User.name` (drep name / handle / pool
+// name) next to each bech32 id. That field is populated at login time
+// by routes/api/v0/session.js, which calls `fetchName` from
+// @lerna-labs/ekklesia-helpers. Two populations bypass that path:
 //
 //   1. Historical voters who voted before the User collection landed
 //      and have not logged in since.
@@ -22,9 +22,12 @@
 //     and well below their rate limits. A backfill of ~100 voters
 //     therefore completes over a handful of 10-minute ticks rather
 //     than a single burst.
-//   * Pool voters have no display-name source plumbed through helper/
-//     koios.js today, so they're skipped here. Adding a pool-ticker
-//     fetcher later would let us include them with a one-line addition.
+//   * All HRPs go through the shared `fetchName` — drep → metadata
+//     name, stake → Cardano Handle, pool → pool metadata name/ticker —
+//     so SPO voters (Calidus and pool-cold-key flows alike) get a
+//     display name on the same code path as DReps and stake voters.
+//     Anything `fetchName` doesn't recognize returns null and is
+//     stamped terminally for the retry window.
 //
 // Each candidate gets a `nameFetchedAt: now` stamp regardless of
 // whether the fetch returned a name — that's what gates the retry
@@ -33,7 +36,7 @@
 
 import { Vote } from "../schema/Vote.js";
 import { User } from "../schema/User.js";
-import { fetchDrepName, fetchHandle } from "../helper/koios.js";
+import { fetchName } from "@lerna-labs/ekklesia-helpers/cardano";
 
 // At ~1 req/sec per fetcher (Koios + Handle.me chain), 20 candidates
 // per tick is ~30s of work — safely under the cron's 10-minute window.
@@ -44,25 +47,18 @@ const MAX_PER_TICK = 20;
 const RETRY_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Dispatch by voter-id HRP. fetchDrepName + fetchHandle each return
- * a string (name found), undefined (no name on record), or null (lookup
- * failed). Treat all three terminally — the nameFetchedAt stamp
- * provides the retry gate.
+ * Resolve a display name for any supported voter HRP. Delegates to the
+ * shared @lerna-labs/ekklesia-helpers `fetchName` — drep → metadata
+ * name, stake → Cardano Handle, pool → pool metadata name/ticker.
+ * Returns null for anything the shared helper doesn't recognize, which
+ * is what we want here: stamped terminally for the 24h retry window.
  *
  * @param {string} userId
  * @returns {Promise<string|null>}
  */
 async function resolveName(userId) {
-  if (userId.startsWith("drep")) {
-    const v = await fetchDrepName(userId);
-    return v || null;
-  }
-  if (userId.startsWith("stake")) {
-    const v = await fetchHandle(userId);
-    return v || null;
-  }
-  // pool / addr / unknown HRPs — no display-name source today.
-  return null;
+  const v = await fetchName(userId);
+  return v || null;
 }
 
 /**
@@ -77,10 +73,16 @@ export async function backfillVoterNames() {
   });
   if (ids.length === 0) return { candidates: 0, attempted: 0, resolved: 0 };
 
-  // Eligible HRPs only; otherwise resolveName always returns null and
-  // we burn the daily retry budget on rows we have no plan for.
+  // Eligible HRPs: anything the shared `fetchName` knows how to route
+  // (stake / drep / pool, plus the testnet stake variant). Other HRPs
+  // — e.g. an addr1… payment address slipped in by a legacy row — are
+  // dropped here so we don't burn the daily retry budget on rows the
+  // helper will always return null for.
   const eligibleIds = ids.filter(
-    (id) => id.startsWith("drep") || id.startsWith("stake")
+    (id) =>
+      id.startsWith("drep") ||
+      id.startsWith("stake") ||
+      id.startsWith("pool")
   );
 
   // Pull existing User docs so we can filter out the already-resolved

@@ -1128,7 +1128,7 @@ paths:
                   name:
                     type: string
                     nullable: true
-                    description: DRep name or handle (from User, when set)
+                    description: DRep name, Cardano Handle, or pool name/ticker (from User, when set)
                   lastLogin:
                     type: string
                     format: date-time
@@ -1796,12 +1796,14 @@ paths:
                               type: string
                               nullable: true
                               description: |
-                                Display name for the voter — DRep name for
-                                `drep…` ids, Cardano Handle for `stake…` ids,
-                                resolved at login and (for voters who haven't
-                                logged in since the User collection landed)
-                                topped up by a periodic backfill cron. Null
-                                when unresolved or unavailable.
+                                Display name for the voter — DRep metadata
+                                name for `drep…` ids, Cardano Handle for
+                                `stake…` ids, stake pool metadata name (or
+                                ticker) for `pool…` ids. Resolved at login
+                                and (for voters who haven't logged in since
+                                the User collection landed) topped up by a
+                                periodic backfill cron. Null when unresolved
+                                or unavailable.
                       pagination:
                         $ref: '#/components/schemas/Pagination'
         '400':
@@ -1863,11 +1865,13 @@ paths:
                       type: string
                       nullable: true
                       description: |
-                        Display name for the voter — DRep name for `drep…`
-                        ids, Cardano Handle for `stake…` ids, resolved at
-                        login and (for voters who haven't logged in since
-                        the User collection landed) topped up by a periodic
-                        backfill cron. Null when unresolved or unavailable.
+                        Display name for the voter — DRep metadata name
+                        for `drep…` ids, Cardano Handle for `stake…` ids,
+                        stake pool metadata name (or ticker) for `pool…`
+                        ids. Resolved at login and (for voters who haven't
+                        logged in since the User collection landed) topped
+                        up by a periodic backfill cron. Null when
+                        unresolved or unavailable.
                     votes:
                       type: array
                       items:
