@@ -47,6 +47,7 @@ function apiToken() {
 
 /**
  * Fetches the DRep name for a given DRep ID from the Koios API.
+ * !! OUTDATED - HAS BEEN REPLACED BY EKKLESIA HELPERS - MARKED FOR CLEANUP
  *
  * @description
  * This function queries the Koios API to get DRep information, then fetches the metadata
