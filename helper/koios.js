@@ -128,6 +128,7 @@ export async function fetchDrepName(drepId) {
 
 /**
  * Validates that a DRep ID is registered with the Koios API (drep_info, registered=eq.true).
+ * !! OUTDATED - MARKED FOR CLEANUP
  *
  * @param {string} drepId - DRep ID in CIP129 Bech32 format (e.g. "drep1...")
  * @returns {Promise<boolean>} True if registered and found, false otherwise or on error
