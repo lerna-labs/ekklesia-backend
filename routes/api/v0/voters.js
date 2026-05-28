@@ -102,9 +102,14 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
     //      keeps the API honest until the script runs and after, as a
     //      defense-in-depth guard against any future regression.
     //   2. Anything else where the field was nulled out by hand.
+    // `excludedAt: null` drops operator-flagged invalid votes from the
+    // directory entirely — a voter only surfaces here when they cast at
+    // least one *non-excluded* vote. A voter excluded from one ballot
+    // still appears if they voted legitimately on a different ballot.
     let matchConditions = {
       submittedAt: { $ne: null },
       userId: { $type: "string" },
+      excludedAt: null,
     };
 
     // Escape special regex characters in search string
@@ -401,7 +406,7 @@ router.get("/types", cacheControl(300), async (req, res) => {
   try {
     const voters = await Vote.aggregate([
       {
-        $match: { submittedVote: { $exists: true } },
+        $match: { submittedVote: { $exists: true }, excludedAt: null },
       },
       {
         $group: { _id: "$userId" },
@@ -524,12 +529,17 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
   voterData.voterType = voterType;
   voterData.userId = userIdValidated;
 
-  // get votes for the voter - needs pagination at some point
+  // get votes for the voter - needs pagination at some point.
+  // `excludedAt: null` hides operator-flagged invalid votes from this
+  // voter's per-ballot history; ballots where every vote was excluded
+  // simply don't appear, consistent with "no longer a valid voter on
+  // this ballot."
   const ballots = await Vote.aggregate([
     {
       $match: {
         userId: userIdValidated,
         submittedAt: { $ne: null },
+        excludedAt: null,
       },
     },
     {
@@ -666,7 +676,7 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
   // the Vote collection — the existing { userId, submittedAt } index
   // makes this a single B-tree seek.
   const lastVote = await Vote.findOne(
-    { userId: userIdValidated, submittedAt: { $ne: null } }
+    { userId: userIdValidated, submittedAt: { $ne: null }, excludedAt: null }
   )
     .sort({ submittedAt: -1 })
     .select("submittedAt")
