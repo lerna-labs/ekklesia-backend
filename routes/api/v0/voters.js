@@ -3,10 +3,10 @@ import { Router } from "express";
 const router = Router();
 
 // schema import
-import { Session } from "../../../schema/Session.js";
 import { Vote } from "../../../schema/Vote.js";
 import { Ballot } from "../../../schema/Ballot.js";
 import { UserCache } from "../../../schema/UserCache.js";
+import { User } from "../../../schema/User.js";
 import { validateAddress } from "../../../helper/validateAddress.js";
 import { cacheControl } from "../../../helper/cacheControl.js";
 import { projectVoteEntries } from "../../../helper/voterDetailMapper.js";
@@ -23,8 +23,8 @@ const API_URL = process.env.API_URL;
  * @param {Object} req.query
  * @param {number} [req.query.page=1] - Page number for pagination (minimum: 1)
  * @param {number} [req.query.limit=25] - Number of items per page (minimum: 1, maximum: 100)
- * @param {string} [req.query.search=''] - Search term for voter ID (case-insensitive regex match, special regex characters escaped)
- * @param {string} [req.query.sort='votes'] - Sort field: 'userId', 'votes', or 'lastLogin' (default: 'votes')
+ * @param {string} [req.query.search=''] - Search term matched (case-insensitive substring, special regex characters escaped) against the bech32/CIP-129 userId OR the resolved display name (DRep name or Cardano handle) from the User collection. A leading `$` is stripped so users typing a handle as they see it rendered (`$adam`) still match the bare stored name (`adam`).
+ * @param {string} [req.query.sort='votes'] - Sort field: 'userId', 'votes', 'lastLogin', or 'lastVoteAt' (default: 'votes')
  * @param {string} [req.query.direction='desc'] - Sort direction: 'asc' or 'desc' (default: 'desc')
  *
  * @returns {Object} 200 - Response object containing:
@@ -32,6 +32,8 @@ const API_URL = process.env.API_URL;
  *     - userId: ID of the voter
  *     - votes: Number of votes cast by this voter
  *     - lastLogin: ISO 8601 timestamp of last login (null if never logged in)
+ *     - lastVoteAt: ISO 8601 timestamp of the voter's most recent submitted vote (always set — every voter in the directory has at least one submitted vote)
+ *     - name: Display name (drep name or Cardano handle) when resolved; null otherwise
  *   - pagination: Object with total, page, limit, totalPages
  *   OR
  *   - status: "msg"
@@ -68,7 +70,7 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
   }
 
   // Validate sort parameters
-  const validSortFields = ["userId", "votes", "lastLogin"];
+  const validSortFields = ["userId", "votes", "lastLogin", "lastVoteAt"];
   const validDirections = ["asc", "desc"];
 
   if (!validSortFields.includes(sort)) {
@@ -88,9 +90,21 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
   }
 
   try {
-    // Build match conditions for filtering
+    // Build match conditions for filtering.
+    //
+    // The `userId: { $type: "string" }` guard drops two flavors of
+    // garbage from the directory:
+    //   1. Pre-rename Vote rows that still carry the legacy `voterId`
+    //      field and no `userId` — those used to collapse into a single
+    //      `{ userId: null, votes: <count> }` bucket because $group
+    //      treats missing fields as null. Backfill via
+    //      __scripts/backfillVoteUserId.js promotes them; this filter
+    //      keeps the API honest until the script runs and after, as a
+    //      defense-in-depth guard against any future regression.
+    //   2. Anything else where the field was nulled out by hand.
     let matchConditions = {
       submittedAt: { $ne: null },
+      userId: { $type: "string" },
     };
 
     // Escape special regex characters in search string
@@ -98,14 +112,71 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
       return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     };
 
-    // Add search by voter ID if provided
-    const searchRegex = search
-      ? new RegExp(`${escapeRegex(search)}`, "i")
+    // Cardano handles are stored bare in User.name (`adam`) but the
+    // frontend renders them with a leading `$` (`$adam`). Strip a
+    // single leading `$` from the search input so users typing what
+    // they see still match. Stripping happens BEFORE regex escape so
+    // we don't quote the `$` and then "strip" something that's no
+    // longer there.
+    //
+    // Safe for DReps whose on-chain metadata name literally includes
+    // a leading `$` (e.g. a DRep deliberately tying their name to a
+    // handle) because the match below is an unanchored case-insensitive
+    // substring — `adam` is still contained in `$adam`, so stripping
+    // can only ever widen the match set, never miss one.
+    const normalizedSearch = search.startsWith("$")
+      ? search.slice(1)
+      : search;
+
+    // Case-insensitive substring match. Used against `userId` AND the
+    // joined `User.name` further down — see the $or stage in the
+    // pipelines below. Empty string after $-stripping means the user
+    // typed only `$`, treat that as "no filter".
+    const searchRegex = normalizedSearch
+      ? new RegExp(`${escapeRegex(normalizedSearch)}`, "i")
       : null;
 
-    if (search) {
-      matchConditions.userId = searchRegex;
-    }
+    // Stages used to filter grouped voters by `userId` OR resolved
+    // `User.name`. Only built when the user actually supplied a search
+    // term — for the unsearched listing we keep the original flow
+    // (cheaper, no per-voter User join during count/sort).
+    //
+    // We can't push this filter up into the initial Vote $match: a
+    // voter's NAME lives on the User collection, not on each Vote row,
+    // so we have to $lookup post-$group. That's also why the join is
+    // gated behind `search` — for big directories we don't want to pay
+    // the per-row lookup on every list call.
+    const searchStages = searchRegex
+      ? [
+        {
+          $lookup: {
+            from: "users",
+            localField: "_id",
+            foreignField: "_id",
+            as: "userSearchData",
+          },
+        },
+        {
+          $addFields: {
+            searchName: {
+              $cond: {
+                if: { $gt: [{ $size: "$userSearchData" }, 0] },
+                then: { $arrayElemAt: ["$userSearchData.name", 0] },
+                else: null,
+              },
+            },
+          },
+        },
+        {
+          $match: {
+            $or: [
+              { _id: searchRegex },
+              { searchName: searchRegex },
+            ],
+          },
+        },
+      ]
+      : [];
 
     // First count total unique voters with filters applied
     const countResult = await Vote.aggregate([
@@ -117,13 +188,7 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
           _id: "$userId",
         },
       },
-      ...(search
-        ? [
-          {
-            $match: { _id: searchRegex },
-          },
-        ]
-        : []),
+      ...searchStages,
       {
         $count: "total",
       },
@@ -144,6 +209,12 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
         $group: {
           _id: "$userId",
           votes: { $sum: 1 },
+          // Most recent submitted vote per voter. Free piggyback on
+          // the existing $group — every Vote row is already being
+          // scanned for the count. Surfaced unconditionally so
+          // frontend can render the column even when sorting by
+          // something else; also drives sort=lastVoteAt below.
+          lastVoteAt: { $max: "$submittedAt" },
         },
       },
       ...(search
@@ -155,41 +226,56 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
         : []),
     ];
 
-    // Add lookup for last login data if sorting by lastLogin
+    // Add lookup for last login data if sorting by lastLogin.
+    //
+    // Joins against `users` (User._id is the bech32/CIP-129 voter id).
+    // The previous implementation joined against `sessions`, but the
+    // sessions collection has a 1-hour TTL (schema/Session.js:54) —
+    // it's the auth-challenge handshake, not a persistent login
+    // record. Voters inactive for more than an hour appeared as
+    // lastLogin: null in the directory. routes/api/v0/session.js
+    // upserts User.lastLogin on every successful login, so User is
+    // the durable source.
     if (sort === "lastLogin") {
       pipeline.push(
         {
           $lookup: {
-            from: "sessions",
-            let: { userId: "$_id" },
-            pipeline: [
-              {
-                $match: {
-                  $expr: { $eq: ["$userId", "$$userId"] },
-                },
-              },
-              { $sort: { updatedAt: -1 } },
-              { $limit: 1 },
-              { $project: { _id: 0, updatedAt: 1 } },
-            ],
-            as: "sessionData",
+            from: "users",
+            localField: "_id",
+            foreignField: "_id",
+            as: "userData",
           },
         },
         {
           $addFields: {
             lastLogin: {
               $cond: {
-                if: { $gt: [{ $size: "$sessionData" }, 0] },
-                then: { $arrayElemAt: ["$sessionData.updatedAt", 0] },
+                if: { $gt: [{ $size: "$userData" }, 0] },
+                then: { $arrayElemAt: ["$userData.lastLogin", 0] },
                 else: null,
               },
             },
-            // Add a separate field to handle null sorting
+            // Surface name from the same User join so the directory
+            // can render "Display Name (drep1y…)" instead of just
+            // the bech32. Null for voters with no User row or with
+            // an unresolved name — crons/voterNameBackfill.js fills
+            // those in over time.
+            name: {
+              $cond: {
+                if: { $gt: [{ $size: "$userData" }, 0] },
+                then: { $arrayElemAt: ["$userData.name", 0] },
+                else: null,
+              },
+            },
+            // Separate field for sortable handling of nulls. Voters
+            // with no User row (historical voters who haven't logged in
+            // since the User collection landed) sort to the epoch end
+            // of whichever direction was requested.
             lastLoginSortValue: {
               $cond: {
-                if: { $gt: [{ $size: "$sessionData" }, 0] },
-                then: { $arrayElemAt: ["$sessionData.updatedAt", 0] },
-                else: new Date(0), // Use epoch date for sorting nulls first in ascending order
+                if: { $gt: [{ $size: "$userData" }, 0] },
+                then: { $arrayElemAt: ["$userData.lastLogin", 0] },
+                else: new Date(0),
               },
             },
           },
@@ -208,6 +294,12 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
     } else if (sort === "lastLogin") {
       // Fixed sort syntax - use the pre-computed field
       pipeline.push({ $sort: { lastLoginSortValue: sortOrder, _id: 1 } });
+    } else if (sort === "lastVoteAt") {
+      // lastVoteAt is always present on every grouped row (every
+      // voter in the directory has at least one submittedAt by the
+      // $match filter), so no null-handling field is needed — sort
+      // the accumulator directly.
+      pipeline.push({ $sort: { lastVoteAt: sortOrder, _id: 1 } });
     }
 
     // Add pagination
@@ -220,6 +312,13 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
           userId: "$_id",
           votes: 1,
           lastLogin: 1,
+          lastVoteAt: 1,
+          // Only the sort=lastLogin branch populates `name` in the
+          // pipeline (via the $lookup above); the other branches
+          // attach it post-aggregation. Keep it in the projection
+          // regardless — Mongo silently drops fields that aren't
+          // present, so this is a no-op when name wasn't joined.
+          name: 1,
         },
       }
     );
@@ -233,25 +332,37 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
       });
     }
 
-    // Only fetch lastLogin separately if we're not already sorting by it
-    // (since in that case we already have the data)
+    // Only fetch lastLogin separately if we're not already sorting by
+    // it — when sort === "lastLogin" the in-pipeline $lookup above
+    // already attached lastLogin to each row.
+    //
+    // Source is `users.lastLogin` (upserted by /api/v0/session on
+    // every successful login), NOT `sessions.updatedAt`. Sessions
+    // expire after 1h via TTL and represent the nonce handshake, not
+    // a durable login record.
     if (sort !== "lastLogin") {
-      // Get the last login for each voter
       const userIds = voters.map((voter) => voter.userId);
-      const lastLogins = await Session.find({
-        userId: { $in: userIds },
-      }).sort({ updatedAt: -1 });
+      const users = await User.find({ _id: { $in: userIds } }).select(
+        "_id lastLogin name"
+      );
 
-      const lastLoginMap = {};
-      lastLogins.forEach((login) => {
-        if (!lastLoginMap[login.userId]) {
-          lastLoginMap[login.userId] = login.updatedAt;
-        }
+      const userById = new Map();
+      users.forEach((u) => {
+        userById.set(u._id, u);
       });
 
-      // Add last login to each voter
       voters.forEach((voter) => {
-        voter.lastLogin = lastLoginMap[voter.userId] || null;
+        const u = userById.get(voter.userId);
+        voter.lastLogin = u?.lastLogin || null;
+        voter.name = u?.name || null;
+      });
+    } else {
+      // sort=lastLogin path joined User in the aggregation. Make sure
+      // `name` is at least explicitly null when the join missed (the
+      // $project keeps the field, but a doc without a User row never
+      // had name set, so it'd be absent from JSON).
+      voters.forEach((voter) => {
+        if (voter.name === undefined) voter.name = null;
       });
     }
 
@@ -336,6 +447,7 @@ router.get("/types", cacheControl(300), async (req, res) => {
  * @returns {Object} 200 - Voter object containing:
  *   - voterType: Type of voter ("stake", "drep", or "pool")
  *   - userId: Validated voter ID (CIP129 format if applicable)
+ *   - name: Display name (drep name or Cardano handle) when resolved; null otherwise
  *   - votes: Array of ballot objects the voter has voted on, each containing:
  *     - _id: Ballot ID
  *     - title: Ballot title
@@ -546,17 +658,30 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
     (count, ballot) => count + ballot.proposals.length,
     0
   );
-  voterData.lastVoteDate = votes.length > 0 ? votes[0].votedAt : null;
 
-  // get last login for the voter
-  const lastLogin = await Session.findOne({
-    userId: userIdValidated,
-  }).sort({ updatedAt: -1 });
-  if (lastLogin) {
-    voterData.lastLogin = lastLogin.updatedAt;
-  } else {
-    voterData.lastLogin = null;
-  }
+  // lastVoteDate used to read `votes[0].votedAt`, but `votedAt` is
+  // not a field on the projected ballot summary above (the schema
+  // field is `submittedAt` on Vote, not `votedAt`), so this always
+  // returned undefined / null. Query the real value directly from
+  // the Vote collection — the existing { userId, submittedAt } index
+  // makes this a single B-tree seek.
+  const lastVote = await Vote.findOne(
+    { userId: userIdValidated, submittedAt: { $ne: null } }
+  )
+    .sort({ submittedAt: -1 })
+    .select("submittedAt")
+    .lean();
+  voterData.lastVoteDate = lastVote?.submittedAt || null;
+
+  // Last login + display name come from the User collection (durable,
+  // upserted on every successful /api/v0/session PUT, and topped up
+  // for historical voters by crons/voterNameBackfill.js). The Sessions
+  // collection TTLs after 1 hour and was returning null for anyone
+  // inactive since the request window — that wasn't a "never logged
+  // in" signal, it was a "session record already expired" signal.
+  const user = await User.findById(userIdValidated).select("lastLogin name");
+  voterData.lastLogin = user?.lastLogin || null;
+  voterData.name = user?.name || null;
 
   // Return the voter data
   return res.status(200).json(voterData);

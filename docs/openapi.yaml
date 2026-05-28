@@ -1128,7 +1128,7 @@ paths:
                   name:
                     type: string
                     nullable: true
-                    description: DRep name or handle (from User, when set)
+                    description: DRep name, Cardano Handle, or pool name/ticker (from User, when set)
                   lastLogin:
                     type: string
                     format: date-time
@@ -1717,7 +1717,17 @@ paths:
             default: 25
         - name: search
           in: query
-          description: Search term for voter ID
+          description: |
+            Case-insensitive substring match against either the
+            bech32 / CIP-129 `userId` OR the resolved display
+            `name` (DRep metadata name or Cardano Handle) from the
+            User collection. Regex metacharacters are escaped. A
+            single leading `$` is stripped before matching so a
+            user typing a handle as they see it rendered
+            (`$adam`) still matches the bare stored name
+            (`adam`); the match is substring-based so DRep
+            names that legitimately start with `$` are still
+            findable either way.
           required: false
           schema:
             type: string
@@ -1727,7 +1737,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [userId, votes, lastLogin]
+            enum: [userId, votes, lastLogin, lastVoteAt]
             default: votes
         - name: direction
           in: query
@@ -1768,6 +1778,32 @@ paths:
                               type: string
                               format: date-time
                               nullable: true
+                              description: |
+                                Most recent successful login (User.lastLogin).
+                                Null when the voter has never logged in since
+                                the persistent User record landed (historical
+                                voters), even if they have submitted votes.
+                            lastVoteAt:
+                              type: string
+                              format: date-time
+                              description: |
+                                Most recent submitted vote for this voter
+                                (MAX of Vote.submittedAt). Always populated —
+                                the directory only lists voters with at least
+                                one submitted vote. Sortable via
+                                `sort=lastVoteAt`.
+                            name:
+                              type: string
+                              nullable: true
+                              description: |
+                                Display name for the voter — DRep metadata
+                                name for `drep…` ids, Cardano Handle for
+                                `stake…` ids, stake pool metadata name (or
+                                ticker) for `pool…` ids. Resolved at login
+                                and (for voters who haven't logged in since
+                                the User collection landed) topped up by a
+                                periodic backfill cron. Null when unresolved
+                                or unavailable.
                       pagination:
                         $ref: '#/components/schemas/Pagination'
         '400':
@@ -1825,6 +1861,17 @@ paths:
                       enum: [stake, drep, pool]
                     userId:
                       type: string
+                    name:
+                      type: string
+                      nullable: true
+                      description: |
+                        Display name for the voter — DRep metadata name
+                        for `drep…` ids, Cardano Handle for `stake…` ids,
+                        stake pool metadata name (or ticker) for `pool…`
+                        ids. Resolved at login and (for voters who haven't
+                        logged in since the User collection landed) topped
+                        up by a periodic backfill cron. Null when
+                        unresolved or unavailable.
                     votes:
                       type: array
                       items:
@@ -1894,7 +1941,10 @@ paths:
                       type: string
                       format: date-time
                       nullable: true
-                      description: Date of the most recent vote
+                      description: |
+                        Timestamp of the voter's most recent submitted vote
+                        (MAX of Vote.submittedAt across this voter's rows).
+                        Null only when the voter has no submitted votes.
                     lastLogin:
                       type: string
                       format: date-time
