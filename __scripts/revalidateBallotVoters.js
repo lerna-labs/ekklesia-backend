@@ -10,9 +10,16 @@
 //     API_TOKEN for DRep/pool validators).
 //   - Ballot should be "live" so validators call upstream APIs and persist cache.
 //
-// --force deletes the existing UserCache row before each validateVoter call
-// (bypasses 8-hour validator cache and alwaysTrue early-return). Full row
-// delete includes nonce; voters mid-flight may need to re-draft.
+// --force expires the existing UserCache row's validation freshness
+// (bypasses the 8-hour validator cache) without touching the Hydra
+// nonce counter. Older revisions of this script `deleteOne`d the row
+// outright, which silently reset UserCache.nonce to null and left
+// every previously-confirmed voter unable to vote again — their next
+// /draft reserved nonce=1 against a Hydra head already at
+// currentVersion=N, producing NONCE_STALE rejections. Preserve nonce;
+// reset only the validation-cache fields. Not compatible with the
+// voterValidationAlwaysTrue.js short-circuit, but neither was the old
+// behavior — see Prerequisites above.
 //
 // Usage:
 //   NODE_ENV=production node __scripts/revalidateBallotVoters.js --ballot <id> --force
@@ -127,13 +134,29 @@ if (dryRun) {
     process.exit(0);
 }
 
-const tallies = { validated: 0, denied: 0, errors: 0, cacheDeleted: 0 };
+const tallies = { validated: 0, denied: 0, errors: 0, cacheExpired: 0 };
+
+// Marker that pushes UserCache.updatedAt comfortably past every
+// validator's freshness window (8 hours today). Using epoch 0 keeps
+// the value monotonic and unambiguous for an operator skimming rows.
+const STALE_MARKER = new Date(0);
 
 for (const userId of userIds) {
     try {
         if (force) {
-            const del = await UserCache.deleteOne({ ballotId: ballot._id, userId });
-            if (del.deletedCount > 0) tallies.cacheDeleted++;
+            // Drop the validation-cache fields so each validator re-runs,
+            // but keep `nonce` (and `ballotId`/`userId`) intact. Use the
+            // collection driver with no Mongoose-managed updates to
+            // bypass automatic `updatedAt` re-stamping — we WANT the
+            // updatedAt to read as stale.
+            const res = await UserCache.collection.updateOne(
+                { ballotId: ballot._id, userId },
+                {
+                    $unset: { validated: "", votingPower: "", voterGroup: "" },
+                    $set: { updatedAt: STALE_MARKER },
+                }
+            );
+            if (res.modifiedCount > 0) tallies.cacheExpired++;
         }
 
         const result = await mod.validateVoter(userId, ballot._id);
@@ -156,7 +179,7 @@ for (const userId of userIds) {
 }
 
 console.log(
-    `\n[revalidate] validation done. validated=${tallies.validated} denied=${tallies.denied} errors=${tallies.errors} cacheDeleted=${tallies.cacheDeleted}`
+    `\n[revalidate] validation done. validated=${tallies.validated} denied=${tallies.denied} errors=${tallies.errors} cacheExpired=${tallies.cacheExpired}`
 );
 
 if (recompute) {
