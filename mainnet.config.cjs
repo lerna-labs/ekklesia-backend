@@ -11,11 +11,11 @@ module.exports = {
         followSymlinks: false,
         usePolling: true,
       },
+      exec_mode: "cluster",
+      instances: "max",
       max_memory_restart: "1G",
       env: {
         NODE_ENV: "mainnet",
-        exec_mode: "cluster",
-        instances: "max",
       },
       autorestart: true,
       max_restarts: 10,
