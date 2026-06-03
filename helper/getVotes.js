@@ -12,8 +12,10 @@ export async function getVotes(
   voteType = false,
   voteLabels = false
 ) {
-  // build voteSelect object
-  const voteSelect = {};
+  // build voteSelect object. `excludedAt: null` keeps the voter's own
+  // history view consistent with the results / directory hiding —
+  // operator-flagged invalid votes don't appear in their "my votes" list.
+  const voteSelect = { excludedAt: null };
   // add userId
   if (userId) {
     voteSelect.userId = userId;
@@ -162,6 +164,7 @@ export async function getSubmittedVotes(userId) {
   const votes = await Vote.find({
     userId,
     submittedAt: { $ne: null },
+    excludedAt: null,
     $expr: {
       $lt: [
         {

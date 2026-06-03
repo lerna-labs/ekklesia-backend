@@ -56,6 +56,15 @@ if (process.env.JWT_SECRET.length < 32) {
 const app = express();
 const PORT = process.env.SERVER_PORT || 3000;
 
+// We sit behind a single Caddy reverse proxy (which sets X-Forwarded-For
+// by default). Trust exactly one hop so `req.ip` resolves to the real
+// client (the left-most X-Forwarded-For entry) instead of Caddy's address.
+// Without this, every anonymous visitor collapses onto the proxy IP and
+// shares one rate-limit bucket. "1" (not `true`) keeps the trust scope
+// tight — a client can't spoof its IP by injecting extra X-Forwarded-For
+// hops.
+app.set("trust proxy", 1);
+
 // Security headers + server-stack disclosure. Helmet defaults cover
 // X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS, and
 // removal of X-Powered-By. CSP is left disabled here because the SPA

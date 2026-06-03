@@ -71,9 +71,14 @@ async function rollupVoters(ballotIdObj, distinctUserIds) {
 // $ne:"abstain" matches votes whose submittedVote array contains
 // at least one non-abstain element — covers single-target (default,
 // scale) and multi-target (ranked, budget) shapes uniformly.
+//
+// `excludedAt: null` honors the operator-driven soft-exclusion overlay
+// on `Vote` so the participation denominator stays in lockstep with the
+// filtered tally.
 const NON_ABSTAIN_FILTER = {
   submittedAt: { $ne: null },
   submittedVote: { $elemMatch: { $ne: "abstain" } },
+  excludedAt: null,
 };
 
 /**

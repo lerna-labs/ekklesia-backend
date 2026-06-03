@@ -16,13 +16,20 @@
 //                                                 Koios-primary,
 //                                                 Blockfrost-fallback)
 //
-// Returning `false` on an unsupported HRP means the voter never gets
-// a validated UserCache row — /draft then 403s with ELIGIBILITY_DENIED,
-// which is the correct behavior.
+// **Voter-group gate.** Even when the bech32 HRP is recognized, the
+// dispatcher rejects the voter unless the corresponding voter group
+// (`drep` / `pool` / `stake`) appears in `ballot.voterGroups`. This is
+// what stops a stake address from sliding into a `voterGroups:
+// [drep, pool]` ballot — the misconfiguration that admitted a
+// non-DRep voter to the budget ballot. Empty `voterGroups` is
+// treated as "no restriction" so legacy ballots that pre-date the
+// per-group declaration keep working.
 //
-// The ballot referenced here must declare `acceptedCredentials`
-// matching the HRPs this dispatcher can validate.
+// Returning `false` (unsupported HRP or HRP not in voterGroups) means
+// the voter never gets a validated UserCache row — /draft then 403s
+// with ELIGIBILITY_DENIED, which is the correct behavior.
 
+import { Ballot } from "../schema/Ballot.js";
 import {
   validateVoter as validateDRep,
   allowedVoterCount as dRepCount,
@@ -49,8 +56,52 @@ function hrpOf(userId) {
   return null;
 }
 
+// Map a bech32 HRP to the voterGroups bucket it belongs to. calidus is
+// the CIP-151 hot key for an SPO so it lives in the `pool` bucket;
+// stake_test is preprod stake. Matches the convention in
+// helper/hydraEvidence.js:voterGroupFromHrp.
+function voterGroupFor(hrp) {
+  if (hrp === "drep") return "drep";
+  if (hrp === "pool" || hrp === "calidus") return "pool";
+  if (hrp === "stake") return "stake";
+  return null;
+}
+
 export async function validateVoter(userId, ballotId) {
   const hrp = hrpOf(userId);
+  if (!hrp) {
+    console.log(
+      "[voterValidationByCredential] unsupported voter HRP; rejecting",
+      userId
+    );
+    return false;
+  }
+
+  // Voter-group gate: the ballot must declare the voter's class. Empty
+  // `voterGroups` is permissive (legacy ballots). We read voterGroups
+  // off the Ballot row directly so the gate stays in sync with whatever
+  // the operator most recently saved — no extra config knob.
+  const ballot = await Ballot.findById(ballotId).select("voterGroups").lean();
+  if (!ballot) {
+    console.log(
+      "[voterValidationByCredential] ballot not found; rejecting",
+      ballotId
+    );
+    return false;
+  }
+  const declaredGroups = Array.isArray(ballot.voterGroups)
+    ? ballot.voterGroups.map((g) => g?.group).filter(Boolean)
+    : [];
+  const voterGroup = voterGroupFor(hrp);
+  if (declaredGroups.length > 0 && voterGroup && !declaredGroups.includes(voterGroup)) {
+    console.log(
+      `[voterValidationByCredential] voter HRP "${hrp}" (group "${voterGroup}") ` +
+        `not in ballot.voterGroups [${declaredGroups.join(", ")}]; rejecting`,
+      userId
+    );
+    return false;
+  }
+
   switch (hrp) {
     case "drep":
       return validateDRep(userId, ballotId);
