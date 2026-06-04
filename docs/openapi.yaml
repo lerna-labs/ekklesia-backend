@@ -1194,10 +1194,22 @@ paths:
                   description: The address of the signer
                 signType:
                   type: string
-                  description: Type of signature (e.g., 'drep', 'stake', 'pool')
+                  description: >
+                    Type of signature. Standalone login accepts 'drep', 'stake',
+                    or 'pool' (payment 'addr' is rejected). On the multisig path
+                    (scriptAddress present) signType is not gated — a member's
+                    wallet may sign with any credential, including a payment
+                    address — and is normalized to 'drep' for the session.
                 scriptAddress:
                   type: string
-                  description: For multisig only; CIP129 script address. When provided, identity is the script address.
+                  description: >
+                    For multisig only; a script (native-script) address. May be a
+                    drep_script (CIP129 drep…) or a stake_script (stake…/stake_test…)
+                    wrapper of the same native script — the wrapper determines the
+                    voter group (drep vs stake). When provided, identity is the
+                    script address and membership is decided by whether the signing
+                    key hashes into the native script, so the signer may present a
+                    payment (addr...), stake, or drep credential.
       responses:
         '200':
           description: Nonce to sign and voter identification data
@@ -1236,6 +1248,14 @@ paths:
         - Standard: send signerAddress, signType, signature.
         - Multisig: also send scriptAddress. Verifies signer is party to script.
         On success, User lastLogin (and name for drep/stake/addr when fetched) is updated. Rate-limited.
+
+        Multisig failures return distinct 400 messages: "Multisig script not
+        found on <network>…" when the native script can't be resolved on chain
+        (or the address is for the wrong network), "Address does not belong to
+        the MultiSig" when the signing key isn't a script member, and
+        "Signature verification failed" for a malformed or wrong-content
+        signature. A stake-script address whose network id doesn't match the
+        service is rejected up front by both POST and PUT.
       operationId: verifySignature
       requestBody:
         required: true
@@ -1252,9 +1272,17 @@ paths:
                   type: string
                 signType:
                   type: string
+                  description: >
+                    Standalone login accepts 'drep', 'stake', or 'pool' (payment
+                    'addr' is rejected). On the multisig path (scriptAddress
+                    present) signType is not gated and the signer may present any
+                    credential; the script verifies party membership by key hash.
                 scriptAddress:
                   type: string
-                  description: For multisig only; CIP129 script address
+                  description: >
+                    For multisig only; a drep_script (CIP129 drep…) or stake_script
+                    (stake…/stake_test…) address. The wrapper determines the voter
+                    group; the JWT signType is set accordingly.
                 signature:
                   $ref: '#/components/schemas/Signature'
       responses:
