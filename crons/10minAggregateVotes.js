@@ -6,6 +6,7 @@ import { Result } from "../schema/Result.js";
 import {
   computeBallotParticipation,
   computeProposalParticipation,
+  computeParticipatingAbstainers,
 } from "../helper/results/ballotParticipation.js";
 import {
   computeScaleStats,
@@ -355,10 +356,12 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
     }
   }
 
-  const [ballotParticipation, proposalParticipation] = await Promise.all([
-    computeBallotParticipation(ballot._id),
-    computeProposalParticipation(proposalId, ballot._id),
-  ]);
+  const [ballotParticipation, proposalParticipation, participatingAbstainers] =
+    await Promise.all([
+      computeBallotParticipation(ballot._id),
+      computeProposalParticipation(proposalId, ballot._id),
+      computeParticipatingAbstainers(proposalId, ballot._id),
+    ]);
 
   // Reconcile per-group totalVotes with distinct voter counts. The
   // $unwind + $sum:1 aggregation above counts vote *targets*, which
@@ -388,6 +391,7 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
         resultsByGroup,
         ballotParticipation,
         proposalParticipation,
+        participatingAbstainers,
         source: "provisional",
         ballotSource: ballot.source,
         ballotId: ballot._id,
@@ -468,6 +472,10 @@ export async function writeFinalResult(ballotId, hydraData = {}) {
           proposalParticipation:
             derived?.proposalParticipation ||
             provisional?.proposalParticipation ||
+            null,
+          participatingAbstainers:
+            derived?.participatingAbstainers ||
+            provisional?.participatingAbstainers ||
             null,
           source: "final",
           ballotSource: ballot.source,

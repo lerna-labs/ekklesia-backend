@@ -60,6 +60,8 @@ export const COMPILED_BALLOT_SHAPE = Object.freeze({
     proposalPeriodEnd: "ISO8601 date-time",
     voteAuthorityId: "string",
     voteAuthorityAddress: "string, cardano address",
+    resultsCalculationMode:
+      '"standard" | "participation" (optional; default "standard"). Frontend results-rendering hint only — see schema/Ballot.js. The backend applies no threshold.',
     ipfsHash: "string | null",
     voterValidationScript: "string (optional; uses default if absent)",
     rollupScript: "string (optional; uses default if absent)",

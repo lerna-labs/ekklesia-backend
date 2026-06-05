@@ -282,6 +282,44 @@ function proposalParticipationFromEvidence(auditFull, proposalId, votersByUserId
 }
 
 /**
+ * Per-proposal participation-pool abstainers — the evidence-bundle analog
+ * of `computeParticipatingAbstainers` (which queries Vote rows). Counts
+ * voters who (a) are in the ballot-wide participation pool (≥1 non-abstain
+ * answer anywhere) AND (b) submitted an explicit abstain answer for THIS
+ * proposal. Voters who abstained on this proposal but never cast a
+ * non-abstain answer anywhere are excluded — they're not in the pool, so
+ * subtracting them would shrink a denominator they were never part of.
+ *
+ * "Abstained on this proposal" requires an answer row to exist for the
+ * proposal: a voter with no answer at all is "did not vote" (stays in the
+ * denominator), not an abstainer.
+ */
+function participatingAbstainersFromEvidence(auditFull, proposalId, votersByUserId) {
+  const voters = Array.isArray(auditFull?.voters) ? auditFull.voters : [];
+  const totalVotingPower = {};
+  const voterCount = {};
+  for (const v of voters) {
+    const answers = v?.evidence?.answers || [];
+    const answer = answers.find((a) => a && a.questionId === proposalId);
+    if (!answer) continue; // didn't engage this proposal → not an abstainer
+    const abstainedHere =
+      answer.abstain === true ||
+      !(Array.isArray(answer.selection) && answer.selection.length > 0);
+    if (!abstainedHere) continue; // cast a real selection here → not an abstainer
+    const inPool = answers.some(
+      (a) => a?.abstain !== true && Array.isArray(a?.selection) && a.selection.length > 0
+    );
+    if (!inPool) continue; // all-abstain voter → not in pool, don't subtract
+    const meta = votersByUserId.get(v.voterId);
+    if (!meta) continue; // unmapped → excluded (authority ineligible / placeholder)
+    const group = meta.voterGroup || "default";
+    voterCount[group] = (voterCount[group] || 0) + 1;
+    totalVotingPower[group] = (totalVotingPower[group] || 0) + (meta.votingPower || 0);
+  }
+  return { totalVotingPower, voterCount };
+}
+
+/**
  * Main entry — derive the full per-proposal tally tuple for one proposal.
  *
  * @param {object} args
@@ -294,6 +332,7 @@ function proposalParticipationFromEvidence(auditFull, proposalId, votersByUserId
  *   resultsByGroup: object,
  *   ballotParticipation: {totalVotingPower: object, voterCount: object},
  *   proposalParticipation: {totalVotingPower: object, voterCount: object},
+ *   participatingAbstainers: {totalVotingPower: object, voterCount: object},
  * }}
  */
 export function deriveProposalTally({ ballot, proposal, auditFull, votersByUserId }) {
@@ -307,6 +346,11 @@ export function deriveProposalTally({ ballot, proposal, auditFull, votersByUserI
     proposalId,
     votersByUserId
   );
+  const participatingAbstainers = participatingAbstainersFromEvidence(
+    auditFull,
+    proposalId,
+    votersByUserId
+  );
   // Reconcile per-group totalVotes with the distinct-voter count —
   // matches the provisional cron's reconciliation at line 321-326.
   for (const group of Object.keys(resultsByGroup)) {
@@ -315,5 +359,11 @@ export function deriveProposalTally({ ballot, proposal, auditFull, votersByUserI
       resultsByGroup[group].totalVotes = distinct;
     }
   }
-  return { results, resultsByGroup, ballotParticipation, proposalParticipation };
+  return {
+    results,
+    resultsByGroup,
+    ballotParticipation,
+    proposalParticipation,
+    participatingAbstainers,
+  };
 }

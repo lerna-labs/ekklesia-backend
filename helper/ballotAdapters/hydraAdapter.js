@@ -85,6 +85,7 @@ export function toUnified(doc) {
       prepareTxSubmittedAt: doc.prepareTxSubmittedAt ?? null,
     },
     provisionalResultsEnabled: doc.provisionalResultsEnabled ?? false,
+    resultsCalculationMode: doc.resultsCalculationMode ?? "standard",
     proposalSource: doc.proposalSource?.moduleId ? doc.proposalSource : null,
     facets: Array.isArray(doc.facets) ? doc.facets : [],
     votingPowerSource: doc.votingPowerSource
