@@ -23,7 +23,10 @@ await jest.unstable_mockModule("../../schema/Ballot.js", () => ({ Ballot: {} }))
 await jest.unstable_mockModule("../../schema/Proposal.js", () => ({ Proposal: {} }));
 await jest.unstable_mockModule("../../schema/Transaction.js", () => ({ Transaction: {} }));
 await jest.unstable_mockModule("../verifyToken.js", () => ({ verifyToken: () => ({}) }));
-await jest.unstable_mockModule("../validateAddress.js", () => ({ validateAddress: () => ({}) }));
+await jest.unstable_mockModule("../validateAddress.js", () => ({
+  validateAddress: () => ({}),
+  getAddressType: () => ({}),
+}));
 await jest.unstable_mockModule(
   "@emurgo/cardano-serialization-lib-nodejs",
   () => ({ PublicKey: {} })

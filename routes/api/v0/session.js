@@ -118,13 +118,29 @@ function validateScriptAddress(scriptAddress) {
     return { error: "MultiSig address not provided" };
   }
   const trimmed = scriptAddress.trim();
-  const validated = validateAddress(trimmed, "drep");
-  if (validated.error) return { error: validated.error };
-  if (!validated.isScript)
+  // The same native-script hash can be wrapped as a drep_script or a
+  // stake_script credential; both are valid multisig identities. Pool
+  // credentials are always key-based, so only those two are accepted.
+  const parts = getAddressType(trimmed);
+  if (parts.error) return { error: parts.error };
+  if (parts.hashType !== "script")
     return { error: "Given address is not a script address" };
-  if (!validated.cip129)
-    return { error: "Script address is not a CIP129 address" };
-  return { validatedScriptAddress: validated.cip129 };
+
+  switch (parts.type) {
+    case "drep": {
+      // Normalize to a CIP129 drep address for a stable identity.
+      const validated = validateAddress(trimmed, "drep");
+      if (validated.error) return { error: validated.error };
+      if (!validated.cip129)
+        return { error: "Script address is not a CIP129 address" };
+      return { validatedScriptAddress: validated.cip129, scriptType: "drep" };
+    }
+    case "stake":
+      // A script-based stake address is already canonical bech32.
+      return { validatedScriptAddress: trimmed, scriptType: "stake" };
+    default:
+      return { error: "Unsupported script address type" };
+  }
 }
 
 /**
@@ -241,7 +257,8 @@ router.post("/", nonceRequestLimiter, validateSessionRequest, async (req, res) =
   if (isScript) {
     return res.status(400).json({
       status: "error",
-      message: "Script address not allowed. Please use the multisig route.",
+      message:
+        "Script address detected. Include it as scriptAddress in the request body to authenticate as a multisig.",
     });
   }
 
@@ -325,15 +342,51 @@ router.put("/", sessionVerificationLimiter, validateSessionRequest, async (req, 
       validatedScriptAddress,
       signature
     );
-    if (!isParty || isParty.error) {
+    // isPartyToScript returns `true` on success, `false` when a script
+    // member's key signed the wrong content, or `{ error }` for every
+    // other failure. The legacy code flattened all of these into one
+    // misleading "does not belong to the MultiSig" message, so a script
+    // that simply isn't on chain looked like a membership rejection.
+    // Disambiguate the cases the caller can actually act on.
+    if (isParty !== true) {
+      const reason =
+        isParty && isParty.error ? isParty.error : "signature invalid";
       console.error(
         "MS: isPartyToScript failed",
         signerAddress,
-        validatedScriptAddress
+        validatedScriptAddress,
+        "-",
+        reason
       );
+
+      // The script hash didn't resolve on our network — almost always a
+      // native script that was never published on chain, or an address
+      // from a different network. (getScript also returns falsy on a
+      // transient upstream error, hence the soft wording.)
+      if (reason === "Script not found") {
+        return res.status(400).json({
+          status: "error",
+          message:
+            `Multisig script not found on ${process.env.NETWORK_NAME || "this network"}. ` +
+            "Confirm the native script is published on chain and the address is for the right network.",
+        });
+      }
+
+      // The signing key genuinely isn't one of the script's members — the
+      // one case the original message is actually correct for.
+      if (reason === "The signature is not part of the script") {
+        return res.status(400).json({
+          status: "error",
+          message: "Address does not belong to the MultiSig",
+        });
+      }
+
+      // Malformed COSE, wrong-content signature, or an unsupported script
+      // shape. The specific reason is logged above; don't leak the
+      // internal detail to the client.
       return res.status(400).json({
         status: "error",
-        message: "Address does not belong to the MultiSig",
+        message: "Signature verification failed",
       });
     }
 

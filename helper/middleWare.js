@@ -8,7 +8,7 @@ import { Transaction } from "../schema/Transaction.js";
 
 // helper imports
 import { verifyToken } from "../helper/verifyToken.js";
-import { validateAddress } from "../helper/validateAddress.js";
+import { validateAddress, getAddressType } from "../helper/validateAddress.js";
 import { resolveBallot, resolveProposal } from "../helper/idResolver.js";
 import { PublicKey } from "@emurgo/cardano-serialization-lib-nodejs";
 
@@ -290,10 +290,70 @@ export function validateSessionRequest(req, res, next) {
     });
   }
 
-  // Payment-address logins are blocked at the session layer — the
-  // Hydra role space contracted to drep / pool / stake. Voters with
-  // an addr1... / addr_test1... must register via their stake
-  // credential instead.
+  // Multisig / script path. When the body carries a scriptAddress the
+  // session identity is the script itself, and membership is settled
+  // downstream by isPartyToScript — it hashes the COSE signing key and
+  // checks it against the script's keyHashes. The signer's wrapper
+  // credential is therefore irrelevant: we cannot dictate how a multisig
+  // member's CIP-30 wallet is configured, and it may present a payment
+  // (addr...), stake, or drep address. So we skip the signType/HRP gate
+  // (and the payment-address block below) that the standalone path
+  // enforces, and let the signing key's hash speak for itself.
+  //
+  // A native script has a single hash that can be wrapped as either a
+  // drep_script or a stake_script credential, and both are valid multisig
+  // identities (drep-group vs stake-group voter). We derive the session
+  // signType from the script address's own credential kind so the voter is
+  // evaluated against the matching group. Pool credentials are always
+  // key-based, so only drep/stake script wrappers are accepted.
+  const scriptAddress = req.body?.scriptAddress;
+  if (typeof scriptAddress === "string" && scriptAddress.trim()) {
+    const trimmedScript = scriptAddress.trim();
+    const scriptParts = getAddressType(trimmedScript);
+    if (
+      scriptParts.error ||
+      scriptParts.hashType !== "script" ||
+      (scriptParts.type !== "drep" && scriptParts.type !== "stake")
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "scriptAddress must be a drep or stake script (multisig) address.",
+      });
+    }
+    // Stake scripts encode the network in their header byte, so a
+    // wrong-network address is detectable up front with a clear message —
+    // far better than letting it fail later as an opaque "not found". (A
+    // drep_script carries no network byte; those surface at verify time
+    // when the script can't be resolved on our network.)
+    const expectedNetwork = Number.parseInt(process.env.NETWORK_ID ?? "", 10);
+    if (
+      scriptParts.type === "stake" &&
+      Number.isInteger(expectedNetwork) &&
+      Number.isInteger(scriptParts.networkId) &&
+      scriptParts.networkId !== expectedNetwork
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          `scriptAddress is for the wrong network (address network id ` +
+          `${scriptParts.networkId}, this service expects ${expectedNetwork}).`,
+      });
+    }
+    req.isScript = true;
+    req.signType = scriptParts.type;
+    req.signerAddress = signerAddress.trim();
+    req.addressBech32 = trimmedScript;
+    return next();
+  }
+
+  // Payment-address logins are blocked on the standalone path — the
+  // Hydra role space contracted to drep / pool / stake. A standalone
+  // voter's identity is their stake credential, so admitting an
+  // addr1... / addr_test1... would mint a second identity for the same
+  // wallet. (Payment addresses ARE accepted on the multisig path above,
+  // where identity is the script and the payment key only proves
+  // membership.)
   if (signType === "addr" || signType === "addr_test") {
     return res.status(400).json({
       status: "error",
