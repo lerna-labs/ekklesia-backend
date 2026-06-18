@@ -17,6 +17,19 @@ import blake from "blakejs";
 import { canonicalize, canonicalBytes } from "./canonicalJson.js";
 import * as nonceManager from "./nonceManager.js";
 
+/**
+ * Evidence/results protocol version. Bumped from `ekklesia/1.0` to
+ * `ekklesia/2.0` for the post-audit cut-over (findings F-006/F-007): the
+ * version that ships the unified, canonically-hashed evidence bundle shared
+ * with the Hydra middleware (which emits the same `PROTOCOL_VERSION`).
+ *
+ * The two ballots that already settled keep their pinned `ekklesia/1.0`
+ * evidence and still verify — the broker only stamps NEW votes, and nothing
+ * here re-mints a historical bundle. Replay tooling selects its verification
+ * path by the bundle's own declared version.
+ */
+export const PROTOCOL_VERSION = "ekklesia/2.0";
+
 export class BrokerError extends Error {
   constructor(message, { code } = {}) {
     super(message);
@@ -56,7 +69,7 @@ export function buildEvidence({
 }) {
   const signedPayload = buildSigningPayload({ ballotId, nonce, votes });
   return {
-    specVersion: "ekklesia/1.0",
+    specVersion: PROTOCOL_VERSION,
     surveyTxId: surveyTxId || ballotId,
     responderRole: responderRole || "Voter",
     answers: votes,
@@ -160,14 +173,25 @@ export async function buildDraft({
  * + optional calidus declaration, then compute the final voteHash.
  */
 export function finalizeEvidence(evidence, { witnesses, nativeScript, calidusDeclaration }) {
+  const e = evidence.ekklesia;
+  // Rebuild ekklesia with the exact key order the Hydra producer emits
+  // (hydra/src/routes/voting.ts): the optional nativeScript / calidusDeclaration
+  // extension keys sit BETWEEN witnesses and merkleProof, and appear only for
+  // the credential types that use them. Keeps the two producers' bundles
+  // byte-identical (F-007). voteHash is canonical so key order doesn't change
+  // it, but the pinned bundle shape must still match.
   const finalized = {
     ...evidence,
     ekklesia: {
-      ...evidence.ekklesia,
+      voterId: e.voterId,
+      credentialHrp: e.credentialHrp,
+      nonce: e.nonce,
+      signedPayload: e.signedPayload,
       witnesses: witnesses ?? [],
+      ...(nativeScript ? { nativeScript } : {}),
+      ...(calidusDeclaration ? { calidusDeclaration } : {}),
+      merkleProof: e.merkleProof,
     },
   };
-  if (nativeScript) finalized.ekklesia.nativeScript = nativeScript;
-  if (calidusDeclaration) finalized.ekklesia.calidusDeclaration = calidusDeclaration;
   return { evidence: finalized, voteHash: voteHash(finalized) };
 }
