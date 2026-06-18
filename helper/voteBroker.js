@@ -83,6 +83,25 @@ export function voteHash(evidence) {
 }
 
 /**
+ * The merkleRoot is the ONLY thing a voter (and every multisig cosigner)
+ * signs: `blake2b_256(JSON.stringify(signingPayload))` as a 64-char hex
+ * string, matching Hydra's verifier exactly (hydra-sdk verify-signature.js).
+ *
+ * It is NOT the evidence `voteHash` — that hashes the whole VoteEvidence
+ * bundle (a superset), so the two values are never equal. Serving voteHash
+ * as the signing target made cosigners sign the wrong message; this single
+ * helper is the one place merkleRoot is derived so no caller can drift.
+ *
+ * NB: `JSON.stringify` (insertion order), not canonicalize — the signing
+ * payload is the signed value on a fixed insertion-order contract shared
+ * with Hydra. Canonicalizing it would break every existing signature; see
+ * the TRD on coordinating a canonical signing payload with the middleware.
+ */
+export function merkleRootHex(signingPayload) {
+  return blake2b256Hex(Buffer.from(JSON.stringify(signingPayload), "utf8"));
+}
+
+/**
  * End-to-end payload construction in one call. Reserves a nonce and returns
  * everything the route needs to respond to a draft request.
  *
@@ -138,7 +157,7 @@ export async function buildDraft({
   // — which is already alphabetical, so this also matches our canonical
   // form, but we use the same call for parity with Hydra).
   const signedPayloadJson = JSON.stringify(signingPayload);
-  const merkleRoot = blake2b256Hex(Buffer.from(signedPayloadJson, "utf8"));
+  const merkleRoot = merkleRootHex(signingPayload);
   // cardano-signer --data-hex takes the hex of the bytes to sign. We sign
   // the UTF-8 bytes of the merkleRoot hex string, so signingPayloadHex
   // is the hex of those ASCII bytes.

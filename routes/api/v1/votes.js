@@ -39,6 +39,7 @@ import { loadValidationScript } from "../../../helper/loadValidationScript.js";
 import {
   buildDraft,
   BrokerError,
+  merkleRootHex,
 } from "../../../helper/voteBroker.js";
 import { validateVotesForBallot } from "../../../helper/voteValidation.js";
 import { canonicalize } from "../../../helper/canonicalJson.js";
@@ -47,9 +48,12 @@ import {
   dedupeSignatures,
   MultisigError,
 } from "../../../helper/multisigCollector.js";
-import { normalizeWitness, CoseWitnessError } from "../../../helper/coseWitness.js";
+import {
+  normalizeWitness,
+  CoseWitnessError,
+  verifyWitnessAgainstMerkleRoot,
+} from "../../../helper/coseWitness.js";
 import { User } from "../../../schema/User.js";
-import blake from "blakejs";
 import * as nonceManager from "../../../helper/nonceManager.js";
 import { forBallot, HydraClientError } from "../../../helper/hydraClient.js";
 import { credentialHrp, responderRoleFor } from "../../../helper/voterCredential.js";
@@ -418,6 +422,28 @@ router.post("/:ballotId/signature", async (req, res) => {
   }
   if (!["draft", "awaiting-signatures"].includes(pkg.status)) {
     return res.status(409).json({ status: "error", code: ERROR_CODES.PACKAGE_TERMINAL, message: `Package in terminal state: ${pkg.status}` });
+  }
+
+  // Verify the witness BEFORE storing it. Recompute the merkleRoot from the
+  // package's own signingPayload (single source of truth) and confirm the
+  // COSE_Sign1 both (a) signs that exact value and (b) is a valid Ed25519
+  // signature. Previously the route stored any witness that passed key
+  // membership, so a signature over the wrong message (the evidence voteHash)
+  // was accepted, counted toward the threshold, and submitted to Hydra.
+  if (!pkg.signingPayload) {
+    return res.status(409).json({ status: "error", code: ERROR_CODES.BAD_INPUT, message: "Package has no signing payload to verify against" });
+  }
+  let verification;
+  try {
+    verification = verifyWitnessAgainstMerkleRoot(witness, merkleRootHex(pkg.signingPayload));
+  } catch (err) {
+    if (err instanceof CoseWitnessError) {
+      return res.status(400).json({ status: "error", code: ERROR_CODES.SIGNATURE_INVALID, message: err.message });
+    }
+    throw err;
+  }
+  if (!verification.ok) {
+    return res.status(400).json({ status: "error", code: ERROR_CODES.SIGNATURE_INVALID, message: verification.reason });
   }
 
   pkg.signatures = dedupeSignatures([...(pkg.signatures || []), witness]);
@@ -817,28 +843,26 @@ async function currentPackageView(id) {
  *   - signingPayloadHex: utf8-hex of merkleRoot (what the voter signs)
  *   - signedPayloadJson: canonical JSON string for display
  *   - multisig: { required, eligibleKeys, outstandingKeys, satisfied } when nativeScript
+ *
+ * The merkleRoot is ALWAYS recomputed from the stored `signingPayload`. It is
+ * NEVER seeded from `pkg.voteHash`: voteHash is the blake2b_256 of the whole
+ * VoteEvidence bundle (a superset of the signing payload), so the two are
+ * never equal. Serving voteHash here handed multisig cosigners the evidence
+ * hash as their signing target — they then signed a message no verifier would
+ * accept, and the divergent witnesses were stored and submitted anyway.
+ * Exported so the invariant is unit-testable without a DB round-trip.
  */
-function enrichPackageView(pkg) {
+export function enrichPackageView(pkg) {
   if (!pkg) return null;
-  let merkleRoot = pkg.voteHash || null;
+  let merkleRoot = null;
   let signedPayloadJson = null;
   let signingPayloadHex = null;
   if (pkg.signingPayload) {
     signedPayloadJson = JSON.stringify(pkg.signingPayload);
-    // Recompute merkleRoot deterministically from the stored payload so
-    // it matches what the voter signs at /draft time. (pkg.voteHash also
-    // stamps the signing target after the broker computes it; both
-    // values should be identical.)
-    if (!merkleRoot) {
-      // Fallback only — happens if the package was created before
-      // voteHash was being stamped at draft time.
-      try {
-        merkleRoot = Buffer.from(
-          blake.blake2b(Buffer.from(signedPayloadJson, "utf8"), null, 32)
-        ).toString("hex");
-      } catch {
-        /* ignore */
-      }
+    try {
+      merkleRoot = merkleRootHex(pkg.signingPayload);
+    } catch {
+      merkleRoot = null;
     }
     if (merkleRoot) {
       signingPayloadHex = Buffer.from(merkleRoot, "utf8").toString("hex");
@@ -861,6 +885,45 @@ function enrichPackageView(pkg) {
   };
 }
 
+export class PackageInvariantError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "PackageInvariantError";
+    this.code = "INVALID_PACKAGE";
+  }
+}
+
+/**
+ * The valid-package invariant the backend guarantees before it ever calls
+ * Hydra: every stored witness verifies against the package's OWN merkleRoot
+ * (recomputed from signingPayload), and the native script — or the single
+ * key — is satisfied by those verified signers. This is the backstop that
+ * keeps an unverifiable package off-chain even if a witness slipped past the
+ * /signature gate. Pure; exported for tests. Throws PackageInvariantError.
+ */
+export function assertValidPackage(pkg) {
+  if (!pkg?.signingPayload) throw new PackageInvariantError("package has no signingPayload");
+  const root = merkleRootHex(pkg.signingPayload);
+  const sigs = pkg.signatures || [];
+  if (sigs.length === 0) throw new PackageInvariantError("package has no signatures");
+  for (const w of sigs) {
+    let v;
+    try {
+      v = verifyWitnessAgainstMerkleRoot(w, root);
+    } catch (err) {
+      throw new PackageInvariantError(`witness ${w.key || "?"}: ${err.message}`);
+    }
+    if (!v.ok) throw new PackageInvariantError(`witness ${w.key || "?"}: ${v.reason}`);
+  }
+  if (pkg.nativeScript) {
+    const s = multisigStatus(pkg.nativeScript, sigs);
+    if (!s.satisfied) {
+      throw new PackageInvariantError("native-script threshold not satisfied by verified signers");
+    }
+  }
+  return true;
+}
+
 /**
  * Submit a ready VotePackage to the Hydra instance. On success stores the
  * confirmation artifacts on both the VotePackage and per-proposal Vote
@@ -869,6 +932,11 @@ function enrichPackageView(pkg) {
  */
 async function submitPackage(pkg, ballot) {
   try {
+    // Never hand Hydra a package we can't ourselves verify. Re-assert the
+    // valid-package invariant over the stored witnesses first; a failure
+    // drops through to the catch below (marked failed, nonce released).
+    assertValidPackage(pkg);
+
     pkg.status = "broker-submitted";
     await pkg.save();
 
