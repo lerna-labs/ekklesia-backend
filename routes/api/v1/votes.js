@@ -642,13 +642,19 @@ router.get("/:ballotId/packages", async (req, res) => {
 //               here. To preserve any of these votes, they MUST be
 //               included in the next /draft submission.
 //
-//   inFlight    Packages still in flight (awaiting signatures,
-//               awaiting submission, draft, or failed). Newest first.
-//               When one of these submits successfully it REPLACES
-//               the confirmed state above. UI should surface these
-//               (especially multisig packages waiting on cosigner
-//               signatures) and warn the voter before they create a
-//               new draft that would supersede an in-flight one.
+//   inFlight    Packages still genuinely actionable (awaiting
+//               signatures, awaiting submission, draft, or failed),
+//               newest first. ONLY packages with nonce ABOVE the
+//               confirmed head appear here: Hydra enforces strict
+//               nonce === currentVersion + 1, so a package at/below the
+//               confirmed nonce is a superseded earlier attempt that can
+//               never (re)submit — surfacing it would make the editor
+//               rehydrate a stale version. When one of these submits
+//               successfully it REPLACES the confirmed state above. UI
+//               should surface these (especially multisig packages
+//               waiting on cosigner signatures) and warn the voter
+//               before they create a new draft that would supersede an
+//               in-flight one.
 //
 //   {
 //     status: "success",
@@ -664,19 +670,22 @@ router.get("/:ballotId/packages", async (req, res) => {
 //     summary: { confirmed, awaitingSignatures, awaitingSubmission,
 //                draft, failed }
 //   }
-router.get("/:ballotId/mine", async (req, res) => {
-  const session = requireSession(req, res);
-  if (!session) return;
-  const ballot = await requireHydraBallot(req, res);
-  if (!ballot) return;
-
-  const packages = await VotePackage.find({
-    ballotId: ballot._id,
-    userId: session.userId,
-  })
-    .sort({ nonce: -1 })
-    .lean();
-
+/**
+ * Build the { confirmed, inFlight, summary } view for GET /:ballotId/mine
+ * from a voter's raw VotePackage docs (any order). Pure and DB-free so it
+ * can be unit-tested directly; exported for that reason.
+ *
+ * Load-bearing rule: Hydra enforces strict `nonce === currentVersion + 1`,
+ * so a non-terminal package whose nonce is <= the latest confirmed nonce
+ * is permanently unsubmittable — a superseded earlier attempt. Such
+ * packages MUST NOT appear in `inFlight`, otherwise the editor rehydrates
+ * a stale version from a dead/failed attempt (the first-version-sticks
+ * bug). A `failed` package ABOVE the head stays in for a manual retry.
+ *
+ * @param {Array<object>} packages  Lean VotePackage docs.
+ * @returns {{confirmed: object|null, inFlight: object[], summary: object}}
+ */
+export function buildMineView(packages) {
   const summary = {
     confirmed: 0,
     awaitingSignatures: 0,
@@ -687,9 +696,8 @@ router.get("/:ballotId/mine", async (req, res) => {
 
   // Per-proposal vote map mirroring the canonical wire shape the voter
   // submitted at /draft — `{ selection: number[] }` or `{ abstain: true }`
-  // keyed by questionId. The Vote collection's `["abstain"]` sentinel
-  // is an internal legacy collapse and is NOT part of the public
-  // contract; the frontend's type definitions use the wire shape.
+  // keyed by questionId. The Vote collection's `["abstain"]` sentinel is
+  // an internal legacy collapse and is NOT part of the public contract.
   const extractVotes = (pkg) => {
     const out = {};
     for (const a of pkg.signingPayload?.votes || []) {
@@ -706,8 +714,11 @@ router.get("/:ballotId/mine", async (req, res) => {
     return out;
   };
 
-  let confirmed = null;
-  const inFlight = [];
+  // `nonce` is declared Number in the schema but legacy rows can be
+  // non-numeric (see nonceManager.confirmedHead's $type guard), so pick
+  // the latest confirmed by numeric value rather than trusting any sort.
+  const toNonce = (n) => (typeof n === "number" ? n : Number(n));
+  let confirmedPkg = null;
 
   for (const pkg of packages) {
     if (pkg.status === "hydra-confirmed") summary.confirmed++;
@@ -716,32 +727,43 @@ router.get("/:ballotId/mine", async (req, res) => {
     else if (pkg.status === "draft") summary.draft++;
     else if (pkg.status === "failed") summary.failed++;
 
-    if (pkg.status === "hydra-confirmed") {
-      // Latest-confirmed-wins. Packages are sorted by nonce desc, so
-      // the first confirmed we see IS the latest.
-      if (!confirmed) {
-        confirmed = {
-          packageId: pkg._id.toString(),
-          nonce: pkg.nonce,
-          submittedAt: pkg.confirmedAt || null,
-          hydraTxId: pkg.hydraTxId || null,
-          votes: extractVotes(pkg),
-        };
-      }
-      continue;
+    if (
+      pkg.status === "hydra-confirmed" &&
+      (!confirmedPkg || toNonce(pkg.nonce) > toNonce(confirmedPkg.nonce))
+    ) {
+      confirmedPkg = pkg;
     }
+  }
 
-    // `inFlight` is the "voter could still act on this" list. Terminal
-    // states (abandoned, cancelled) are surfaced in `summary` only, not
-    // here — the DELETE handler and TTL sweep both land packages in
-    // "abandoned" and those shouldn't reappear in the voter's active UX.
-    // `failed` stays in to support a manual retry path.
+  const confirmed = confirmedPkg
+    ? {
+        packageId: confirmedPkg._id.toString(),
+        nonce: toNonce(confirmedPkg.nonce),
+        submittedAt: confirmedPkg.confirmedAt || null,
+        hydraTxId: confirmedPkg.hydraTxId || null,
+        votes: extractVotes(confirmedPkg),
+      }
+    : null;
+
+  // Once confirmed at nonce N, every package at nonce <= N is superseded.
+  const confirmedHead = confirmed ? confirmed.nonce : -Infinity;
+
+  const inFlight = [];
+  for (const pkg of packages) {
+    if (pkg.status === "hydra-confirmed") continue;
     if (pkg.status === "abandoned" || pkg.status === "cancelled") continue;
+    // INVARIANT: never emit a superseded package here. The frontend
+    // (broker.js mineToProposalAnnotations) overlays inFlight ON TOP OF
+    // confirmed — inFlight always wins — so a stale package leaked into
+    // this list rehydrates the editor with an old version. A package at
+    // or below the confirmed head can never resubmit (strict nonce ===
+    // currentVersion + 1), so it is not actionable and must be dropped.
+    if (toNonce(pkg.nonce) <= confirmedHead) continue;
 
     const entry = {
       packageId: pkg._id.toString(),
       status: pkg.status,
-      nonce: pkg.nonce,
+      nonce: toNonce(pkg.nonce),
       createdAt: pkg.createdAt || null,
       votes: extractVotes(pkg),
     };
@@ -760,12 +782,27 @@ router.get("/:ballotId/mine", async (req, res) => {
     inFlight.push(entry);
   }
 
+  // Newest-first regardless of input order.
+  inFlight.sort((a, b) => toNonce(b.nonce) - toNonce(a.nonce));
+
+  return { confirmed, inFlight, summary };
+}
+
+router.get("/:ballotId/mine", async (req, res) => {
+  const session = requireSession(req, res);
+  if (!session) return;
+  const ballot = await requireHydraBallot(req, res);
+  if (!ballot) return;
+
+  const packages = await VotePackage.find({
+    ballotId: ballot._id,
+    userId: session.userId,
+  }).lean();
+
   return res.json({
     status: "success",
     ballotId: ballot._id.toString(),
-    confirmed,
-    inFlight,
-    summary,
+    ...buildMineView(packages),
   });
 });
 
