@@ -1474,6 +1474,19 @@ components:
             headInfo: { type: object, nullable: true }
             ballot: { type: object, nullable: true }
         provisionalResultsEnabled: { type: boolean }
+        resultsCalculationMode:
+          type: string
+          enum: [standard, participation]
+          default: standard
+          description: >
+            Frontend results-rendering hint; the backend applies no
+            threshold and does not decide pass/fail. "standard" (default,
+            and the meaning when omitted) renders yes / expressed votes.
+            "participation" renders yes / (ballot participation pool −
+            abstainers on the proposal), using `Result.ballotParticipation`
+            as the pool baseline and `Result.participatingAbstainers` as the
+            per-proposal subtraction. Treat undefined/null/"standard"
+            identically.
         proposalSource:
           nullable: true
           description: |
@@ -1574,6 +1587,13 @@ components:
             proposalPeriodEnd: { type: string, format: date-time }
             voteAuthorityId: { type: string }
             voteAuthorityAddress: { type: string }
+            resultsCalculationMode:
+              type: string
+              enum: [standard, participation]
+              default: standard
+              description: >
+                Optional results-rendering hint. Omitted → backend stores
+                "standard". See UnifiedBallot.resultsCalculationMode.
             ipfsHash: { type: string, nullable: true }
             voterValidationScript: { type: string }
             rollupScript: { type: string }
@@ -1898,7 +1918,7 @@ components:
       properties:
         proposalId: { type: string }
         ballotId: { type: string, nullable: true }
-        source: { type: string, enum: [provisional, final] }
+        source: { type: string, enum: [provisional, final, certified] }
         ballotSource: { type: string, enum: [legacy, hydra] }
         finalizedAt: { type: string, format: date-time, nullable: true }
         # Hydra settlement artifacts (populated only on source=="final")
@@ -1944,6 +1964,58 @@ components:
               count: { type: integer }
               votingPower: { type: number }
         resultsByGroup: { type: object, nullable: true }
+        ballotParticipation:
+          type: object
+          nullable: true
+          description: >
+            Ballot-wide participation pool, per voter group: distinct voters
+            who cast ≥1 non-abstain vote on ANY proposal in the parent
+            ballot. This is the participation denominator (NOT eligibility —
+            eligibility headcount lives on the v0 ballot endpoint as
+            totalAllowedVoterCount). Identical across every proposal in the
+            ballot. Emitted on every ballot. Keys are group names
+            (drep/pool/stake/default).
+          properties:
+            totalVotingPower:
+              type: object
+              additionalProperties: { type: number }
+            voterCount:
+              type: object
+              additionalProperties: { type: integer }
+        proposalParticipation:
+          type: object
+          nullable: true
+          description: >
+            Same shape as ballotParticipation but scoped to THIS proposal:
+            distinct voters who cast ≥1 non-abstain vote here. Distinct from
+            resultsByGroup[g].totalVotes, which can over-count when a voter
+            selects multiple targets in one vote (budget, ranked).
+          properties:
+            totalVotingPower:
+              type: object
+              additionalProperties: { type: number }
+            voterCount:
+              type: object
+              additionalProperties: { type: integer }
+        participatingAbstainers:
+          type: object
+          nullable: true
+          description: >
+            Per-group count + voting power of voters who are in
+            `ballotParticipation` (the pool) AND explicitly abstained on THIS
+            proposal — the intersection, not every abstainer. The
+            participation-mode denominator is
+            `ballotParticipation.voterCount[g] − participatingAbstainers.voterCount[g]`
+            (and the votingPower analog); the same number is the "Abstain"
+            cohort the UI shows. Emitted on every ballot regardless of
+            resultsCalculationMode.
+          properties:
+            totalVotingPower:
+              type: object
+              additionalProperties: { type: number }
+            voterCount:
+              type: object
+              additionalProperties: { type: integer }
 
     BallotIdOrExternal:
       type: string

@@ -262,6 +262,81 @@ describe("deriveProposalTally — ranked", () => {
 });
 
 // ---------------------------------------------------------------------------
+// participatingAbstainers — the pool ∩ proposal-abstainers intersection used
+// by resultsCalculationMode: "participation". An all-abstain voter is NOT in
+// the pool, so must not be subtracted; a no-answer voter is "did not vote",
+// not an abstainer.
+// ---------------------------------------------------------------------------
+
+describe("deriveProposalTally — participatingAbstainers intersection", () => {
+  const proposal = {
+    _id: "q-choice",
+    voteType: "choice",
+    voteOptions: [
+      { id: 1, label: "Yes" },
+      { id: 2, label: "No" },
+    ],
+    requireAnswer: false,
+  };
+  const ballot = { voteWeighted: true };
+
+  test("counts only pool members who abstained on this proposal", () => {
+    const auditFull = makeAudit([
+      // A: voted Yes here → in pool, not an abstainer here
+      voter("A", "drep", [answer("q-choice", [1])]),
+      // B: abstained here but voted on another proposal → in pool, abstainer here
+      voter("B", "drep", [answerAbstain("q-choice"), answer("q-other", [1])]),
+      // C: abstained on everything → NOT in pool, must be excluded
+      voter("C", "drep", [answerAbstain("q-choice"), answerAbstain("q-other")]),
+      // D: no answer for this proposal → "did not vote", not an abstainer
+      voter("D", "drep", [answer("q-other", [2])]),
+    ]);
+    const votersByUserId = new Map([
+      voterMeta("A", "drep", 100),
+      voterMeta("B", "drep", 200),
+      voterMeta("C", "drep", 100),
+      voterMeta("D", "drep", 100),
+    ]);
+
+    const { ballotParticipation, proposalParticipation, participatingAbstainers } =
+      deriveProposalTally({ ballot, proposal, auditFull, votersByUserId });
+
+    // Pool = A, B, D (each cast ≥1 non-abstain somewhere); C excluded.
+    expect(ballotParticipation.voterCount.drep).toBe(3);
+    expect(ballotParticipation.totalVotingPower.drep).toBe(400);
+    // Non-abstain voters on this proposal = A only.
+    expect(proposalParticipation.voterCount.drep).toBe(1);
+    // Pool ∩ abstainers-on-q-choice = B only (C not in pool, D no answer).
+    expect(participatingAbstainers.voterCount.drep).toBe(1);
+    expect(participatingAbstainers.totalVotingPower.drep).toBe(200);
+
+    // Denominator the frontend renders in participation mode.
+    const denom =
+      ballotParticipation.voterCount.drep - participatingAbstainers.voterCount.drep;
+    expect(denom).toBe(2); // A (yes) + D (did-not-vote-here)
+  });
+
+  test("empty when the only abstainers never voted anywhere", () => {
+    const auditFull = makeAudit([
+      voter("A", "drep", [answer("q-choice", [1])]),
+      voter("C", "drep", [answerAbstain("q-choice")]),
+    ]);
+    const votersByUserId = new Map([
+      voterMeta("A", "drep", 100),
+      voterMeta("C", "drep", 100),
+    ]);
+    const { participatingAbstainers } = deriveProposalTally({
+      ballot,
+      proposal,
+      auditFull,
+      votersByUserId,
+    });
+    expect(participatingAbstainers.voterCount.drep).toBeUndefined();
+    expect(participatingAbstainers).toEqual({ totalVotingPower: {}, voterCount: {} });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Multi-group reconciliation — totalVotes must be distinct-voter, not unwound.
 // ---------------------------------------------------------------------------
 

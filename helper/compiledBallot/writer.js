@@ -52,6 +52,8 @@ function buildBallotDoc(payload, authCtx) {
     voteAuthorityAddress: b.voteAuthorityAddress,
     proposalPeriodStart: new Date(b.proposalPeriodStart),
     proposalPeriodEnd: new Date(b.proposalPeriodEnd),
+    resultsCalculationMode:
+      b.resultsCalculationMode === "participation" ? "participation" : "standard",
     voterValidationScript: b.voterValidationScript || "voterValidationAlwaysTrue.js",
     rollupScript: b.rollupScript || "rollupBallot.js",
     startupScript: b.startupScript || "startupBallot.js",

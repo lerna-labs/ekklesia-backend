@@ -1867,7 +1867,12 @@ paths:
         tags:
           - Voters
         summary: Get voter details
-        description: Get detailed information about a specific voter including voting history
+        description: >-
+          Get detailed information about a specific voter including voting
+          history. A voter is considered found when they have cast at least
+          one submitted, non-excluded vote — the same basis as the voter
+          directory listing (`GET /voters`), so any voter shown in the
+          directory resolves here. Returns 404 only when no such vote exists.
         operationId: getVoter
         parameters:
           - name: userId

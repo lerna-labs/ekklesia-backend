@@ -5,7 +5,6 @@ const router = Router();
 // schema import
 import { Vote } from "../../../schema/Vote.js";
 import { Ballot } from "../../../schema/Ballot.js";
-import { UserCache } from "../../../schema/UserCache.js";
 import { User } from "../../../schema/User.js";
 import { validateAddress } from "../../../helper/validateAddress.js";
 import { cacheControl } from "../../../helper/cacheControl.js";
@@ -444,7 +443,7 @@ router.get("/types", cacheControl(300), async (req, res) => {
 
 /**
  * @route GET /api/v0/voters/:userId
- * @description Get detailed information about a specific voter including voting history across all ballots. Response is cached for 300 seconds. Voter ID is validated and converted to CIP129 format if applicable. Voter must exist in UserCache to be found.
+ * @description Get detailed information about a specific voter including voting history across all ballots. Response is cached for 300 seconds. Voter ID is validated and converted to CIP129 format if applicable. A voter is considered found when they have cast at least one submitted, non-excluded vote (the same basis as the voter directory listing).
  * @access Public
  *
  * @param {string} req.params.userId - The ID of the voter to retrieve (must start with "stake", "drep", or "pool")
@@ -472,7 +471,7 @@ router.get("/types", cacheControl(300), async (req, res) => {
  *   - Voter ID is missing
  *   - Voter ID format is invalid (doesn't start with stake, drep, or pool)
  *   - Voter ID validation fails
- * @returns {Object} 404 - Error if voter not found in UserCache
+ * @returns {Object} 404 - Error if the voter has cast no submitted, non-excluded votes
  * @returns {Object} 500 - Server error while fetching voter data
  */
 router.get("/:userId", cacheControl(300), async (req, res) => {
@@ -508,9 +507,26 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
   }
   // use CIP129 from here on
   if (userIdValidated.cip129) userIdValidated = userIdValidated.cip129;
-  // check if voter is in votercache
-  const userCache = await UserCache.findOne({ userId: userIdValidated });
-  if (!userCache) {
+
+  // A voter "exists" for this endpoint when they've cast at least one
+  // submitted, non-excluded vote — the SAME source of truth the
+  // directory list (GET /api/v0/voters) is built from. Mirror its
+  // match conditions exactly so list and detail never disagree.
+  //
+  // We deliberately do NOT gate on UserCache here. That collection is
+  // only populated by the Hydra/v1 validation path, so legacy v0
+  // ballots — which hold the bulk of historical votes — have no
+  // UserCache rows, and every one of their voters (DReps key- and
+  // script-based, pools, stake) would 404 on this detail view despite
+  // appearing in the directory. Voting power, when a cache row does
+  // exist, is still attached as optional enrichment via the $lookup
+  // below (preserveNullAndEmptyArrays keeps powerless voters visible).
+  const hasVotes = await Vote.exists({
+    userId: userIdValidated,
+    submittedAt: { $ne: null },
+    excludedAt: null,
+  });
+  if (!hasVotes) {
     return res.status(404).json({
       status: "error",
       message: "Voter not found",

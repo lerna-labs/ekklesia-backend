@@ -24,6 +24,7 @@ import {
 import {
   computeBallotParticipation,
   computeProposalParticipation,
+  computeParticipatingAbstainers,
 } from "../../../helper/results/ballotParticipation.js";
 import { computeScaleStats, bucketScaleSamplesByGroup } from "../../../helper/results/scaleStats.js";
 import { computeRankedDistribution } from "../../../helper/results/rankedDistribution.js";
@@ -435,10 +436,12 @@ async function seedProposal(ballot, proposal, voters, state) {
 
   const votersByUserId = new Map(voters.map((v) => [v.userId, v]));
   const tally = rollup(proposal, cast, votersByUserId, ballot);
-  const [ballotParticipation, proposalParticipation] = await Promise.all([
-    computeBallotParticipation(ballot._id),
-    computeProposalParticipation(proposal._id, ballot._id),
-  ]);
+  const [ballotParticipation, proposalParticipation, participatingAbstainers] =
+    await Promise.all([
+      computeBallotParticipation(ballot._id),
+      computeProposalParticipation(proposal._id, ballot._id),
+      computeParticipatingAbstainers(proposal._id, ballot._id),
+    ]);
 
   // Reconcile per-group totalVotes with distinct voter counts. The
   // discrete rollup increments totalVotes per vote target, which
@@ -459,6 +462,7 @@ async function seedProposal(ballot, proposal, voters, state) {
     resultsByGroup: tally.resultsByGroup,
     ballotParticipation,
     proposalParticipation,
+    participatingAbstainers,
     source: state === "closed" ? "final" : "provisional",
     finalizedAt: state === "closed" ? now : null,
   };
