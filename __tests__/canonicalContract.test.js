@@ -76,17 +76,19 @@ describe("F-006 voteHash is canonical and key-order independent", () => {
   });
 });
 
-describe("F-006 structural guard — voteHash canonical, merkleRoot is not", () => {
+describe("F-006 structural guard — both voteHash and merkleRoot are canonical", () => {
   const src = readFileSync(resolve(here, "../helper/voteBroker.js"), "utf-8");
 
   test("voteHash() hashes over canonicalBytes(evidence)", () => {
     expect(src).toMatch(/blake2b256Hex\(canonicalBytes\(evidence\)\)/);
   });
 
-  test("the merkleRoot stays on JSON.stringify (signed insertion-order contract)", () => {
-    // The signing payload is hashed verbatim, NOT canonicalized — matching
-    // Hydra's verifier. See the coordinated-canonical-payload TRD.
-    expect(src).toMatch(/JSON\.stringify\(signingPayload\)|JSON\.stringify\(signedPayload\)/);
-    expect(src).not.toMatch(/merkleRoot = blake2b256Hex\(canonicalBytes/);
+  test("merkleRoot is now hashed over canonicalBytes(signingPayload) for global reproducibility", () => {
+    // Updated from the F-006-era "merkleRoot stays insertion-order" stance: the
+    // signing payload is now canonicalized too so every platform reproduces the
+    // same ballot hash. buildSigningPayload normalizes key order, so the bytes
+    // Hydra JSON.stringify's still match. See HYDRA_CANONICAL_SIGNING_PAYLOAD.
+    expect(src).toMatch(/blake2b256Hex\(canonicalBytes\(signingPayload\)\)/);
+    expect(src).toMatch(/JSON\.parse\(canonicalize\(\{ ballotId, nonce, votes \}\)\)/);
   });
 });
