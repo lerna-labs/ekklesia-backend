@@ -43,14 +43,29 @@ function blake2b256Hex(bytes) {
 }
 
 /**
- * Build the canonical SignedVotePayload. The voter signs these exact bytes
- * (COSE_Sign1 over `canonicalize(payload)` UTF-8).
+ * Build the SignedVotePayload in canonical (RFC-8785) form. The whole payload
+ * — top-level keys AND the keys of every vote object inside `votes[]` — is run
+ * through `canonicalize` so the serialization is deterministic regardless of
+ * the key insertion order the client happened to use. Array order (the order of
+ * vote objects, and of `selection` entries) is preserved; only object keys are
+ * sorted.
+ *
+ * This is the load-bearing step for cross-platform reproducibility: any
+ * Ekklesia interface that builds the same logical { ballotId, nonce, votes }
+ * arrives at the same bytes here, hence the same merkleRoot, hence a signature
+ * any other platform can reproduce and verify. (Without it, a vote such as
+ * `{ questionId, abstain: true }` — non-alphabetical keys — serialized to
+ * different bytes on different clients.)
+ *
+ * `JSON.parse(canonicalize(...))` yields a plain object whose own serialization
+ * is already canonical, so downstream `JSON.stringify` (e.g. Hydra's verifier
+ * today) reproduces these exact bytes.
  */
 export function buildSigningPayload({ ballotId, nonce, votes }) {
   if (!ballotId || typeof nonce !== "number" || !Array.isArray(votes)) {
     throw new BrokerError("ballotId, nonce, and votes[] are required", { code: "BAD_INPUT" });
   }
-  return { ballotId, nonce, votes };
+  return JSON.parse(canonicalize({ ballotId, nonce, votes }));
 }
 
 /**
@@ -72,7 +87,9 @@ export function buildEvidence({
     specVersion: PROTOCOL_VERSION,
     surveyTxId: surveyTxId || ballotId,
     responderRole: responderRole || "Voter",
-    answers: votes,
+    // Reuse the canonical votes from the signing payload so `answers` and the
+    // signed payload are the exact same bytes (and what we submit to Hydra).
+    answers: signedPayload.votes,
     ekklesia: {
       voterId,
       credentialHrp,
@@ -97,21 +114,23 @@ export function voteHash(evidence) {
 
 /**
  * The merkleRoot is the ONLY thing a voter (and every multisig cosigner)
- * signs: `blake2b_256(JSON.stringify(signingPayload))` as a 64-char hex
- * string, matching Hydra's verifier exactly (hydra-sdk verify-signature.js).
+ * signs: `blake2b_256(canonicalBytes(signingPayload))` as a 64-char hex string.
  *
- * It is NOT the evidence `voteHash` — that hashes the whole VoteEvidence
- * bundle (a superset), so the two values are never equal. Serving voteHash
- * as the signing target made cosigners sign the wrong message; this single
- * helper is the one place merkleRoot is derived so no caller can drift.
+ * It is hashed over the SHARED canonical (RFC-8785) JSON so that the same
+ * logical { ballotId, nonce, votes } always produces the same merkleRoot on
+ * every platform — a globally reproducible "expected ballot hash" for a given
+ * voter + selections (see HYDRA_CANONICAL_SIGNING_PAYLOAD). `buildSigningPayload`
+ * already returns a canonical-ordered payload, so for our own drafts this equals
+ * `JSON.stringify(signingPayload)`; using `canonicalBytes` keeps it correct even
+ * if a non-canonical payload is ever passed in.
  *
- * NB: `JSON.stringify` (insertion order), not canonicalize — the signing
- * payload is the signed value on a fixed insertion-order contract shared
- * with Hydra. Canonicalizing it would break every existing signature; see
- * the TRD on coordinating a canonical signing payload with the middleware.
+ * It is NOT the evidence `voteHash` — that hashes the whole VoteEvidence bundle
+ * (a superset), so the two values are never equal. Serving voteHash as the
+ * signing target made cosigners sign the wrong message; this single helper is
+ * the one place merkleRoot is derived so no caller can drift.
  */
 export function merkleRootHex(signingPayload) {
-  return blake2b256Hex(Buffer.from(JSON.stringify(signingPayload), "utf8"));
+  return blake2b256Hex(canonicalBytes(signingPayload));
 }
 
 /**
@@ -161,14 +180,14 @@ export async function buildDraft({
   });
   const signingPayload = evidence.ekklesia.signedPayload;
 
-  // Hydra's signature verification (hydra-sdk verify-signature.js:38) does
-  //   const merkleRoot = bytesToHex(blake2b256(JSON.stringify(signedPayload)));
-  //   message_matches = signaturePayloadAscii === merkleRoot
-  // — the voter signs the 64-char hex merkleRoot string (UTF-8 bytes),
-  // NOT the raw signedPayload JSON. Match Hydra's serialization exactly
-  // (plain JSON.stringify with { ballotId, nonce, votes } insertion order
-  // — which is already alphabetical, so this also matches our canonical
-  // form, but we use the same call for parity with Hydra).
+  // The voter signs the 64-char hex merkleRoot string (UTF-8 bytes), NOT the
+  // raw signedPayload JSON. merkleRoot is hashed over the canonical bytes of the
+  // signing payload (see merkleRootHex). `signingPayload` is already canonical,
+  // so `JSON.stringify(signingPayload)` here is byte-identical to those canonical
+  // bytes — which is exactly what Hydra's verifier reproduces from the votes we
+  // submit. (Hydra's verifier should also canonicalize for robustness against
+  // clients that submit non-canonical order — tracked in
+  // HYDRA_CANONICAL_SIGNING_PAYLOAD.)
   const signedPayloadJson = JSON.stringify(signingPayload);
   const merkleRoot = merkleRootHex(signingPayload);
   // cardano-signer --data-hex takes the hex of the bytes to sign. We sign
