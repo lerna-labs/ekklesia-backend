@@ -1,15 +1,15 @@
 // imports
-import validator from "validator";
+import validator from 'validator';
 
 // schema imports
-import { Ballot } from "../schema/Ballot.js";
-import { Proposal } from "../schema/Proposal.js";
-import { Transaction } from "../schema/Transaction.js";
+import { Ballot } from '../schema/Ballot.js';
+import { Proposal } from '../schema/Proposal.js';
+import { Transaction } from '../schema/Transaction.js';
 
 // helper imports
-import { verifyToken } from "../helper/verifyToken.js";
-import { validateAddress } from "../helper/validateAddress.js";
-import { PublicKey } from "@emurgo/cardano-serialization-lib-nodejs";
+import { verifyToken } from '../helper/verifyToken.js';
+import { validateAddress } from '../helper/validateAddress.js';
+import { PublicKey } from '@emurgo/cardano-serialization-lib-nodejs';
 
 /**
  * Middleware to verify user authentication token
@@ -33,9 +33,9 @@ import { PublicKey } from "@emurgo/cardano-serialization-lib-nodejs";
 export function isAuthenticated(req, res, next) {
   try {
     const voterToken = verifyToken(req);
-    if (voterToken.status === "error") {
+    if (voterToken.status === 'error') {
       return res.status(voterToken.code).json({
-        status: "error",
+        status: 'error',
         message: voterToken.message,
       });
     } else {
@@ -46,8 +46,8 @@ export function isAuthenticated(req, res, next) {
     }
   } catch (error) {
     return res.status(500).json({
-      status: "error",
-      message: "Internal Server Error",
+      status: 'error',
+      message: 'Internal Server Error',
     });
   }
 }
@@ -76,8 +76,8 @@ export async function getTransaction(req, res, next) {
   // check if transactionId is a valid mongo id
   if (!transactionId && !validator.isMongoId(transactionId)) {
     return res.status(400).json({
-      status: "error",
-      message: "Invalid Transaction ID",
+      status: 'error',
+      message: 'Invalid Transaction ID',
     });
   }
 
@@ -89,8 +89,8 @@ export async function getTransaction(req, res, next) {
     });
     if (!transaction) {
       return res.status(404).json({
-        status: "error",
-        message: "Transaction not found",
+        status: 'error',
+        message: 'Transaction not found',
       });
     }
     req.transaction = transaction;
@@ -99,8 +99,8 @@ export async function getTransaction(req, res, next) {
     next();
   } catch (error) {
     return res.status(500).json({
-      status: "error",
-      message: "Internal Server Error",
+      status: 'error',
+      message: 'Internal Server Error',
     });
   }
 }
@@ -130,8 +130,8 @@ export async function getBallot(req, res, next) {
   const ballotId = req.params.ballotId;
   if (!ballotId) {
     return res.status(400).json({
-      status: "error",
-      message: "Ballot ID is required",
+      status: 'error',
+      message: 'Ballot ID is required',
     });
   }
 
@@ -139,8 +139,8 @@ export async function getBallot(req, res, next) {
     // check if ballotId is a valid mongo id
     if (!validator.isMongoId(ballotId)) {
       return res.status(400).json({
-        status: "error",
-        message: "Invalid Ballot ID",
+        status: 'error',
+        message: 'Invalid Ballot ID',
       });
     }
 
@@ -149,17 +149,17 @@ export async function getBallot(req, res, next) {
       let ballot = await Ballot.findOne({
         _id: ballotId,
       }).select(
-        "_id title description votePeriodStart votePeriodEnd voterType " +
-        "voteWeighted voterValidationScript voteFilters status source " +
-        "facets proposalSource votingPowerSource proposalPeriodStart " +
-        "proposalPeriodEnd voteAuthorityId ipfsHash hydraEndpoint " +
-        "hydraHeadId hydraHeadStatus ballotCid instancePolicyId " +
-        "provisionalResultsEnabled"
+        '_id title description votePeriodStart votePeriodEnd voterType ' +
+          'voteWeighted voterValidationScript voteFilters status source ' +
+          'facets proposalSource votingPowerSource proposalPeriodStart ' +
+          'proposalPeriodEnd voteAuthorityId ipfsHash hydraEndpoint ' +
+          'hydraHeadId hydraHeadStatus ballotCid instancePolicyId ' +
+          'provisionalResultsEnabled',
       );
       if (!ballot) {
         return res.status(404).json({
-          status: "error",
-          message: "Ballot not found",
+          status: 'error',
+          message: 'Ballot not found',
         });
       }
 
@@ -168,8 +168,8 @@ export async function getBallot(req, res, next) {
       return next();
     } catch (error) {
       return res.status(500).json({
-        status: "error",
-        message: "Internal Server Error",
+        status: 'error',
+        message: 'Internal Server Error',
       });
     }
   }
@@ -199,23 +199,23 @@ export async function getProposal(req, res, next) {
   // Check if proposalId is provided
   if (!proposalId) {
     return res.status(400).json({
-      status: "error",
-      message: "Proposal ID is required",
+      status: 'error',
+      message: 'Proposal ID is required',
     });
   }
   // Validate the proposalId format
   if (!validator.isAlphanumeric(proposalId)) {
     return res.status(400).json({
-      status: "error",
-      message: "Invalid proposal ID format",
+      status: 'error',
+      message: 'Invalid proposal ID format',
     });
   }
 
   // check length of proposalId
   if (proposalId.length !== 24) {
     return res.status(400).json({
-      status: "error",
-      message: "Invalid proposal ID length",
+      status: 'error',
+      message: 'Invalid proposal ID length',
     });
   }
 
@@ -223,8 +223,8 @@ export async function getProposal(req, res, next) {
   const proposalData = await Proposal.findOne({ _id: proposalId });
   if (!proposalData) {
     return res.status(404).json({
-      status: "error",
-      message: "Proposal not found",
+      status: 'error',
+      message: 'Proposal not found',
     });
   }
   // Check if the proposalId is a valid ObjectId
@@ -263,16 +263,16 @@ export function validateSessionRequest(req, res, next) {
   // Check if signerAddress exists in the request
   if (!signerAddress) {
     return res.status(400).json({
-      status: "error",
-      message: "Missing signerAddress in request body",
+      status: 'error',
+      message: 'Missing signerAddress in request body',
     });
   }
 
   // Check if signType exists in the request
   if (!signType) {
     return res.status(400).json({
-      status: "error",
-      message: "Missing signType in request body",
+      status: 'error',
+      message: 'Missing signType in request body',
     });
   }
 
@@ -280,11 +280,11 @@ export function validateSessionRequest(req, res, next) {
   // Hydra role space contracted to drep / pool / stake. Voters with
   // an addr1... / addr_test1... must register via their stake
   // credential instead.
-  if (signType === "addr" || signType === "addr_test") {
+  if (signType === 'addr' || signType === 'addr_test') {
     return res.status(400).json({
-      status: "error",
+      status: 'error',
       message:
-        "Payment addresses are not accepted. Use your stake credential (stake1... or stake_test1...) or one of: drep, pool.",
+        'Payment addresses are not accepted. Use your stake credential (stake1... or stake_test1...) or one of: drep, pool.',
     });
   }
 
@@ -293,21 +293,21 @@ export function validateSessionRequest(req, res, next) {
   // console.log("Address validation in validateSessionRequest MW", addressBech32);
   if (addressBech32.error) {
     return res.status(400).json({
-      status: "error",
+      status: 'error',
       message: addressBech32.error,
     });
   }
 
   // check if address is drep id and if not cip129, throw error
   if (
-    signerAddress.startsWith("drep") &&
+    signerAddress.startsWith('drep') &&
     addressBech32.cip129 &&
     addressBech32.cip129 != signerAddress.trim()
   ) {
-    console.log("MW: Not a CIP129 Address", addressBech32);
+    console.log('MW: Not a CIP129 Address', addressBech32);
     return res.status(400).json({
-      status: "error",
-      message: "Please use a CIP129 address",
+      status: 'error',
+      message: 'Please use a CIP129 address',
     });
   }
 
@@ -318,10 +318,10 @@ export function validateSessionRequest(req, res, next) {
   }
 
   // converting drep PubKey to hex or whatever
-  if (signerAddress.length === 64 && signType === "drep") {
+  if (signerAddress.length === 64 && signType === 'drep') {
     const pubkey = PublicKey.from_hex(signerAddress);
     let keyhash = pubkey.hash();
-    const keyHashHex = Buffer.from(keyhash.to_bytes()).toString("hex");
+    const keyHashHex = Buffer.from(keyhash.to_bytes()).toString('hex');
     signerAddress = keyHashHex;
   }
 

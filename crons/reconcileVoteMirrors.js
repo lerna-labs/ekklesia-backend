@@ -19,10 +19,10 @@
 // next aggregateVotes() tick discovers the affected proposal in its
 // 12-minute discovery window.
 
-import { VotePackage } from "../schema/VotePackage.js";
-import { Vote } from "../schema/Vote.js";
-import { Ballot } from "../schema/Ballot.js";
-import { syncVoteRecords } from "../helper/voteMirror.js";
+import { VotePackage } from '../schema/VotePackage.js';
+import { Vote } from '../schema/Vote.js';
+import { Ballot } from '../schema/Ballot.js';
+import { syncVoteRecords } from '../helper/voteMirror.js';
 
 /**
  * Sweep hydra-confirmed packages whose Vote mirror is incomplete.
@@ -30,9 +30,9 @@ import { syncVoteRecords } from "../helper/voteMirror.js";
  * @returns {Promise<{scanned: number, restored: number}>}
  */
 export async function reconcileVoteMirrors() {
-  const confirmed = await VotePackage.find({ status: "hydra-confirmed" })
+  const confirmed = await VotePackage.find({ status: 'hydra-confirmed' })
     .select(
-      "userId ballotId signingPayload voteHash hydraTxId hydraProof ipfsCid confirmedAt nonce"
+      'userId ballotId signingPayload voteHash hydraTxId hydraProof ipfsCid confirmedAt nonce',
     )
     .lean();
 
@@ -74,7 +74,7 @@ export async function reconcileVoteMirrors() {
     const ballot = await loadBallot(pkg.ballotId);
     if (!ballot) {
       console.warn(
-        `[reconcileVoteMirrors] missing ballot ${pkg.ballotId} for package ${pkg._id} — skipping`
+        `[reconcileVoteMirrors] missing ballot ${pkg.ballotId} for package ${pkg._id} — skipping`,
       );
       continue;
     }
@@ -83,18 +83,16 @@ export async function reconcileVoteMirrors() {
       await syncVoteRecords(pkg, ballot);
       restored += 1;
       console.log(
-        `[reconcileVoteMirrors] mirrored package ${pkg._id} for voter ${pkg.userId} on ballot ${pkg.ballotId} (${expected.length - existing} missing)`
+        `[reconcileVoteMirrors] mirrored package ${pkg._id} for voter ${pkg.userId} on ballot ${pkg.ballotId} (${expected.length - existing} missing)`,
       );
     } catch (err) {
-      console.error(
-        `[reconcileVoteMirrors] mirror failed for package ${pkg._id}: ${err.message}`
-      );
+      console.error(`[reconcileVoteMirrors] mirror failed for package ${pkg._id}: ${err.message}`);
     }
   }
 
   if (restored > 0) {
     console.log(
-      `[reconcileVoteMirrors] restored ${restored} orphaned mirror(s) from ${confirmed.length} confirmed package(s)`
+      `[reconcileVoteMirrors] restored ${restored} orphaned mirror(s) from ${confirmed.length} confirmed package(s)`,
     );
   }
   return { scanned: confirmed.length, restored };

@@ -1,14 +1,14 @@
 // express router
-import { Router } from "express";
+import { Router } from 'express';
 const router = Router();
 
 // schema import
-import { Vote } from "../../../schema/Vote.js";
-import { Ballot } from "../../../schema/Ballot.js";
+import { Vote } from '../../../schema/Vote.js';
+import { Ballot } from '../../../schema/Ballot.js';
 
 // helper
-import { isAuthenticated, getProposal } from "../../../helper/middleWare.js";
-import { checkVotingWindow } from "../../../helper/votingWindow.js";
+import { isAuthenticated, getProposal } from '../../../helper/middleWare.js';
+import { checkVotingWindow } from '../../../helper/votingWindow.js';
 
 /**
  * @route POST /api/v0/vote/:proposalId
@@ -41,22 +41,22 @@ import { checkVotingWindow } from "../../../helper/votingWindow.js";
  * @returns {Object} 404 - Error if proposal or ballot not found
  * @returns {Object} 500 - Error if vote cannot be saved to database
  */
-router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
+router.post('/:proposalId', isAuthenticated, getProposal, async (req, res) => {
   const { proposal, userId, proposalId } = req;
 
   // Get ballot data
   const ballot = await Ballot.findOne({ _id: proposal.ballotId });
   if (!ballot) {
     return res.status(404).json({
-      status: "error",
-      message: "Ballot not found",
+      status: 'error',
+      message: 'Ballot not found',
     });
   }
   // Check if the ballot is still open
-  if (ballot.status !== "live") {
+  if (ballot.status !== 'live') {
     return res.status(400).json({
-      status: "error",
-      message: "Ballot is not live",
+      status: 'error',
+      message: 'Ballot is not live',
     });
   }
 
@@ -66,26 +66,22 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   const windowCheck = checkVotingWindow(ballot);
   if (!windowCheck.ok) {
     return res.status(409).json({
-      status: "error",
+      status: 'error',
       code: windowCheck.code,
       message: windowCheck.message,
     });
   }
 
   // validate the voter against the ballot
-  const { loadValidationScript } = await import(
-    "../../../helper/loadValidationScript.js"
-  );
-  const { validateVoter } = await loadValidationScript(
-    ballot.voterValidationScript
-  );
+  const { loadValidationScript } = await import('../../../helper/loadValidationScript.js');
+  const { validateVoter } = await loadValidationScript(ballot.voterValidationScript);
   // validate voter
   const isValidVoter = await validateVoter(userId, ballot._id);
   // return error if voter is not valid
   if (!isValidVoter) {
     return res.status(403).json({
-      status: "error",
-      message: "Voter is not registered for this ballot",
+      status: 'error',
+      message: 'Voter is not registered for this ballot',
     });
   }
 
@@ -94,8 +90,8 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   // Check if vote is present and is an array
   if (!vote || !Array.isArray(vote) || vote.length === 0) {
     return res.status(400).json({
-      status: "error",
-      message: "Vote data is required",
+      status: 'error',
+      message: 'Vote data is required',
     });
   }
 
@@ -106,17 +102,17 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   //   - Proposals with requireAnswer: true reject any "abstain" entry.
   //   - Otherwise, "abstain" must be the only entry (cannot be combined
   //     with other votes).
-  if (uniqueVotes.includes("abstain")) {
+  if (uniqueVotes.includes('abstain')) {
     if (proposal.requireAnswer === true) {
       return res.status(400).json({
-        status: "error",
-        message: "Invalid vote - this question requires an answer",
+        status: 'error',
+        message: 'Invalid vote - this question requires an answer',
       });
     }
     if (uniqueVotes.length > 1) {
       return res.status(400).json({
-        status: "error",
-        message: "Invalid vote - Abstain does not allow other votes",
+        status: 'error',
+        message: 'Invalid vote - Abstain does not allow other votes',
       });
     }
   }
@@ -125,35 +121,38 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   let allowedOptionIds = proposal.voteOptions.map((option) => option.id);
 
   // allowed values for scale votes
-  if (proposal.voteType === "scale") {
+  if (proposal.voteType === 'scale') {
     const lowerBound = proposal.voteOptions[0].id;
     const upperBound = proposal.voteOptions[proposal.voteOptions.length - 1].id;
-    allowedOptionIds = Array.from({ length: (upperBound - lowerBound) / proposal.voteIncrement + 1 }, (_, i) => lowerBound + i * proposal.voteIncrement);
+    allowedOptionIds = Array.from(
+      { length: (upperBound - lowerBound) / proposal.voteIncrement + 1 },
+      (_, i) => lowerBound + i * proposal.voteIncrement,
+    );
   }
 
   // Abstain is allowed by default unless the proposal sets requireAnswer: true.
   if (proposal.requireAnswer !== true) {
-    allowedOptionIds.push("abstain");
+    allowedOptionIds.push('abstain');
   }
 
   // Check if all values in the vote array are present in the allowed option IDs
-  const invalidVotes = uniqueVotes.filter(voteId => !allowedOptionIds.includes(voteId));
+  const invalidVotes = uniqueVotes.filter((voteId) => !allowedOptionIds.includes(voteId));
   if (invalidVotes.length > 0) {
     return res.status(400).json({
-      status: "error",
-      message: "Vote value is not allowed",
+      status: 'error',
+      message: 'Vote value is not allowed',
     });
   }
 
   // Calculate total cost by looking up the cost for each vote ID
   const totalCost = uniqueVotes.reduce((acc, voteId) => {
-    const voteOption = proposal.voteOptions.find(option => option.id === voteId);
+    const voteOption = proposal.voteOptions.find((option) => option.id === voteId);
     return acc + (voteOption ? voteOption.cost : 0);
   }, 0);
 
   if (proposal.voterBudget && totalCost > proposal.voterBudget) {
     return res.status(400).json({
-      status: "error",
+      status: 'error',
       message: `Total cost (${totalCost}) exceeds your budget of ${proposal.voterBudget}`,
     });
   }
@@ -170,22 +169,19 @@ router.post("/:proposalId", isAuthenticated, getProposal, async (req, res) => {
   const saveVote = await Vote.findOneAndUpdate(
     { proposalId: req.params.proposalId, userId: userId },
     voteData,
-    { new: true, upsert: true }
+    { new: true, upsert: true },
   );
   // Check if the save operation was successful
   if (!saveVote) {
     return res.status(500).json({
-      status: "error",
-      message: "Failed to save vote",
+      status: 'error',
+      message: 'Failed to save vote',
     });
   }
 
   // check if saveVote.updatedAt is newer than saveVote.submittedAt or submittedAt does not exist yet
   const voteResponse = saveVote.toObject(); // Convert to plain object
-  if (
-    saveVote.updatedAt.getTime() >
-    (saveVote?.submittedAt?.getTime() || !saveVote.submittedAt)
-  ) {
+  if (saveVote.updatedAt.getTime() > (saveVote?.submittedAt?.getTime() || !saveVote.submittedAt)) {
     voteResponse.changes = true;
   }
 

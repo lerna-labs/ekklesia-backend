@@ -1,4 +1,4 @@
-import { deriveProposalTally } from "../helper/results/hydraTally.js";
+import { deriveProposalTally } from '../helper/results/hydraTally.js';
 
 // ---------------------------------------------------------------------------
 // Minimal fixtures. Ballot is just `{voteWeighted: boolean}`; proposal
@@ -18,7 +18,7 @@ function voter(id, hrp, answers) {
   return {
     voterId: id,
     credentialHrp: hrp,
-    evidence: { specVersion: "ekklesia/1.0", responderRole: hrp, answers },
+    evidence: { specVersion: 'ekklesia/1.0', responderRole: hrp, answers },
   };
 }
 function voterMeta(userId, voterGroup, votingPower = 1) {
@@ -30,33 +30,33 @@ function voterMeta(userId, voterGroup, votingPower = 1) {
 // median 0. Single voter group so resultsByGroup.drep carries the stats.
 // ---------------------------------------------------------------------------
 
-describe("deriveProposalTally — range (scale) §Acceptance #2", () => {
+describe('deriveProposalTally — range (scale) §Acceptance #2', () => {
   const proposal = {
-    _id: "q-scale",
-    voteType: "scale",
+    _id: 'q-scale',
+    voteType: 'scale',
     voteOptions: [
-      { id: -5, label: "-5" },
-      { id: 5, label: "5" },
+      { id: -5, label: '-5' },
+      { id: 5, label: '5' },
     ],
     voteIncrement: 1,
     requireAnswer: false,
   };
   const ballot = { voteWeighted: false };
 
-  test("mean 1.2, median 0 for {-2, 0, 0, 3, 5}", () => {
+  test('mean 1.2, median 0 for {-2, 0, 0, 3, 5}', () => {
     const auditFull = makeAudit([
-      voter("drep1a", "drep", [answer("q-scale", [-2])]),
-      voter("drep1b", "drep", [answer("q-scale", [0])]),
-      voter("drep1c", "drep", [answer("q-scale", [0])]),
-      voter("drep1d", "drep", [answer("q-scale", [3])]),
-      voter("drep1e", "drep", [answer("q-scale", [5])]),
+      voter('drep1a', 'drep', [answer('q-scale', [-2])]),
+      voter('drep1b', 'drep', [answer('q-scale', [0])]),
+      voter('drep1c', 'drep', [answer('q-scale', [0])]),
+      voter('drep1d', 'drep', [answer('q-scale', [3])]),
+      voter('drep1e', 'drep', [answer('q-scale', [5])]),
     ]);
     const votersByUserId = new Map([
-      voterMeta("drep1a", "drep"),
-      voterMeta("drep1b", "drep"),
-      voterMeta("drep1c", "drep"),
-      voterMeta("drep1d", "drep"),
-      voterMeta("drep1e", "drep"),
+      voterMeta('drep1a', 'drep'),
+      voterMeta('drep1b', 'drep'),
+      voterMeta('drep1c', 'drep'),
+      voterMeta('drep1d', 'drep'),
+      voterMeta('drep1e', 'drep'),
     ]);
 
     const { resultsByGroup, proposalParticipation } = deriveProposalTally({
@@ -78,15 +78,12 @@ describe("deriveProposalTally — range (scale) §Acceptance #2", () => {
     expect(proposalParticipation.voterCount.drep).toBe(5);
   });
 
-  test("abstain rows surface but do not flow into stats.distribution", () => {
+  test('abstain rows surface but do not flow into stats.distribution', () => {
     const auditFull = makeAudit([
-      voter("drep1a", "drep", [answer("q-scale", [1])]),
-      voter("drep1b", "drep", [answerAbstain("q-scale")]),
+      voter('drep1a', 'drep', [answer('q-scale', [1])]),
+      voter('drep1b', 'drep', [answerAbstain('q-scale')]),
     ]);
-    const votersByUserId = new Map([
-      voterMeta("drep1a", "drep"),
-      voterMeta("drep1b", "drep"),
-    ]);
+    const votersByUserId = new Map([voterMeta('drep1a', 'drep'), voterMeta('drep1b', 'drep')]);
     const { results, resultsByGroup, proposalParticipation } = deriveProposalTally({
       ballot,
       proposal,
@@ -94,7 +91,7 @@ describe("deriveProposalTally — range (scale) §Acceptance #2", () => {
       votersByUserId,
     });
     // Top-level results carries an Abstain row with count=1
-    const abstainTop = results.find((r) => r.id === "abstain");
+    const abstainTop = results.find((r) => r.id === 'abstain');
     expect(abstainTop).toBeDefined();
     expect(abstainTop.count).toBe(1);
     // Per-group stats exclude abstainers
@@ -109,44 +106,44 @@ describe("deriveProposalTally — range (scale) §Acceptance #2", () => {
 // Likert — distribution + majority-judgment sanity check.
 // ---------------------------------------------------------------------------
 
-describe("deriveProposalTally — likert", () => {
+describe('deriveProposalTally — likert', () => {
   const proposal = {
-    _id: "q-likert",
-    voteType: "likert",
+    _id: 'q-likert',
+    voteType: 'likert',
     voteOptions: [
-      { id: 1, label: "Option A" },
-      { id: 2, label: "Option B" },
+      { id: 1, label: 'Option A' },
+      { id: 2, label: 'Option B' },
     ],
     ratingRange: { min: 1, max: 5, step: 1 },
     requireAnswer: true,
   };
   const ballot = { voteWeighted: false };
 
-  test("per-option distribution + stats land on resultsByGroup.likert", () => {
+  test('per-option distribution + stats land on resultsByGroup.likert', () => {
     const auditFull = makeAudit([
-      voter("drep1a", "drep", [
-        answer("q-likert", [
+      voter('drep1a', 'drep', [
+        answer('q-likert', [
           { option: 1, value: 4 },
           { option: 2, value: 2 },
         ]),
       ]),
-      voter("drep1b", "drep", [
-        answer("q-likert", [
+      voter('drep1b', 'drep', [
+        answer('q-likert', [
           { option: 1, value: 5 },
           { option: 2, value: 3 },
         ]),
       ]),
-      voter("drep1c", "drep", [
-        answer("q-likert", [
+      voter('drep1c', 'drep', [
+        answer('q-likert', [
           { option: 1, value: 3 },
           { option: 2, value: 1 },
         ]),
       ]),
     ]);
     const votersByUserId = new Map([
-      voterMeta("drep1a", "drep"),
-      voterMeta("drep1b", "drep"),
-      voterMeta("drep1c", "drep"),
+      voterMeta('drep1a', 'drep'),
+      voterMeta('drep1b', 'drep'),
+      voterMeta('drep1c', 'drep'),
     ]);
     const { resultsByGroup } = deriveProposalTally({
       ballot,
@@ -170,38 +167,35 @@ describe("deriveProposalTally — likert", () => {
 // Weighted — totalPoints per option, mean-per-option sanity check.
 // ---------------------------------------------------------------------------
 
-describe("deriveProposalTally — weighted", () => {
+describe('deriveProposalTally — weighted', () => {
   const proposal = {
-    _id: "q-weighted",
-    voteType: "weighted",
+    _id: 'q-weighted',
+    voteType: 'weighted',
     voteOptions: [
-      { id: 1, label: "Option A" },
-      { id: 2, label: "Option B" },
+      { id: 1, label: 'Option A' },
+      { id: 2, label: 'Option B' },
     ],
     voterBudget: 10,
     requireAnswer: false,
   };
   const ballot = { voteWeighted: false };
 
-  test("totalPoints aggregates across ballots", () => {
+  test('totalPoints aggregates across ballots', () => {
     const auditFull = makeAudit([
-      voter("drep1a", "drep", [
-        answer("q-weighted", [
+      voter('drep1a', 'drep', [
+        answer('q-weighted', [
           { option: 1, value: 7 },
           { option: 2, value: 3 },
         ]),
       ]),
-      voter("drep1b", "drep", [
-        answer("q-weighted", [
+      voter('drep1b', 'drep', [
+        answer('q-weighted', [
           { option: 1, value: 5 },
           { option: 2, value: 5 },
         ]),
       ]),
     ]);
-    const votersByUserId = new Map([
-      voterMeta("drep1a", "drep"),
-      voterMeta("drep1b", "drep"),
-    ]);
+    const votersByUserId = new Map([voterMeta('drep1a', 'drep'), voterMeta('drep1b', 'drep')]);
     const { resultsByGroup } = deriveProposalTally({
       ballot,
       proposal,
@@ -223,29 +217,29 @@ describe("deriveProposalTally — weighted", () => {
 // Ranked — per-rank counts + rankDepth preserved.
 // ---------------------------------------------------------------------------
 
-describe("deriveProposalTally — ranked", () => {
+describe('deriveProposalTally — ranked', () => {
   const proposal = {
-    _id: "q-ranked",
-    voteType: "ranked",
+    _id: 'q-ranked',
+    voteType: 'ranked',
     voteOptions: [
-      { id: 1, label: "Option A" },
-      { id: 2, label: "Option B" },
-      { id: 3, label: "Option C" },
+      { id: 1, label: 'Option A' },
+      { id: 2, label: 'Option B' },
+      { id: 3, label: 'Option C' },
     ],
     requireAnswer: true,
   };
   const ballot = { voteWeighted: false };
 
-  test("rows carry per-rank counts", () => {
+  test('rows carry per-rank counts', () => {
     const auditFull = makeAudit([
-      voter("drep1a", "drep", [answer("q-ranked", [1, 2, 3])]),
-      voter("drep1b", "drep", [answer("q-ranked", [2, 1, 3])]),
-      voter("drep1c", "drep", [answer("q-ranked", [1, 3, 2])]),
+      voter('drep1a', 'drep', [answer('q-ranked', [1, 2, 3])]),
+      voter('drep1b', 'drep', [answer('q-ranked', [2, 1, 3])]),
+      voter('drep1c', 'drep', [answer('q-ranked', [1, 3, 2])]),
     ]);
     const votersByUserId = new Map([
-      voterMeta("drep1a", "drep"),
-      voterMeta("drep1b", "drep"),
-      voterMeta("drep1c", "drep"),
+      voterMeta('drep1a', 'drep'),
+      voterMeta('drep1b', 'drep'),
+      voterMeta('drep1c', 'drep'),
     ]);
     const { resultsByGroup } = deriveProposalTally({
       ballot,
@@ -265,30 +259,30 @@ describe("deriveProposalTally — ranked", () => {
 // Multi-group reconciliation — totalVotes must be distinct-voter, not unwound.
 // ---------------------------------------------------------------------------
 
-describe("deriveProposalTally — group separation + reconciliation", () => {
+describe('deriveProposalTally — group separation + reconciliation', () => {
   const proposal = {
-    _id: "q-choice",
-    voteType: "choice",
+    _id: 'q-choice',
+    voteType: 'choice',
     voteOptions: [
-      { id: 1, label: "Yes" },
-      { id: 2, label: "No" },
+      { id: 1, label: 'Yes' },
+      { id: 2, label: 'No' },
     ],
     requireAnswer: false,
   };
   const ballot = { voteWeighted: false };
 
-  test("drep and pool groups tracked independently", () => {
+  test('drep and pool groups tracked independently', () => {
     const auditFull = makeAudit([
-      voter("drep1a", "drep", [answer("q-choice", [1])]),
-      voter("drep1b", "drep", [answer("q-choice", [2])]),
-      voter("pool1a", "pool", [answer("q-choice", [1])]),
-      voter("pool1b", "pool", [answer("q-choice", [1])]),
+      voter('drep1a', 'drep', [answer('q-choice', [1])]),
+      voter('drep1b', 'drep', [answer('q-choice', [2])]),
+      voter('pool1a', 'pool', [answer('q-choice', [1])]),
+      voter('pool1b', 'pool', [answer('q-choice', [1])]),
     ]);
     const votersByUserId = new Map([
-      voterMeta("drep1a", "drep", 100),
-      voterMeta("drep1b", "drep", 200),
-      voterMeta("pool1a", "pool", 1),
-      voterMeta("pool1b", "pool", 1),
+      voterMeta('drep1a', 'drep', 100),
+      voterMeta('drep1b', 'drep', 200),
+      voterMeta('pool1a', 'pool', 1),
+      voterMeta('pool1b', 'pool', 1),
     ]);
     const { results, resultsByGroup, proposalParticipation } = deriveProposalTally({
       ballot,

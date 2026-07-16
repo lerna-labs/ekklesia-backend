@@ -14,25 +14,25 @@
 //   --index    integer disambiguator baked into the deterministic title (default: 1)
 //   --state    deprecated — always forced to "closed"
 
-import process from "process";
-import { bootstrap, teardown, parseArgs } from "./common/env.js";
-import { upsertScaffoldBallot } from "./common/ballotFactory.js";
+import process from 'process';
+import { bootstrap, teardown, parseArgs } from './common/env.js';
+import { upsertScaffoldBallot } from './common/ballotFactory.js';
 
 const { flags } = parseArgs();
-const flavor = flags.flavor || "dreps";
+const flavor = flags.flavor || 'dreps';
 const index = flags.index ? parseInt(flags.index, 10) : 1;
 
-if (flags.state && flags.state !== "closed") {
+if (flags.state && flags.state !== 'closed') {
   console.warn(
-    `[scaffoldLegacyBallot] --state=${flags.state} ignored; legacy ballots are archive-only (closed).`
+    `[scaffoldLegacyBallot] --state=${flags.state} ignored; legacy ballots are archive-only (closed).`,
   );
 }
 
 await bootstrap();
 
 const ballot = await upsertScaffoldBallot({
-  source: "legacy",
-  state: "closed",
+  source: 'legacy',
+  state: 'closed',
   flavor,
   index,
 });

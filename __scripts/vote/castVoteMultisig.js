@@ -20,29 +20,35 @@
 //   --cosigners           how many keys to sign with (default = script.required)
 //   --backend             backend URL (default http://localhost:$SERVER_PORT, or :3000)
 
-import process from "process";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-import dotenv from "dotenv";
-import jwt from "jsonwebtoken";
-import { parseArgs } from "../scaffold/common/env.js";
-import { loadLocalOverrides } from "../../helper/envOverlay.js";
-import { VOTERS_BY_NAME } from "../scaffold/common/fixtures.js";
-import { signCose } from "../scaffold/common/coseSign.js";
+import process from 'process';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken';
+import { parseArgs } from '../scaffold/common/env.js';
+import { loadLocalOverrides } from '../../helper/envOverlay.js';
+import { VOTERS_BY_NAME } from '../scaffold/common/fixtures.js';
+import { signCose } from '../scaffold/common/coseSign.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(here, "..", "..");
-const envName = process.env.NODE_ENV || "development";
+const repoRoot = join(here, '..', '..');
+const envName = process.env.NODE_ENV || 'development';
 dotenv.config({ path: join(repoRoot, `.env.${envName}`) });
 loadLocalOverrides(repoRoot);
 
 const { flags } = parseArgs();
-if (!flags.ballotId) { console.error("Missing --ballotId"); process.exit(1); }
-if (!flags.questionId) { console.error("Missing --questionId"); process.exit(1); }
+if (!flags.ballotId) {
+  console.error('Missing --ballotId');
+  process.exit(1);
+}
+if (!flags.questionId) {
+  console.error('Missing --questionId');
+  process.exit(1);
+}
 
-const fixture = VOTERS_BY_NAME[flags.voter || "multisig"];
-if (!fixture || fixture.kind !== "script") {
-  console.error("Voter fixture is not a multisig script-based voter");
+const fixture = VOTERS_BY_NAME[flags.voter || 'multisig'];
+if (!fixture || fixture.kind !== 'script') {
+  console.error('Voter fixture is not a multisig script-based voter');
   process.exit(1);
 }
 const script = fixture.nativeScript;
@@ -63,35 +69,37 @@ function parseSelection(rawFlags) {
   const tokens = [];
   for (const raw of [].concat(rawFlags || [])) {
     if (raw === true) continue;
-    for (const t of String(raw).split(",")) {
+    for (const t of String(raw).split(',')) {
       const trimmed = t.trim();
       if (trimmed) tokens.push(trimmed);
     }
   }
   if (tokens.length === 0) return null;
-  const hasPair = tokens.some((t) => t.includes(":"));
-  if (hasPair && !tokens.every((t) => t.includes(":"))) {
-    console.error("--selection: mixed shapes; use all integers OR all option:value pairs");
+  const hasPair = tokens.some((t) => t.includes(':'));
+  if (hasPair && !tokens.every((t) => t.includes(':'))) {
+    console.error('--selection: mixed shapes; use all integers OR all option:value pairs');
     process.exit(1);
   }
   if (hasPair) {
     return tokens.map((t) => {
-      const [option, value] = t.split(":").map(Number);
+      const [option, value] = t.split(':').map(Number);
       return { option, value };
     });
   }
   return tokens.map(Number);
 }
 
-const wantsAbstain = flags.abstain === true || String(flags.abstain) === "true";
+const wantsAbstain = flags.abstain === true || String(flags.abstain) === 'true';
 const selection = parseSelection(flags.selection);
 
 if (wantsAbstain && selection) {
-  console.error("--abstain and --selection are mutually exclusive");
+  console.error('--abstain and --selection are mutually exclusive');
   process.exit(1);
 }
 if (!wantsAbstain && !selection) {
-  console.error("Pass --selection (integers, or option:value pairs for weighted/likert) or --abstain");
+  console.error(
+    'Pass --selection (integers, or option:value pairs for weighted/likert) or --abstain',
+  );
   process.exit(1);
 }
 
@@ -101,53 +109,58 @@ const voteSelection = wantsAbstain
 
 const backend = flags.backend || `http://localhost:${process.env.SERVER_PORT || 3000}`;
 const secret = process.env.JWT_SECRET;
-if (!secret) { console.error("JWT_SECRET missing"); process.exit(1); }
-const voterJwt = jwt.sign(
-  { userId: fixture.userId, signType: "stake", multiSig: true },
-  secret,
-  { expiresIn: process.env.JWT_MAX_AGE || "1h" }
-);
-const headers = { cookie: `token=${voterJwt}`, "content-type": "application/json" };
+if (!secret) {
+  console.error('JWT_SECRET missing');
+  process.exit(1);
+}
+const voterJwt = jwt.sign({ userId: fixture.userId, signType: 'stake', multiSig: true }, secret, {
+  expiresIn: process.env.JWT_MAX_AGE || '1h',
+});
+const headers = { cookie: `token=${voterJwt}`, 'content-type': 'application/json' };
 
-console.log(`[multisig] voter=${fixture.userId.slice(0, 24)}… required=${required} signing-with=${count}`);
+console.log(
+  `[multisig] voter=${fixture.userId.slice(0, 24)}… required=${required} signing-with=${count}`,
+);
 console.log(`[multisig] POST /draft (with nativeScript)`);
 const draftRes = await fetch(`${backend}/api/v1/votes/${flags.ballotId}/draft`, {
-  method: "POST",
+  method: 'POST',
   headers,
   body: JSON.stringify({ votes: [voteSelection], nativeScript: script }),
 });
 const draft = await draftRes.json().catch(() => ({}));
-if (!draftRes.ok || draft.status !== "success") {
-  console.error("/draft failed:", JSON.stringify(draft, null, 2));
+if (!draftRes.ok || draft.status !== 'success') {
+  console.error('/draft failed:', JSON.stringify(draft, null, 2));
   process.exit(1);
 }
 console.log(`  packageId=${draft.package.id} nonce=${draft.package.nonce}`);
 console.log(
-  `  multisig.outstanding=${draft.multisig?.outstandingKeys?.length ?? "?"}/${draft.multisig?.required ?? "?"}`
+  `  multisig.outstanding=${draft.multisig?.outstandingKeys?.length ?? '?'}/${draft.multisig?.required ?? '?'}`,
 );
 
 const messageToSign = draft.merkleRoot;
 if (!messageToSign) {
-  console.error("/draft response missing merkleRoot — is the broker up to date?");
+  console.error('/draft response missing merkleRoot — is the broker up to date?');
   process.exit(1);
 }
 
 for (let i = 0; i < count; i++) {
   const skey = keyPaths[i];
-  console.log(`[multisig] cosigner ${i + 1}/${count} signing merkleRoot=${messageToSign.slice(0, 16)}… with ${skey}`);
+  console.log(
+    `[multisig] cosigner ${i + 1}/${count} signing merkleRoot=${messageToSign.slice(0, 16)}… with ${skey}`,
+  );
   // All cosigners sign against the SCRIPT DRep id — COSE header binds
   // to the script. signCose passes --nohashcheck so cardano-signer
   // accepts the key/address mismatch.
   const witness = await signCose(messageToSign, skey, fixture.userId);
   console.log(`  key=${witness.key?.slice(0, 16)}…`);
   const sigRes = await fetch(`${backend}/api/v1/votes/${flags.ballotId}/signature`, {
-    method: "POST",
+    method: 'POST',
     headers,
     body: JSON.stringify({ packageId: draft.package.id, witness }),
   });
   const sig = await sigRes.json().catch(() => ({}));
-  if (!sigRes.ok || sig.status !== "success") {
-    console.error("/signature failed:", JSON.stringify(sig, null, 2));
+  if (!sigRes.ok || sig.status !== 'success') {
+    console.error('/signature failed:', JSON.stringify(sig, null, 2));
     process.exit(1);
   }
   if (sig.submitted) {
@@ -157,9 +170,7 @@ for (let i = 0; i < count; i++) {
     console.log(`  ipfsCid=${sig.package?.ipfsCid}`);
   } else {
     const m = sig.multisig || {};
-    console.log(
-      `  still awaiting signatures (outstanding=${m.outstandingKeys?.length ?? "?"})`
-    );
+    console.log(`  still awaiting signatures (outstanding=${m.outstandingKeys?.length ?? '?'})`);
   }
 }
 process.exit(0);

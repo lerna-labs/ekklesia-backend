@@ -10,10 +10,10 @@
 // scaffold pre-seeds VoterPowerSnapshot, but real preprod ballots
 // before the violet-clever-noether cron has run will rely on this.
 
-import mongoose from "mongoose";
-import { Vote } from "../../schema/Vote.js";
-import { VoterPowerSnapshot } from "../../schema/VoterPowerSnapshot.js";
-import { UserCache } from "../../schema/UserCache.js";
+import mongoose from 'mongoose';
+import { Vote } from '../../schema/Vote.js';
+import { VoterPowerSnapshot } from '../../schema/VoterPowerSnapshot.js';
+import { UserCache } from '../../schema/UserCache.js';
 
 function asObjectId(id) {
   if (!id) return id;
@@ -38,7 +38,7 @@ async function rollupVoters(ballotIdObj, distinctUserIds) {
     ballotId: ballotIdObj,
     userId: { $in: distinctUserIds },
   })
-    .select("userId voterGroup votingPower")
+    .select('userId voterGroup votingPower')
     .lean();
   const byUserSnap = new Map(snapRows.map((r) => [r.userId, r]));
   const missing = distinctUserIds.filter((u) => !byUserSnap.has(u));
@@ -48,7 +48,7 @@ async function rollupVoters(ballotIdObj, distinctUserIds) {
       ballotId: ballotIdObj,
       userId: { $in: missing },
     })
-      .select("userId voterGroup votingPower")
+      .select('userId voterGroup votingPower')
       .lean();
   }
   const byUserCache = new Map(cacheRows.map((r) => [r.userId, r]));
@@ -58,7 +58,7 @@ async function rollupVoters(ballotIdObj, distinctUserIds) {
   for (const userId of distinctUserIds) {
     const r = byUserSnap.get(userId) || byUserCache.get(userId);
     if (!r) continue;
-    const g = r.voterGroup || "stake";
+    const g = r.voterGroup || 'stake';
     totalVotingPower[g] = (totalVotingPower[g] || 0) + (Number(r.votingPower) || 0);
     voterCount[g] = (voterCount[g] || 0) + 1;
   }
@@ -73,7 +73,7 @@ async function rollupVoters(ballotIdObj, distinctUserIds) {
 // scale) and multi-target (ranked, budget) shapes uniformly.
 const NON_ABSTAIN_FILTER = {
   submittedAt: { $ne: null },
-  submittedVote: { $elemMatch: { $ne: "abstain" } },
+  submittedVote: { $elemMatch: { $ne: 'abstain' } },
 };
 
 /**
@@ -88,7 +88,7 @@ const NON_ABSTAIN_FILTER = {
  */
 export async function computeBallotParticipation(ballotId) {
   const id = asObjectId(ballotId);
-  const distinctUserIds = await Vote.distinct("userId", {
+  const distinctUserIds = await Vote.distinct('userId', {
     ballotId: id,
     ...NON_ABSTAIN_FILTER,
   });
@@ -113,10 +113,9 @@ export async function computeBallotParticipation(ballotId) {
 export async function computeProposalParticipation(proposalId, ballotId) {
   const pid = asObjectId(proposalId);
   const bid = asObjectId(ballotId);
-  const distinctUserIds = await Vote.distinct("userId", {
+  const distinctUserIds = await Vote.distinct('userId', {
     proposalId: pid,
     ...NON_ABSTAIN_FILTER,
   });
   return rollupVoters(bid, distinctUserIds);
 }
-

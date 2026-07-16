@@ -52,7 +52,7 @@ export function calculateWeightedMedian(votes, userCaches, lowerBound, upperBoun
     const voteValue = vote.submittedVote[0];
 
     // Skip abstain votes
-    if (voteValue === "abstain") {
+    if (voteValue === 'abstain') {
       return;
     }
 
@@ -67,7 +67,7 @@ export function calculateWeightedMedian(votes, userCaches, lowerBound, upperBoun
 
     weightedVotes.push({
       value: numericValue,
-      weight: votingPower
+      weight: votingPower,
     });
   });
 
@@ -121,7 +121,7 @@ export function calculateSimpleMedian(votes, lowerBound, upperBound) {
     const voteValue = vote.submittedVote[0];
 
     // Skip abstain votes
-    if (voteValue === "abstain") {
+    if (voteValue === 'abstain') {
       return;
     }
 

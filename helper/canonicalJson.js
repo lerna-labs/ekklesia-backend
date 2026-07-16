@@ -4,19 +4,19 @@
 // logical object.
 
 export function canonicalize(value) {
-  if (value === null || typeof value !== "object") {
+  if (value === null || typeof value !== 'object') {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
-    return `[${value.map(canonicalize).join(",")}]`;
+    return `[${value.map(canonicalize).join(',')}]`;
   }
   const keys = Object.keys(value).sort();
   const parts = keys
     .filter((k) => value[k] !== undefined)
     .map((k) => `${JSON.stringify(k)}:${canonicalize(value[k])}`);
-  return `{${parts.join(",")}}`;
+  return `{${parts.join(',')}}`;
 }
 
 export function canonicalBytes(value) {
-  return Buffer.from(canonicalize(value), "utf8");
+  return Buffer.from(canonicalize(value), 'utf8');
 }

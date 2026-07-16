@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -24,7 +24,7 @@ const resultSchema = new Schema(
     proposalId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: "Proposal",
+      ref: 'Proposal',
       unique: true,
     },
     results: {
@@ -45,17 +45,17 @@ const resultSchema = new Schema(
       // "final" (legacy) — kept for backwards compatibility with pre-
       //                  certification docs; mapped to "provisional" at
       //                  read time by the /certified endpoint.
-      enum: ["provisional", "final", "certified"],
-      default: "provisional",
+      enum: ['provisional', 'final', 'certified'],
+      default: 'provisional',
     },
     ballotSource: {
       type: String,
-      enum: ["legacy", "hydra"],
-      default: "legacy",
+      enum: ['legacy', 'hydra'],
+      default: 'legacy',
     },
     ballotId: {
       type: Schema.Types.ObjectId,
-      ref: "Ballot",
+      ref: 'Ballot',
       required: false,
     },
     finalizedAt: {
@@ -148,7 +148,7 @@ const resultSchema = new Schema(
     // the newest version.
     certifiedSnapshotId: {
       type: Schema.Types.ObjectId,
-      ref: "CertifiedSnapshot",
+      ref: 'CertifiedSnapshot',
       default: null,
     },
     certifiedVersion: {
@@ -172,8 +172,8 @@ const resultSchema = new Schema(
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
     versionKey: false, // Remove __v field from documents
-  }
+  },
 );
 
-const Result = mongoose.model("Result", resultSchema);
+const Result = mongoose.model('Result', resultSchema);
 export { Result };

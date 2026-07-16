@@ -10,16 +10,16 @@
 //   node __scripts/scaffold/scaffoldHydraBallot.js --endpoint https://hydra.preprod.example --flavor dreps --state live
 //   node __scripts/scaffold/scaffoldHydraBallot.js --flavor dreps --state live --force
 
-import process from "process";
-import { bootstrap, teardown, parseArgs } from "./common/env.js";
-import { upsertScaffoldBallot } from "./common/ballotFactory.js";
-import { buildPrepareBody } from "./common/hydraPrepare.js";
-import { forEndpoint, HydraClientError } from "../../helper/hydraClient.js";
-import { Ballot } from "../../schema/Ballot.js";
+import process from 'process';
+import { bootstrap, teardown, parseArgs } from './common/env.js';
+import { upsertScaffoldBallot } from './common/ballotFactory.js';
+import { buildPrepareBody } from './common/hydraPrepare.js';
+import { forEndpoint, HydraClientError } from '../../helper/hydraClient.js';
+import { Ballot } from '../../schema/Ballot.js';
 
 const { flags } = parseArgs();
-const flavor = flags.flavor || "dreps";
-const state = flags.state || "live";
+const flavor = flags.flavor || 'dreps';
+const state = flags.state || 'live';
 const index = flags.index ? parseInt(flags.index, 10) : 1;
 const force = Boolean(flags.force);
 
@@ -30,7 +30,7 @@ await bootstrap();
 const endpoint = flags.endpoint || process.env.HYDRA_DEFAULT_ENDPOINT;
 if (!endpoint) {
   console.error(
-    "No Hydra endpoint available. Pass --endpoint=<url> or set HYDRA_DEFAULT_ENDPOINT."
+    'No Hydra endpoint available. Pass --endpoint=<url> or set HYDRA_DEFAULT_ENDPOINT.',
   );
   await teardown();
   process.exit(1);
@@ -41,8 +41,8 @@ if (!endpoint) {
 // when the doc is "unanchored" (hydraEndpoint null); clearing these fields
 // makes --force behave as a true re-prepare — fresh window, fresh L1 mint.
 if (force) {
-  const titlePrefix = "Scaffold";
-  const title = `${titlePrefix}/hydra/${flavor}/${state}#${String(index).padStart(3, "0")}`;
+  const titlePrefix = 'Scaffold';
+  const title = `${titlePrefix}/hydra/${flavor}/${state}#${String(index).padStart(3, '0')}`;
   const reset = await Ballot.updateOne(
     { title },
     {
@@ -57,7 +57,7 @@ if (force) {
         timelockSlot: null,
         commitUtxos: [],
       },
-    }
+    },
   );
   if (reset.matchedCount > 0) {
     console.log(`[scaffoldHydraBallot] --force: cleared prior Hydra metadata for ${title}`);
@@ -65,7 +65,7 @@ if (force) {
 }
 
 const ballot = await upsertScaffoldBallot({
-  source: "hydra",
+  source: 'hydra',
   state,
   flavor,
   index,
@@ -74,14 +74,14 @@ const ballot = await upsertScaffoldBallot({
 
 if (ballot.hydraEndpoint && !force) {
   console.log(
-    `[scaffoldHydraBallot] ${ballot.title} already prepared at ${ballot.hydraEndpoint}. Pass --force to re-prepare.`
+    `[scaffoldHydraBallot] ${ballot.title} already prepared at ${ballot.hydraEndpoint}. Pass --force to re-prepare.`,
   );
   console.log(`  _id              = ${ballot._id}`);
   console.log(`  hydraEndpoint    = ${ballot.hydraEndpoint}`);
   console.log(`  ballotCid        = ${ballot.ballotCid}`);
   console.log(`  instancePolicyId = ${ballot.instancePolicyId}`);
-  console.log("");
-  console.log("# paste this line into your shell:");
+  console.log('');
+  console.log('# paste this line into your shell:');
   console.log(`export BALLOT='${ballot._id}'`);
   await teardown();
   process.exit(0);
@@ -110,9 +110,9 @@ try {
   if (data?.hydraHeadId) ballot.hydraHeadId = data.hydraHeadId;
   await ballot.save();
 
-  const network = (process.env.NETWORK_NAME || "preprod").toLowerCase();
+  const network = (process.env.NETWORK_NAME || 'preprod').toLowerCase();
   const explorer =
-    network === "mainnet"
+    network === 'mainnet'
       ? `https://cexplorer.io/tx/${ballot.prepareTxHash}`
       : `https://preprod.cexplorer.io/tx/${ballot.prepareTxHash}`;
 
@@ -120,33 +120,33 @@ try {
   console.log(`  _id              = ${ballot._id}`);
   console.log(`  namespace        = ${body.namespace}`);
   console.log(`  hydraEndpoint    = ${ballot.hydraEndpoint}`);
-  console.log(`  prepareTxHash    = ${ballot.prepareTxHash || "(not returned)"}`);
-  console.log(`  explorer         = ${ballot.prepareTxHash ? explorer : "-"}`);
+  console.log(`  prepareTxHash    = ${ballot.prepareTxHash || '(not returned)'}`);
+  console.log(`  explorer         = ${ballot.prepareTxHash ? explorer : '-'}`);
   console.log(`  ballotCid        = ${ballot.ballotCid}`);
   console.log(`  instancePolicyId = ${ballot.instancePolicyId}`);
-  console.log(`  hydraHeadId      = ${ballot.hydraHeadId || "(set on /start)"}`);
-  console.log("");
-  console.log("# paste this line into your shell:");
+  console.log(`  hydraHeadId      = ${ballot.hydraHeadId || '(set on /start)'}`);
+  console.log('');
+  console.log('# paste this line into your shell:');
   console.log(`export BALLOT='${ballot._id}'`);
-  console.log("");
-  console.log("# Wait for the prepare tx to confirm before calling /start:");
+  console.log('');
+  console.log('# Wait for the prepare tx to confirm before calling /start:');
   console.log(`node __scripts/waitForPrepareConfirmation.js --ballotId ${ballot._id}`);
 } catch (err) {
   if (err instanceof HydraClientError) {
     console.error(
       `[scaffoldHydraBallot] Hydra /prepare failed: ${err.message}` +
-        (err.data ? `\n  upstream: ${JSON.stringify(err.data)}` : "")
+        (err.data ? `\n  upstream: ${JSON.stringify(err.data)}` : ''),
     );
-    const apiKeyEnvVar = `HYDRA_API_KEY_${endpoint.replace(/[^a-z0-9]+/gi, "_").toUpperCase()}`;
+    const apiKeyEnvVar = `HYDRA_API_KEY_${endpoint.replace(/[^a-z0-9]+/gi, '_').toUpperCase()}`;
     console.error(
-      "\n  /prepare is NOT idempotent — it mints fresh tokens and spends\n" +
-        "  admin wallet UTxOs on every call. Before retrying, confirm that\n" +
-        "  no tokens were actually minted:\n" +
+      '\n  /prepare is NOT idempotent — it mints fresh tokens and spends\n' +
+        '  admin wallet UTxOs on every call. Before retrying, confirm that\n' +
+        '  no tokens were actually minted:\n' +
         `    curl -s -H "x-api-key: $${apiKeyEnvVar}" \\\n` +
         `         "${endpoint}/ballot" | jq '.'\n` +
-        "  Check the admin L1 address on a preprod explorer, and if needed\n" +
-        "  call POST /sweep on the Hydra service to recover residue before\n" +
-        "  re-running this scaffold."
+        '  Check the admin L1 address on a preprod explorer, and if needed\n' +
+        '  call POST /sweep on the Hydra service to recover residue before\n' +
+        '  re-running this scaffold.',
     );
   } else {
     console.error(`[scaffoldHydraBallot] unexpected error: ${err.stack || err.message}`);

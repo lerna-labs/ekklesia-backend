@@ -1,4 +1,4 @@
-import { UserCache } from "../schema/UserCache.js";
+import { UserCache } from '../schema/UserCache.js';
 let showConsole = false;
 
 /**
@@ -30,33 +30,23 @@ function conditionalLog(...args) {
  * record if found, which includes validation status and voting power.
  */
 export async function checkVoterValidation(userId, ballotId) {
-  conditionalLog(
-    "CACHE: Checking voter validation",
-    userId,
-    "ballotId:",
-    ballotId.toString()
-  );
+  conditionalLog('CACHE: Checking voter validation', userId, 'ballotId:', ballotId.toString());
   // Check if the address is already validated
   const existingValidation = await UserCache.findOne({
     ballotId,
     userId,
   }).lean();
   if (!existingValidation) {
-    conditionalLog(
-      "CACHE: No validation found",
-      userId,
-      "ballotId:",
-      ballotId.toString()
-    );
+    conditionalLog('CACHE: No validation found', userId, 'ballotId:', ballotId.toString());
     return null;
   } else {
     conditionalLog(
-      "CACHE: Found validation",
+      'CACHE: Found validation',
       userId,
-      "ballotId:",
+      'ballotId:',
       ballotId.toString(),
-      "validated:",
-      existingValidation.validated
+      'validated:',
+      existingValidation.validated,
     );
     return existingValidation;
   }
@@ -81,21 +71,15 @@ export async function saveVoterValidation(userId, ballotId, validated, voterGrou
   const update = { validated, ballotId, userId };
   if (voterGroup !== undefined) update.voterGroup = voterGroup;
   // Save the validation to the database
-  const newValidation = await UserCache.findOneAndUpdate(
-    { ballotId, userId },
-    update,
-    { upsert: true, new: true }
-  );
+  const newValidation = await UserCache.findOneAndUpdate({ ballotId, userId }, update, {
+    upsert: true,
+    new: true,
+  });
   if (!newValidation) {
-    throw new Error("CACHE: Failed to save validation");
+    throw new Error('CACHE: Failed to save validation');
   }
   // Log the saved validation
-  conditionalLog(
-    "CACHE: Voter validation saved for",
-    userId,
-    ballotId.toString(),
-    validated
-  );
+  conditionalLog('CACHE: Voter validation saved for', userId, ballotId.toString(), validated);
 }
 
 /**
@@ -111,31 +95,22 @@ export async function saveVoterValidation(userId, ballotId, validated, voterGrou
  * or false if no record exists or voting power hasn't been set.
  */
 export async function checkVotingPower(userId, ballotId) {
-  conditionalLog(
-    "CACHE: Checking voting power for",
-    userId,
-    "ballotId:",
-    ballotId.toString()
-  );
+  conditionalLog('CACHE: Checking voting power for', userId, 'ballotId:', ballotId.toString());
   // Check if the address is already validated
   const existingValidation = await UserCache.findOne({
     ballotId,
     userId,
   }).lean();
-  conditionalLog("Existing validation found", existingValidation);
+  conditionalLog('Existing validation found', existingValidation);
   if (!existingValidation) {
-    conditionalLog(
-      "CACHE: No voting power found for",
-      userId,
-      ballotId.toString()
-    );
+    conditionalLog('CACHE: No voting power found for', userId, ballotId.toString());
     return false;
   } else {
     conditionalLog(
-      "CACHE: Found voting power for",
+      'CACHE: Found voting power for',
       userId,
       ballotId.toString(),
-      existingValidation.votingPower
+      existingValidation.votingPower,
     );
     return existingValidation.votingPower;
   }
@@ -157,28 +132,17 @@ export async function checkVotingPower(userId, ballotId) {
  * so saveVoterValidation should be called first for new voters.
  */
 export async function saveVotingPower(userId, ballotId, votingPower, voterGroup) {
-  conditionalLog(
-    "CACHE: Saving voting power for",
-    userId,
-    ballotId.toString(),
-    votingPower
-  );
+  conditionalLog('CACHE: Saving voting power for', userId, ballotId.toString(), votingPower);
   const update = { votingPower };
   if (voterGroup !== undefined) update.voterGroup = voterGroup;
   // Save the validation to the database
-  const newValidation = await UserCache.findOneAndUpdate(
-    { ballotId, userId },
-    update,
-    { upsert: false, new: true }
-  );
+  const newValidation = await UserCache.findOneAndUpdate({ ballotId, userId }, update, {
+    upsert: false,
+    new: true,
+  });
   if (!newValidation) {
-    throw new Error("CACHE: Failed to save votingPower");
+    throw new Error('CACHE: Failed to save votingPower');
   }
   // Log the saved validation
-  conditionalLog(
-    "CACHE Voter validation saved for",
-    userId,
-    ballotId.toString(),
-    votingPower
-  );
+  conditionalLog('CACHE Voter validation saved for', userId, ballotId.toString(), votingPower);
 }

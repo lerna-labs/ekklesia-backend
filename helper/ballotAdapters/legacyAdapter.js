@@ -1,23 +1,28 @@
 // Reads legacy ballots from the local Mongo Ballot collection.
 // Pre-Hydra ballots (source === "legacy") are served here in read-only mode.
 
-import mongoose from "mongoose";
-import { Ballot } from "../../schema/Ballot.js";
+import mongoose from 'mongoose';
+import { Ballot } from '../../schema/Ballot.js';
 
-export const source = "legacy";
+export const source = 'legacy';
 
 /**
  * Filter in Mongo query form that restricts to this adapter's ballots.
  */
 export function ownershipMatch() {
-  return { source: "legacy" };
+  return { source: 'legacy' };
 }
 
 /**
  * List ballots. Input filter is already normalized by the dispatcher.
  * Returns { items, total } in unified shape.
  */
-export async function list({ filter = {}, sort = { votePeriodEnd: -1 }, skip = 0, limit = 10 } = {}) {
+export async function list({
+  filter = {},
+  sort = { votePeriodEnd: -1 },
+  skip = 0,
+  limit = 10,
+} = {}) {
   const match = { ...ownershipMatch(), ...filter };
 
   const total = await Ballot.countDocuments(match);
@@ -26,19 +31,19 @@ export async function list({ filter = {}, sort = { votePeriodEnd: -1 }, skip = 0
     { $match: match },
     {
       $lookup: {
-        from: "proposals",
-        localField: "_id",
-        foreignField: "ballotId",
-        as: "proposals",
+        from: 'proposals',
+        localField: '_id',
+        foreignField: 'ballotId',
+        as: 'proposals',
       },
     },
     {
       $addFields: {
-        proposalCount: { $size: "$proposals" },
+        proposalCount: { $size: '$proposals' },
         singleProposal: {
           $cond: {
-            if: { $eq: [{ $size: "$proposals" }, 1] },
-            then: { $arrayElemAt: ["$proposals._id", 0] },
+            if: { $eq: [{ $size: '$proposals' }, 1] },
+            then: { $arrayElemAt: ['$proposals._id', 0] },
             else: null,
           },
         },
@@ -79,7 +84,7 @@ export async function get(id) {
 export function toUnified(doc) {
   return {
     id: doc._id?.toString() ?? doc.id,
-    source: "legacy",
+    source: 'legacy',
     title: doc.title,
     description: doc.description,
     status: doc.status,
@@ -92,16 +97,14 @@ export function toUnified(doc) {
     voteFilters: doc.voteFilters,
     ipfsHash: doc.ipfsHash ?? null,
     proposalCount: doc.proposalCount ?? null,
-    singleProposal: doc.singleProposal
-      ? doc.singleProposal.toString()
-      : null,
+    singleProposal: doc.singleProposal ? doc.singleProposal.toString() : null,
     hydra: null,
     provisionalResultsEnabled: doc.provisionalResultsEnabled ?? false,
     proposalSource: doc.proposalSource?.moduleId ? doc.proposalSource : null,
     facets: Array.isArray(doc.facets) ? doc.facets : [],
     votingPowerSource: doc.votingPowerSource
       ? {
-          type: doc.votingPowerSource.type || "snapshot",
+          type: doc.votingPowerSource.type || 'snapshot',
           uploadedAt: doc.votingPowerSource.uploadedAt || null,
         }
       : null,
@@ -111,7 +114,7 @@ export function toUnified(doc) {
     // ruleset change) so the field is exposed on both adapters
     // for parity.
     certification: {
-      certified: typeof doc.currentCertifiedVersion === "number",
+      certified: typeof doc.currentCertifiedVersion === 'number',
       version: doc.currentCertifiedVersion ?? null,
       narrative: doc.authorityNarrative ?? null,
     },

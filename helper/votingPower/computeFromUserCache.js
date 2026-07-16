@@ -9,8 +9,8 @@
 // Returns the shape every voterValidationScript's `computePerVoterPower`
 // must return.
 
-import mongoose from "mongoose";
-import { UserCache } from "../../schema/UserCache.js";
+import mongoose from 'mongoose';
+import { UserCache } from '../../schema/UserCache.js';
 
 function asObjectId(id) {
   if (!id) return id;
@@ -32,11 +32,11 @@ export async function computeFromUserCache(ballotId) {
     ballotId: asObjectId(ballotId),
     validated: true,
   })
-    .select("userId voterGroup votingPower")
+    .select('userId voterGroup votingPower')
     .lean();
   return rows.map((r) => ({
     userId: r.userId,
-    voterGroup: r.voterGroup || "stake",
+    voterGroup: r.voterGroup || 'stake',
     votingPower: Number(r.votingPower) || 0,
   }));
 }

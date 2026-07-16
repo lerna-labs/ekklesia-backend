@@ -2,12 +2,12 @@
 // only needed on large scale votes
 
 // Conosole log
-console.log("Starting 10min cron job...");
+console.log('Starting 10min cron job...');
 
 // Load environment variables first
-import { loadEnvironmentVariables } from "../helper/envLoader.js";
-import path from "path";
-import { fileURLToPath } from "url";
+import { loadEnvironmentVariables } from '../helper/envLoader.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,7 +15,7 @@ const __dirname = path.dirname(__filename);
 // Load environment variables from project root
 // Assuming project root is two directories up from the crons folder
 try {
-  loadEnvironmentVariables(path.resolve(__dirname, ".."));
+  loadEnvironmentVariables(path.resolve(__dirname, '..'));
 } catch (error) {
   console.warn(`Error loading environment variables: ${error.message}`);
   process.exit(1);
@@ -26,11 +26,11 @@ import {
   isDatabaseConnected,
   connectToDatabase,
   disconnectFromDatabase,
-} from "../helper/dbManager.js";
-import { Ballot } from "../schema/Ballot.js";
-import { aggregateVotes } from "./10minAggregateVotes.js";
-import { snapshotVotingPower } from "./15minVotingPower.js";
-import { reconcileVoteMirrors } from "./reconcileVoteMirrors.js";
+} from '../helper/dbManager.js';
+import { Ballot } from '../schema/Ballot.js';
+import { aggregateVotes } from './10minAggregateVotes.js';
+import { snapshotVotingPower } from './15minVotingPower.js';
+import { reconcileVoteMirrors } from './reconcileVoteMirrors.js';
 
 // connect db
 if (!isDatabaseConnected()) {
@@ -46,7 +46,7 @@ const ballotsStart = await Ballot.find({
   startupAt: null,
 });
 
-const { loadValidationScript } = await import("../helper/loadValidationScript.js");
+const { loadValidationScript } = await import('../helper/loadValidationScript.js');
 
 // process each ballot
 for (const ballot of ballotsStart) {
@@ -57,9 +57,9 @@ for (const ballot of ballotsStart) {
   if (startupResult == true) {
     await Ballot.updateOne({ _id: ballot._id }, { $set: { startupAt: now } });
   } else {
-    console.error("STARTUP: Ballot", ballot._id, "failed");
+    console.error('STARTUP: Ballot', ballot._id, 'failed');
   }
-  console.log("STARTUP: Ballot", ballot._id, "completed");
+  console.log('STARTUP: Ballot', ballot._id, 'completed');
 }
 // reconcile any hydra-confirmed VotePackages whose Vote-collection
 // mirror was interrupted (e.g. process restart between pkg.save() and
@@ -68,7 +68,7 @@ for (const ballot of ballotsStart) {
 try {
   await reconcileVoteMirrors();
 } catch (err) {
-  console.error("reconcileVoteMirrors failed:", err);
+  console.error('reconcileVoteMirrors failed:', err);
 }
 
 // aggregate votes
@@ -79,10 +79,10 @@ await aggregateVotes();
 try {
   await snapshotVotingPower();
 } catch (err) {
-  console.error("snapshotVotingPower failed:", err);
+  console.error('snapshotVotingPower failed:', err);
 }
 
-// ballot rollup 
+// ballot rollup
 // !! this is not live yet and needs proper testing and rewriting - if automated rollups are even a thing
 // get all ballots that ended in the last 10 minutes
 // reset timestamp in case the former scripts run too long
@@ -95,7 +95,7 @@ const ballotsClosed = await Ballot.find({
 
 // process each ballot
 for (const ballot of ballotsClosed) {
-  console.log("ROLLUP: Ballot", ballot.name);
+  console.log('ROLLUP: Ballot', ballot.name);
   // import finalization script
   const { rollupBallot } = await loadValidationScript(ballot.rollupScript);
   // run finalization script
@@ -106,5 +106,5 @@ for (const ballot of ballotsClosed) {
 await disconnectFromDatabase();
 
 // Conosole log
-console.log("Finished 10min cron job.");
+console.log('Finished 10min cron job.');
 process.exit(0);

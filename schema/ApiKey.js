@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -45,7 +45,7 @@ const apiKeySchema = new Schema(
     // Additional scopes can be added without a schema change.
     scopes: {
       type: [String],
-      default: ["read:ballots", "read:results"],
+      default: ['read:ballots', 'read:results'],
     },
     enabled: {
       type: Boolean,
@@ -63,10 +63,10 @@ const apiKeySchema = new Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 apiKeySchema.index({ enabled: 1 });
 
-const ApiKey = mongoose.model("ApiKey", apiKeySchema);
+const ApiKey = mongoose.model('ApiKey', apiKeySchema);
 export { ApiKey };
