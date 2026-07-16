@@ -2,6 +2,9 @@
   "name": "ekklesia-backend",
   "version": "0.9.0",
   "main": "server.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start:dev": "NODE_ENV=development nodemon --watch '**/*.js' --ignore 'node_modules/' server.js",
     "start:prod": "NODE_ENV=production nodemon --watch '**/*.js' --ignore 'node_modules/' server.js",
