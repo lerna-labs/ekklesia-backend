@@ -1,0 +1,106 @@
+{
+  "__scripts/scaffold/common/coseSign.js": {
+    "preserve-caught-error": {
+      "count": 1
+    }
+  },
+  "config/__archive/voterValidationHoskyHolders.js": {
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "preserve-caught-error": {
+      "count": 1
+    }
+  },
+  "config/__archive/voterValidationHoskySummit.js": {
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "preserve-caught-error": {
+      "count": 1
+    }
+  },
+  "config/voterValidationAlwaysTrue.js": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "config/voterValidationDReps.js": {
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "preserve-caught-error": {
+      "count": 3
+    }
+  },
+  "config/voterValidationPoolsPledge.js": {
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "preserve-caught-error": {
+      "count": 3
+    }
+  },
+  "config/voterValidationPoolsStake.js": {
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "preserve-caught-error": {
+      "count": 3
+    }
+  },
+  "config/voterValidationPoolsVotingPower.js": {
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "preserve-caught-error": {
+      "count": 3
+    }
+  },
+  "crons/reconcileVoteMirrors.js": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "helper/createTransaction.js": {
+    "no-undef": {
+      "count": 1
+    }
+  },
+  "helper/hydra.js": {
+    "no-undef": {
+      "count": 1
+    }
+  },
+  "helper/koios.js": {
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "helper/rollupBallot.js": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "helper/validateAddress.js": {
+    "no-case-declarations": {
+      "count": 15
+    },
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "no-useless-catch": {
+      "count": 1
+    }
+  },
+  "routes/api/v0/ballots.js": {
+    "no-dupe-keys": {
+      "count": 2
+    }
+  },
+  "routes/api/v0/dashboard.js": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  }
+}

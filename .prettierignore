@@ -1,0 +1,9 @@
+node_modules
+package-lock.json
+/public
+/backup/data
+/scripts
+/logs
+/preprod-logs
+/mainnet-logs
+assets/og/*.ttf
