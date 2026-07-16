@@ -21,41 +21,41 @@
 
 const SCALAR_QUERY_KEYS = new Set([
   // Pagination & sorting (used by every list endpoint)
-  "page",
-  "limit",
-  "sort",
-  "direction",
-  "dir",
+  'page',
+  'limit',
+  'sort',
+  'direction',
+  'dir',
   // Search / text filters
-  "search",
-  "voterType",
-  "status",
-  "source",
-  "hasVoted",
-  "tags",
-  "categories",
-  "featured",
-  "userType",
-  "proposal",
-  "includeTerminal",
-  "refresh",
+  'search',
+  'voterType',
+  'status',
+  'source',
+  'hasVoted',
+  'tags',
+  'categories',
+  'featured',
+  'userType',
+  'proposal',
+  'includeTerminal',
+  'refresh',
 ]);
 
 export function normalizeQuery(req, res, next) {
   const q = req.query;
-  if (!q || typeof q !== "object") return next();
+  if (!q || typeof q !== 'object') return next();
 
   for (const key of SCALAR_QUERY_KEYS) {
     if (!Object.prototype.hasOwnProperty.call(q, key)) continue;
     const v = q[key];
     if (v == null) continue;
-    if (typeof v === "string") continue;
+    if (typeof v === 'string') continue;
     // Reject everything that isn't a string. Arrays and plain objects both
     // indicate a malformed or injected query — surface a single error
     // shape so the route never sees a non-string value.
     return res.status(400).json({
-      status: "error",
-      code: "BAD_INPUT",
+      status: 'error',
+      code: 'BAD_INPUT',
       message: `Invalid shape for query parameter: ${key}`,
     });
   }

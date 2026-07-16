@@ -20,12 +20,12 @@
 //
 // Storage: UserCache (one row per (userId, ballotId)).
 
-import { UserCache } from "../schema/UserCache.js";
+import { UserCache } from '../schema/UserCache.js';
 
 export class NonceError extends Error {
   constructor(message, { code } = {}) {
     super(message);
-    this.name = "NonceError";
+    this.name = 'NonceError';
     this.code = code;
   }
 }
@@ -41,12 +41,12 @@ export class NonceError extends Error {
  */
 export async function reserveNext({ userId, ballotId }) {
   if (!userId || !ballotId) {
-    throw new NonceError("userId and ballotId are required", { code: "BAD_INPUT" });
+    throw new NonceError('userId and ballotId are required', { code: 'BAD_INPUT' });
   }
   const updated = await UserCache.findOneAndUpdate(
     { userId, ballotId },
-    [{ $set: { nonce: { $add: [{ $ifNull: ["$nonce", 0] }, 1] } } }],
-    { new: true, upsert: true, setDefaultsOnInsert: true, updatePipeline: true }
+    [{ $set: { nonce: { $add: [{ $ifNull: ['$nonce', 0] }, 1] } } }],
+    { new: true, upsert: true, setDefaultsOnInsert: true, updatePipeline: true },
   );
   return updated.nonce;
 }
@@ -59,11 +59,11 @@ export async function reserveNext({ userId, ballotId }) {
  */
 export async function commit({ userId, ballotId, nonce }) {
   const row = await UserCache.findOne({ userId, ballotId });
-  if (!row) throw new NonceError("UserCache row missing on commit", { code: "NOT_FOUND" });
+  if (!row) throw new NonceError('UserCache row missing on commit', { code: 'NOT_FOUND' });
   if (row.nonce < nonce) {
     throw new NonceError(
       `Stored nonce ${row.nonce} is less than committed ${nonce} — reservation lost?`,
-      { code: "NONCE_LOST" }
+      { code: 'NONCE_LOST' },
     );
   }
   return row.nonce;
@@ -87,10 +87,7 @@ export async function commit({ userId, ballotId, nonce }) {
  */
 export async function release({ userId, ballotId, nonce }) {
   if (nonce == null) return;
-  const result = await UserCache.updateOne(
-    { userId, ballotId, nonce },
-    { $inc: { nonce: -1 } }
-  );
+  const result = await UserCache.updateOne({ userId, ballotId, nonce }, { $inc: { nonce: -1 } });
   return result.modifiedCount > 0;
 }
 

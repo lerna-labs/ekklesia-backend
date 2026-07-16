@@ -10,8 +10,8 @@
 //   "closed"    — now >= votePeriodEnd (voting period ended)
 
 export const VOTE_WINDOW_CODES = Object.freeze({
-  NOT_OPEN: "VOTING_WINDOW_NOT_OPEN",
-  CLOSED: "VOTING_WINDOW_CLOSED",
+  NOT_OPEN: 'VOTING_WINDOW_NOT_OPEN',
+  CLOSED: 'VOTING_WINDOW_CLOSED',
 });
 
 /**
@@ -26,17 +26,17 @@ export function checkVotingWindow(ballot, now = new Date()) {
   if (start && now < start) {
     return {
       ok: false,
-      reason: "not-open",
+      reason: 'not-open',
       code: VOTE_WINDOW_CODES.NOT_OPEN,
-      message: "Voting period has not opened yet",
+      message: 'Voting period has not opened yet',
     };
   }
   if (end && now >= end) {
     return {
       ok: false,
-      reason: "closed",
+      reason: 'closed',
       code: VOTE_WINDOW_CODES.CLOSED,
-      message: "Voting period has ended",
+      message: 'Voting period has ended',
     };
   }
   return { ok: true };

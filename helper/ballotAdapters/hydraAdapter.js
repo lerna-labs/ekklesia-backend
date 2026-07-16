@@ -5,17 +5,22 @@
 // the data is cheap to fetch; heavier details are fetched per-ballot on
 // `get()`.
 
-import mongoose from "mongoose";
-import { Ballot } from "../../schema/Ballot.js";
-import { forBallot, HydraClientError } from "../hydraClient.js";
+import mongoose from 'mongoose';
+import { Ballot } from '../../schema/Ballot.js';
+import { forBallot, HydraClientError } from '../hydraClient.js';
 
-export const source = "hydra";
+export const source = 'hydra';
 
 export function ownershipMatch() {
-  return { source: "hydra" };
+  return { source: 'hydra' };
 }
 
-export async function list({ filter = {}, sort = { votePeriodEnd: -1 }, skip = 0, limit = 10 } = {}) {
+export async function list({
+  filter = {},
+  sort = { votePeriodEnd: -1 },
+  skip = 0,
+  limit = 10,
+} = {}) {
   const match = { ...ownershipMatch(), ...filter };
   const total = await Ballot.countDocuments(match);
   const docs = await Ballot.find(match).sort(sort).skip(skip).limit(limit).lean();
@@ -52,7 +57,7 @@ export async function get(id) {
 export function toUnified(doc) {
   return {
     id: doc._id?.toString() ?? doc.id,
-    source: "hydra",
+    source: 'hydra',
     title: doc.title,
     description: doc.description,
     status: doc.status,
@@ -80,7 +85,7 @@ export function toUnified(doc) {
     facets: Array.isArray(doc.facets) ? doc.facets : [],
     votingPowerSource: doc.votingPowerSource
       ? {
-          type: doc.votingPowerSource.type || "snapshot",
+          type: doc.votingPowerSource.type || 'snapshot',
           uploadedAt: doc.votingPowerSource.uploadedAt || null,
         }
       : null,
@@ -93,7 +98,7 @@ export function toUnified(doc) {
     // dedicated GET /api/v1/ballots/:id/certified endpoint — this is
     // the cheap label-ready shape for the main ballot view.
     certification: {
-      certified: typeof doc.currentCertifiedVersion === "number",
+      certified: typeof doc.currentCertifiedVersion === 'number',
       version: doc.currentCertifiedVersion ?? null,
       narrative: doc.authorityNarrative ?? null,
     },

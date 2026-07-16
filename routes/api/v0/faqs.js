@@ -1,14 +1,14 @@
 // express router
-import { Router } from "express";
+import { Router } from 'express';
 const router = Router();
 
 // schema import
-import { FAQ } from "../../../schema/FAQ.js";
+import { FAQ } from '../../../schema/FAQ.js';
 
 // helper
-import { cacheControl } from "../../../helper/cacheControl.js";
-import { escapeRegex } from "../../../helper/escapeRegex.js";
-import validator from "validator";
+import { cacheControl } from '../../../helper/cacheControl.js';
+import { escapeRegex } from '../../../helper/escapeRegex.js';
+import validator from 'validator';
 
 /**
  * @route GET /api/v0/faqs
@@ -36,7 +36,7 @@ import validator from "validator";
  *   - Featured parameter is not 'true' or 'false'
  * @returns {Object} 500 - Server error while fetching FAQs
  */
-router.get("/", cacheControl(300), async (req, res) => {
+router.get('/', cacheControl(300), async (req, res) => {
   const { search, tags, featured } = req.query;
   let matchStage = {
     is_live: true, // Only return live FAQs
@@ -46,20 +46,20 @@ router.get("/", cacheControl(300), async (req, res) => {
   if (search) {
     if (!validator.isLength(search, { min: 1, max: 100 })) {
       return res.status(400).json({
-        status: "error",
-        message: "Search term must be between 1 and 100 characters",
+        status: 'error',
+        message: 'Search term must be between 1 and 100 characters',
       });
     }
 
     // Check for potentially dangerous characters
     if (
-      validator.contains(search, "$") ||
-      validator.contains(search, "{") ||
-      validator.contains(search, "}")
+      validator.contains(search, '$') ||
+      validator.contains(search, '{') ||
+      validator.contains(search, '}')
     ) {
       return res.status(400).json({
-        status: "error",
-        message: "Search contains invalid characters",
+        status: 'error',
+        message: 'Search contains invalid characters',
       });
     }
 
@@ -67,19 +67,22 @@ router.get("/", cacheControl(300), async (req, res) => {
     // user input like `(` or `[` can never reach `new RegExp(...)`.
     const searchPattern = escapeRegex(search);
     matchStage.$or = [
-      { title: { $regex: searchPattern, $options: "i" } },
-      { content: { $regex: searchPattern, $options: "i" } },
+      { title: { $regex: searchPattern, $options: 'i' } },
+      { content: { $regex: searchPattern, $options: 'i' } },
     ];
   }
 
   // Validate and add tags filter if provided
   if (tags) {
-    const tagsList = tags.split(",").map((tag) => tag.trim()).filter(Boolean);
+    const tagsList = tags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
 
     if (tagsList.length === 0) {
       return res.status(400).json({
-        status: "error",
-        message: "Invalid tags parameter, must provide at least one tag",
+        status: 'error',
+        message: 'Invalid tags parameter, must provide at least one tag',
       });
     }
 
@@ -89,28 +92,28 @@ router.get("/", cacheControl(300), async (req, res) => {
 
   // Validate and add featured filter if provided
   if (featured !== undefined) {
-    if (!["true", "false"].includes(featured.toLowerCase())) {
+    if (!['true', 'false'].includes(featured.toLowerCase())) {
       return res.status(400).json({
-        status: "error",
+        status: 'error',
         message: "Invalid featured parameter, must be 'true' or 'false'",
       });
     }
-    matchStage.featured = featured.toLowerCase() === "true";
+    matchStage.featured = featured.toLowerCase() === 'true';
   }
 
   try {
     // Fetch FAQs from the database, excluding is_live from the response
     const faqs = await FAQ.find(matchStage)
-      .select("-is_live -createdAt -updatedAt -featured")
+      .select('-is_live -createdAt -updatedAt -featured')
       .sort({ featured: -1 });
 
     // Return the list of FAQs
     return res.status(200).json(faqs);
   } catch (error) {
-    console.error("Error fetching FAQs:", error);
+    console.error('Error fetching FAQs:', error);
     return res.status(500).json({
-      status: "error",
-      message: "Server error while fetching FAQs",
+      status: 'error',
+      message: 'Server error while fetching FAQs',
     });
   }
 });

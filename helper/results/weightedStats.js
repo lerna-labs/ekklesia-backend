@@ -39,7 +39,7 @@
  * @returns {object|null}
  */
 export function computeWeightedStats({ proposal, votes, votersByUserId, voteWeighted }) {
-  const options = (proposal.voteOptions || []).filter((o) => o.id !== "abstain");
+  const options = (proposal.voteOptions || []).filter((o) => o.id !== 'abstain');
   if (options.length === 0) return null;
 
   const answeringBallots = votes.length;
@@ -60,7 +60,7 @@ export function computeWeightedStats({ proposal, votes, votersByUserId, voteWeig
     // Index this voter's entries by option for O(1) lookup.
     const byOption = new Map();
     for (const e of entries) {
-      if (e == null || typeof e !== "object") continue;
+      if (e == null || typeof e !== 'object') continue;
       const value = Number(e.value);
       if (!Number.isFinite(value) || value < 0) continue;
       byOption.set(e.option, value);
@@ -122,8 +122,8 @@ export function bucketWeightedVotesByGroup(votes, votersByUserId) {
     const voter = votersByUserId.get(v.userId);
     if (!voter) continue;
     const first = Array.isArray(v.vote) ? v.vote[0] : v.vote;
-    if (first === "abstain") continue;
-    const group = voter.voterGroup || "stake";
+    if (first === 'abstain') continue;
+    const group = voter.voterGroup || 'stake';
     if (!out.has(group)) out.set(group, []);
     out.get(group).push(v);
   }

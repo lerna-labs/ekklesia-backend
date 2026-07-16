@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -62,12 +62,12 @@ const ballotSchema = new Schema(
           _id: false,
           group: {
             type: String,
-            enum: ["drep", "pool", "stake"],
+            enum: ['drep', 'pool', 'stake'],
             required: true,
           },
           powerSource: {
             type: String,
-            enum: ["CredentialBased", "StakeBased", "PledgeBased"],
+            enum: ['CredentialBased', 'StakeBased', 'PledgeBased'],
             required: true,
           },
           // Optional per-group eligibility criteria. Validator-
@@ -133,7 +133,7 @@ const ballotSchema = new Schema(
           url: { type: String, required: true },
           label: { type: String, required: true },
         },
-        { _id: false }
+        { _id: false },
       ),
       default: null,
     },
@@ -159,17 +159,17 @@ const ballotSchema = new Schema(
     },
     voterValidationScript: {
       type: String,
-      default: "voterValidationAlwaysTrue.js",
+      default: 'voterValidationAlwaysTrue.js',
       required: true,
     },
     rollupScript: {
       type: String,
-      default: "rollupBallot.js",
+      default: 'rollupBallot.js',
       required: true,
     },
     startupScript: {
       type: String,
-      default: "startupBallot.js",
+      default: 'startupBallot.js',
       required: true,
     },
     startupAt: {
@@ -179,14 +179,14 @@ const ballotSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["upcoming", "live", "closed"],
-      default: "upcoming",
+      enum: ['upcoming', 'live', 'closed'],
+      default: 'upcoming',
       required: true,
     },
     source: {
       type: String,
-      enum: ["legacy", "hydra"],
-      default: "legacy",
+      enum: ['legacy', 'hydra'],
+      default: 'legacy',
       required: true,
     },
     hydraEndpoint: {
@@ -201,16 +201,7 @@ const ballotSchema = new Schema(
     // `status` above, which is the user-facing ballot lifecycle.
     hydraHeadStatus: {
       type: String,
-      enum: [
-        null,
-        "Idle",
-        "Initializing",
-        "Open",
-        "Closing",
-        "Closed",
-        "Final",
-        "FanoutPossible",
-      ],
+      enum: [null, 'Idle', 'Initializing', 'Open', 'Closing', 'Closed', 'Final', 'FanoutPossible'],
       default: null,
     },
     ballotCid: {
@@ -285,17 +276,17 @@ const ballotSchema = new Schema(
         {
           type: {
             type: String,
-            enum: ["script", "snapshot", "uploaded"],
-            default: "snapshot",
+            enum: ['script', 'snapshot', 'uploaded'],
+            default: 'snapshot',
           },
           scriptName: { type: String, default: null },
           uploadedAt: { type: Date, default: null },
           uploadedBy: { type: String, default: null },
           uploadCid: { type: String, default: null },
         },
-        { _id: false }
+        { _id: false },
       ),
-      default: () => ({ type: "snapshot" }),
+      default: () => ({ type: 'snapshot' }),
     },
 
     // Origin of the ballot definition when imported from a proposals
@@ -315,7 +306,7 @@ const ballotSchema = new Schema(
       importedAt: { type: Date, default: null },
       importMethod: {
         type: String,
-        enum: [null, "push", "upload"],
+        enum: [null, 'push', 'upload'],
         default: null,
       },
       importedBy: { type: String, default: null }, // admin userId or ApiKey.keyPrefix
@@ -340,7 +331,7 @@ const ballotSchema = new Schema(
           label: { type: String, required: true },
           type: {
             type: String,
-            enum: ["enum", "number", "string", "boolean", "date"],
+            enum: ['enum', 'number', 'string', 'boolean', 'date'],
             required: true,
           },
           multi: { type: Boolean, default: false },
@@ -350,7 +341,7 @@ const ballotSchema = new Schema(
           filterable: { type: Boolean, default: true },
           defaultSort: {
             type: String,
-            enum: [null, "asc", "desc"],
+            enum: [null, 'asc', 'desc'],
             default: null,
           },
         },
@@ -375,7 +366,7 @@ const ballotSchema = new Schema(
         return ret;
       },
     }, // Include virtuals when converting to plain objects, exclude id virtual
-  }
+  },
 );
 
 // Indexes for faster queries
@@ -383,5 +374,5 @@ ballotSchema.index({ title: 1 });
 ballotSchema.index({ voterType: 1 });
 ballotSchema.index({ source: 1 });
 
-const Ballot = mongoose.model("Ballot", ballotSchema);
+const Ballot = mongoose.model('Ballot', ballotSchema);
 export { Ballot };

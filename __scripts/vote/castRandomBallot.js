@@ -22,30 +22,36 @@
 //                    (only applied when the proposal has requireAnswer !== true).
 //                    Default: 0 (full participation).
 
-import process from "process";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-import dotenv from "dotenv";
-import jwt from "jsonwebtoken";
-import { parseArgs } from "../scaffold/common/env.js";
-import { loadLocalOverrides } from "../../helper/envOverlay.js";
-import { VOTERS_BY_NAME, SINGLE_SIG_VOTER } from "../scaffold/common/fixtures.js";
-import { signCose } from "../scaffold/common/coseSign.js";
-import { connectToDatabase, disconnectFromDatabase } from "../../helper/dbManager.js";
-import { Proposal } from "../../schema/Proposal.js";
+import process from 'process';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken';
+import { parseArgs } from '../scaffold/common/env.js';
+import { loadLocalOverrides } from '../../helper/envOverlay.js';
+import { VOTERS_BY_NAME, SINGLE_SIG_VOTER } from '../scaffold/common/fixtures.js';
+import { signCose } from '../scaffold/common/coseSign.js';
+import { connectToDatabase, disconnectFromDatabase } from '../../helper/dbManager.js';
+import { Proposal } from '../../schema/Proposal.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(here, "..", "..");
-const envName = process.env.NODE_ENV || "development";
+const repoRoot = join(here, '..', '..');
+const envName = process.env.NODE_ENV || 'development';
 dotenv.config({ path: join(repoRoot, `.env.${envName}`) });
 loadLocalOverrides(repoRoot);
 
 const { flags } = parseArgs();
-if (!flags.ballotId) { console.error("Missing --ballotId"); process.exit(1); }
+if (!flags.ballotId) {
+  console.error('Missing --ballotId');
+  process.exit(1);
+}
 
-const voterName = flags.voter || "drep01";
+const voterName = flags.voter || 'drep01';
 const fixture = VOTERS_BY_NAME[voterName];
-if (!fixture) { console.error(`Unknown voter fixture: ${voterName}`); process.exit(1); }
+if (!fixture) {
+  console.error(`Unknown voter fixture: ${voterName}`);
+  process.exit(1);
+}
 const voterId = fixture.userId;
 const backend = flags.backend || `http://localhost:${process.env.SERVER_PORT || 3000}`;
 const abstainRate = Number(flags.abstainRate) || 0;
@@ -53,12 +59,12 @@ const abstainRate = Number(flags.abstainRate) || 0;
 // Tiny deterministic PRNG (mulberry32) for reproducible --seed runs; falls
 // through to Math.random when no seed is supplied. Inline to avoid a dep.
 function makeRng(seed) {
-  if (seed === undefined || seed === null || seed === "") {
+  if (seed === undefined || seed === null || seed === '') {
     return Math.random;
   }
   let s = Number(seed) >>> 0;
   return function rng() {
-    s = (s + 0x6D2B79F5) >>> 0;
+    s = (s + 0x6d2b79f5) >>> 0;
     let t = s;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
@@ -66,8 +72,12 @@ function makeRng(seed) {
   };
 }
 const rng = makeRng(flags.seed);
-function randInt(min, max) { return Math.floor(rng() * (max - min + 1)) + min; }
-function pickOne(arr) { return arr[Math.floor(rng() * arr.length)]; }
+function randInt(min, max) {
+  return Math.floor(rng() * (max - min + 1)) + min;
+}
+function pickOne(arr) {
+  return arr[Math.floor(rng() * arr.length)];
+}
 function shuffle(arr) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -90,23 +100,27 @@ function randomAnswerFor(proposal) {
   }
   const optionIds = (proposal.voteOptions || []).map((o) => Number(o.id));
   switch (proposal.voteType) {
-    case "choice": {
+    case 'choice': {
       return { questionId, selection: [pickOne(optionIds)] };
     }
-    case "multi-choice": {
-      const min = Number.isFinite(Number(proposal.minSelections)) ? Number(proposal.minSelections) : 1;
-      const max = Number.isFinite(Number(proposal.maxSelections)) ? Number(proposal.maxSelections) : optionIds.length;
+    case 'multi-choice': {
+      const min = Number.isFinite(Number(proposal.minSelections))
+        ? Number(proposal.minSelections)
+        : 1;
+      const max = Number.isFinite(Number(proposal.maxSelections))
+        ? Number(proposal.maxSelections)
+        : optionIds.length;
       const n = randInt(min, max);
       return { questionId, selection: shuffle(optionIds).slice(0, n) };
     }
-    case "ranked": {
+    case 'ranked': {
       return { questionId, selection: shuffle(optionIds) };
     }
-    case "scale": {
+    case 'scale': {
       // Pick any option id — they encode the grid anchors directly.
       return { questionId, selection: [pickOne(optionIds)] };
     }
-    case "likert": {
+    case 'likert': {
       const { min = 1, max = 5, step = 1 } = proposal.ratingRange || {};
       const steps = Math.floor((max - min) / step);
       const selection = optionIds.map((option) => {
@@ -115,7 +129,7 @@ function randomAnswerFor(proposal) {
       });
       return { questionId, selection };
     }
-    case "weighted": {
+    case 'weighted': {
       // Distribute voterBudget integer points across options. Rough
       // uniform-random partition: hand one point at a time to a random
       // option until the budget is exhausted.
@@ -128,7 +142,7 @@ function randomAnswerFor(proposal) {
       const selection = [...alloc.entries()].map(([option, value]) => ({ option, value }));
       return { questionId, selection };
     }
-    case "budget": {
+    case 'budget': {
       // Subset whose summed option.cost ≤ voterBudget. We don't have
       // per-option cost here without reading voteOptions in full, so
       // fall back to a random 1..N subset.
@@ -154,21 +168,22 @@ const votes = proposals.map(randomAnswerFor);
 console.log(`[cast-random] voter=${voterName} (${voterId.slice(0, 32)}…)`);
 console.log(`[cast-random] generated ${votes.length} answers across proposals:`);
 for (const v of votes) {
-  const summary = v.abstain ? "ABSTAIN" : JSON.stringify(v.selection);
+  const summary = v.abstain ? 'ABSTAIN' : JSON.stringify(v.selection);
   console.log(`  ${v.questionId}  ${summary}`);
 }
 
 // Mint JWT — multisig voters get multiSig:true so the broker's session
 // handling routes correctly.
 const secret = process.env.JWT_SECRET;
-if (!secret) { console.error("JWT_SECRET missing"); process.exit(1); }
-const isScript = fixture.kind === "script";
-const voterJwt = jwt.sign(
-  { userId: voterId, signType: "stake", multiSig: isScript },
-  secret,
-  { expiresIn: process.env.JWT_MAX_AGE || "1h" }
-);
-const headers = { cookie: `token=${voterJwt}`, "content-type": "application/json" };
+if (!secret) {
+  console.error('JWT_SECRET missing');
+  process.exit(1);
+}
+const isScript = fixture.kind === 'script';
+const voterJwt = jwt.sign({ userId: voterId, signType: 'stake', multiSig: isScript }, secret, {
+  expiresIn: process.env.JWT_MAX_AGE || '1h',
+});
+const headers = { cookie: `token=${voterJwt}`, 'content-type': 'application/json' };
 
 // Build the draft body. calidusDeclaration for CIP-151 hot-key voters;
 // nativeScript for multisig voters.
@@ -183,33 +198,35 @@ if (isScript) {
 
 console.log(`[cast-random] POST /api/v1/votes/${flags.ballotId}/draft`);
 const draftRes = await fetch(`${backend}/api/v1/votes/${flags.ballotId}/draft`, {
-  method: "POST",
+  method: 'POST',
   headers,
   body: JSON.stringify(draftBody),
 });
 const draft = await draftRes.json().catch(() => ({}));
-if (!draftRes.ok || draft.status !== "success") {
-  console.error("/draft failed:", JSON.stringify(draft, null, 2));
+if (!draftRes.ok || draft.status !== 'success') {
+  console.error('/draft failed:', JSON.stringify(draft, null, 2));
   process.exit(1);
 }
 console.log(`  packageId=${draft.package.id} nonce=${draft.package.nonce}`);
 
 const messageToSign = draft.merkleRoot;
 if (!messageToSign) {
-  console.error("/draft response missing merkleRoot — is the broker up to date?");
+  console.error('/draft response missing merkleRoot — is the broker up to date?');
   process.exit(1);
 }
-console.log(`[cast-random] merkleRoot=${messageToSign.slice(0, 16)}… (covers all ${votes.length} answers)`);
+console.log(
+  `[cast-random] merkleRoot=${messageToSign.slice(0, 16)}… (covers all ${votes.length} answers)`,
+);
 
 async function postSignature(witness) {
   const sigRes = await fetch(`${backend}/api/v1/votes/${flags.ballotId}/signature`, {
-    method: "POST",
+    method: 'POST',
     headers,
     body: JSON.stringify({ packageId: draft.package.id, witness }),
   });
   const sig = await sigRes.json().catch(() => ({}));
-  if (!sigRes.ok || sig.status !== "success") {
-    console.error("/signature failed:", JSON.stringify(sig, null, 2));
+  if (!sigRes.ok || sig.status !== 'success') {
+    console.error('/signature failed:', JSON.stringify(sig, null, 2));
     process.exit(1);
   }
   return sig;
@@ -231,7 +248,7 @@ if (isScript) {
       console.log(`  ipfsCid=${sig.package?.ipfsCid}`);
     } else {
       const m = sig.multisig || {};
-      console.log(`  awaiting more signatures (outstanding=${m.outstandingKeys?.length ?? "?"})`);
+      console.log(`  awaiting more signatures (outstanding=${m.outstandingKeys?.length ?? '?'})`);
     }
   }
 } else {

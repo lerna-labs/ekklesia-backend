@@ -1,9 +1,9 @@
-import { exec } from "child_process";
-import fs from "fs";
-import path from "path";
-import readline from "readline";
-import { fileURLToPath } from "url";
-import { loadEnvironmentVariables } from "../helper/envLoader.js";
+import { exec } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import readline from 'readline';
+import { fileURLToPath } from 'url';
+import { loadEnvironmentVariables } from '../helper/envLoader.js';
 
 // Get directory name
 const __filename = fileURLToPath(import.meta.url);
@@ -12,28 +12,28 @@ const __dirname = path.dirname(__filename);
 // Load environment variables
 try {
   // Load from project root (one directory up from backup folder)
-  loadEnvironmentVariables(path.resolve(__dirname, ".."));
+  loadEnvironmentVariables(path.resolve(__dirname, '..'));
 } catch (error) {
   console.error(`Error loading environment variables: ${error.message}`);
   process.exit(1);
 }
 
 // MongoDB connection details from environment variables
-const host = process.env.MONGODB_HOST || "localhost";
-const port = process.env.MONGODB_PORT || "27017";
+const host = process.env.MONGODB_HOST || 'localhost';
+const port = process.env.MONGODB_PORT || '27017';
 const database = process.env.MONGODB_DATABASE;
 const username = process.env.MONGODB_USERNAME;
 const password = process.env.MONGODB_PASSWORD;
-const authSource = process.env.MONGODB_AUTH_SOURCE || "admin";
+const authSource = process.env.MONGODB_AUTH_SOURCE || 'admin';
 
 // Validate required environment variables
 if (!database) {
-  console.error("Error: MONGODB_DATABASE environment variable is required");
+  console.error('Error: MONGODB_DATABASE environment variable is required');
   process.exit(1);
 }
 
 // Backup directory
-const backupDir = path.join(__dirname, "data/");
+const backupDir = path.join(__dirname, 'data/');
 
 // Check if backup directory exists
 if (!fs.existsSync(backupDir)) {
@@ -51,7 +51,7 @@ const rl = readline.createInterface({
 function getBackupFiles() {
   const files = fs
     .readdirSync(backupDir)
-    .filter((file) => file.endsWith(".tar.gz") && file.includes(database))
+    .filter((file) => file.endsWith('.tar.gz') && file.includes(database))
     .sort((a, b) => {
       // Sort by modification time (newest first)
       return (
@@ -70,7 +70,7 @@ function getBackupFiles() {
 
 // Display available backups
 function displayBackups(files) {
-  console.log("Available backups:");
+  console.log('Available backups:');
 
   files.forEach((file, index) => {
     const stats = fs.statSync(path.join(backupDir, file));
@@ -82,15 +82,11 @@ function displayBackups(files) {
 }
 
 // Restore function
-async function restoreBackup(
-  backupFile,
-  customDatabase = database,
-  customHost = host
-) {
+async function restoreBackup(backupFile, customDatabase = database, customHost = host) {
   return new Promise((resolve, reject) => {
     // Use the customDatabase and customHost variables instead of the global ones
     const backupPath = path.join(backupDir, backupFile);
-    const extractDir = path.join(backupDir, "temp_restore");
+    const extractDir = path.join(backupDir, 'temp_restore');
 
     // Create temp directory if it doesn't exist
     if (!fs.existsSync(extractDir)) {
@@ -117,24 +113,22 @@ async function restoreBackup(
       let dbDir = findMongoDbDumpDirectory(extractDir);
 
       if (!dbDir) {
-        console.error(
-          "Could not find valid MongoDB dump directory in the backup"
-        );
-        reject(new Error("No valid MongoDB dump directory found"));
+        console.error('Could not find valid MongoDB dump directory in the backup');
+        reject(new Error('No valid MongoDB dump directory found'));
         return;
       }
 
       console.log(`Found database directory: ${dbDir}`);
 
       // Detect source database name from path
-      const sourceDirParts = dbDir.split("/");
-      let sourceDbName = "";
+      const sourceDirParts = dbDir.split('/');
+      let sourceDbName = '';
       // Look for the DB name in the path
       for (let i = sourceDirParts.length - 1; i >= 0; i--) {
         if (
           sourceDirParts[i] !== customDatabase &&
-          !sourceDirParts[i].includes(".") &&
-          sourceDirParts[i] !== "temp_restore"
+          !sourceDirParts[i].includes('.') &&
+          sourceDirParts[i] !== 'temp_restore'
         ) {
           sourceDbName = sourceDirParts[i];
           break;
@@ -147,16 +141,16 @@ async function restoreBackup(
           `\nThe backup is from database "${sourceDbName}" but your .env file specifies "${customDatabase}". 
 Do you want to restore to "${customDatabase}"? (y/n): `,
           (answer) => {
-            if (answer.toLowerCase() !== "y") {
-              console.log("Restore cancelled");
+            if (answer.toLowerCase() !== 'y') {
+              console.log('Restore cancelled');
               fs.rmSync(extractDir, { recursive: true, force: true });
-              reject(new Error("Restore cancelled by user"));
+              reject(new Error('Restore cancelled by user'));
               return;
             }
 
             // User confirmed, proceed with restore
             proceedWithRestore(sourceDbName, customDatabase);
-          }
+          },
         );
       } else {
         // No database name difference, proceed directly
@@ -178,7 +172,7 @@ Do you want to restore to "${customDatabase}"? (y/n): `,
         // If source and target database names are different, use namespace mapping
         if (sourceDbName && sourceDbName !== targetDatabase) {
           console.log(
-            `Restoring from source database "${sourceDbName}" to target database "${targetDatabase}"`
+            `Restoring from source database "${sourceDbName}" to target database "${targetDatabase}"`,
           );
           // Use the directory structure to properly map the namespaces
           mongorestoreCmd += ` --nsFrom="${sourceDbName}.*" --nsTo="${targetDatabase}.*" --drop "${dumpDir}"`;
@@ -201,13 +195,11 @@ Do you want to restore to "${customDatabase}"? (y/n): `,
             return;
           }
 
-          if (restoreStderr && !restoreStderr.includes("done")) {
+          if (restoreStderr && !restoreStderr.includes('done')) {
             console.error(`MongoDB stderr: ${restoreStderr}`);
           }
 
-          console.log(
-            `Restore completed successfully to database: ${targetDatabase}`
-          );
+          console.log(`Restore completed successfully to database: ${targetDatabase}`);
           resolve();
         });
       }
@@ -218,9 +210,7 @@ Do you want to restore to "${customDatabase}"? (y/n): `,
 // Add this helper function to find the directory with MongoDB files
 function findMongoDbDumpDirectory(startDir) {
   // Check if this directory contains .bson files (MongoDB data files)
-  const hasMongoFiles = fs
-    .readdirSync(startDir)
-    .some((file) => file.endsWith(".bson"));
+  const hasMongoFiles = fs.readdirSync(startDir).some((file) => file.endsWith('.bson'));
   if (hasMongoFiles) {
     return startDir;
   }
@@ -230,7 +220,7 @@ function findMongoDbDumpDirectory(startDir) {
     const itemPath = path.join(startDir, item);
     if (fs.statSync(itemPath).isDirectory()) {
       // Check this subdirectory for .bson files
-      if (fs.readdirSync(itemPath).some((file) => file.endsWith(".bson"))) {
+      if (fs.readdirSync(itemPath).some((file) => file.endsWith('.bson'))) {
         return itemPath;
       }
 
@@ -239,7 +229,7 @@ function findMongoDbDumpDirectory(startDir) {
         const subItemPath = path.join(itemPath, subItem);
         if (
           fs.statSync(subItemPath).isDirectory() &&
-          fs.readdirSync(subItemPath).some((file) => file.endsWith(".bson"))
+          fs.readdirSync(subItemPath).some((file) => file.endsWith('.bson'))
         ) {
           return subItemPath;
         }
@@ -252,22 +242,18 @@ function findMongoDbDumpDirectory(startDir) {
 
 // Check required commands
 function checkRequiredCommands() {
-  console.log("Checking required commands...");
+  console.log('Checking required commands...');
 
   return new Promise((resolve, reject) => {
-    exec("which mongorestore", (error) => {
+    exec('which mongorestore', (error) => {
       if (error) {
         console.error("\nError: 'mongorestore' command not found.");
-        console.error("Please install MongoDB Database Tools:");
-        console.error(
-          "  - macOS: brew install mongodb/brew/mongodb-database-tools"
-        );
-        console.error(
-          "  - Linux: apt-get install mongodb-database-tools or equivalent"
-        );
-        reject(new Error("Required command not found"));
+        console.error('Please install MongoDB Database Tools:');
+        console.error('  - macOS: brew install mongodb/brew/mongodb-database-tools');
+        console.error('  - Linux: apt-get install mongodb-database-tools or equivalent');
+        reject(new Error('Required command not found'));
       } else {
-        console.log("✅ mongorestore found");
+        console.log('✅ mongorestore found');
         resolve();
       }
     });
@@ -288,20 +274,16 @@ async function main() {
     rl.question(
       "\nEnter the number of the backup to restore (or 'q' to quit): ",
       async (answer) => {
-        if (answer.toLowerCase() === "q") {
-          console.log("Restore cancelled");
+        if (answer.toLowerCase() === 'q') {
+          console.log('Restore cancelled');
           rl.close();
           return;
         }
 
         const backupIndex = parseInt(answer) - 1;
 
-        if (
-          isNaN(backupIndex) ||
-          backupIndex < 0 ||
-          backupIndex >= backupFiles.length
-        ) {
-          console.error("Invalid selection");
+        if (isNaN(backupIndex) || backupIndex < 0 || backupIndex >= backupFiles.length) {
+          console.error('Invalid selection');
           rl.close();
           return;
         }
@@ -312,8 +294,8 @@ async function main() {
         rl.question(
           `\nDo you want to restore to a different database than "${targetDatabase}"? (y/n): `,
           (changeDatabaseAnswer) => {
-            if (changeDatabaseAnswer.toLowerCase() === "y") {
-              rl.question("\nEnter target database name: ", (dbName) => {
+            if (changeDatabaseAnswer.toLowerCase() === 'y') {
+              rl.question('\nEnter target database name: ', (dbName) => {
                 targetDatabase = dbName.trim();
                 confirmHostAndRestore();
               });
@@ -325,18 +307,15 @@ async function main() {
               rl.question(
                 `\nConfirm database host: ${targetHost}. Is this correct? (y/n): `,
                 (confirmHostAnswer) => {
-                  if (confirmHostAnswer.toLowerCase() !== "y") {
-                    rl.question(
-                      "\nEnter the database host IP address: ",
-                      (hostInput) => {
-                        targetHost = hostInput.trim();
-                        proceedWithRestore();
-                      }
-                    );
+                  if (confirmHostAnswer.toLowerCase() !== 'y') {
+                    rl.question('\nEnter the database host IP address: ', (hostInput) => {
+                      targetHost = hostInput.trim();
+                      proceedWithRestore();
+                    });
                   } else {
                     proceedWithRestore();
                   }
-                }
+                },
               );
             }
 
@@ -345,35 +324,31 @@ async function main() {
               rl.question(
                 `\nAre you sure you want to restore ${selectedBackup} to database "${targetDatabase}" at ${targetHost}? This will OVERWRITE the current database. (y/n): `,
                 async (confirm) => {
-                  if (confirm.toLowerCase() !== "y") {
-                    console.log("Restore cancelled");
+                  if (confirm.toLowerCase() !== 'y') {
+                    console.log('Restore cancelled');
                     rl.close();
                     return;
                   }
 
                   console.log(
-                    `\nRestoring backup: ${selectedBackup} to ${targetDatabase} at ${targetHost}`
+                    `\nRestoring backup: ${selectedBackup} to ${targetDatabase} at ${targetHost}`,
                   );
 
                   try {
                     // Pass the custom database and host to the restore function
-                    await restoreBackup(
-                      selectedBackup,
-                      targetDatabase,
-                      targetHost
-                    );
-                    console.log("Restore process completed");
+                    await restoreBackup(selectedBackup, targetDatabase, targetHost);
+                    console.log('Restore process completed');
                   } catch (error) {
                     console.error(`Restore failed: ${error.message}`);
                   }
 
                   rl.close();
-                }
+                },
               );
             }
-          }
+          },
         );
-      }
+      },
     );
   } catch (error) {
     console.error(`Error: ${error.message}`);

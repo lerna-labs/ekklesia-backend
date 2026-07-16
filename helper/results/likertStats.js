@@ -22,8 +22,7 @@ function descriptiveStats(values) {
   const sorted = [...values].sort((a, b) => a - b);
   const sum = sorted.reduce((s, v) => s + v, 0);
   const mean = sum / sorted.length;
-  const variance =
-    sorted.reduce((s, v) => s + (v - mean) ** 2, 0) / sorted.length;
+  const variance = sorted.reduce((s, v) => s + (v - mean) ** 2, 0) / sorted.length;
   const counts = new Map();
   for (const v of sorted) counts.set(v, (counts.get(v) || 0) + 1);
   let maxCount = 0;
@@ -121,10 +120,8 @@ function majorityJudgment(entries, min) {
   ranked.sort((a, b) => {
     if ((b.medianGrade ?? -Infinity) !== (a.medianGrade ?? -Infinity))
       return (b.medianGrade ?? -Infinity) - (a.medianGrade ?? -Infinity);
-    if (b.supportAbove !== a.supportAbove)
-      return b.supportAbove - a.supportAbove;
-    if (a.oppositionBelow !== b.oppositionBelow)
-      return a.oppositionBelow - b.oppositionBelow;
+    if (b.supportAbove !== a.supportAbove) return b.supportAbove - a.supportAbove;
+    if (a.oppositionBelow !== b.oppositionBelow) return a.oppositionBelow - b.oppositionBelow;
     return 0;
   });
 
@@ -166,7 +163,7 @@ function majorityJudgment(entries, min) {
  */
 export function computeLikertStats({ proposal, votes, votersByUserId, voteWeighted }) {
   const range = proposal.ratingRange || { min: 1, max: 5 };
-  const options = (proposal.voteOptions || []).filter((o) => o.id !== "abstain");
+  const options = (proposal.voteOptions || []).filter((o) => o.id !== 'abstain');
   if (options.length === 0) return null;
 
   const perOption = new Map();
@@ -179,7 +176,7 @@ export function computeLikertStats({ proposal, votes, votersByUserId, voteWeight
     const power = voter?.votingPower ?? 1;
     const entries = Array.isArray(v.vote) ? v.vote : [];
     for (const r of entries) {
-      if (r == null || typeof r !== "object") continue;
+      if (r == null || typeof r !== 'object') continue;
       const bucket = perOption.get(r.option);
       if (!bucket) continue;
       const rating = Number(r.value);
@@ -223,7 +220,8 @@ export function computeLikertStats({ proposal, votes, votersByUserId, voteWeight
       label: o.label,
       stats: stats ? { ...stats, distribution: dist } : { count: 0, distribution: dist },
       weightedStats,
-      _powerDist: powerDist || buildPowerDistribution(samples, range.min, range.max).powerDistribution,
+      _powerDist:
+        powerDist || buildPowerDistribution(samples, range.min, range.max).powerDistribution,
       _totalPower: totalPower || samples.reduce((s, x) => s + x.power, 0),
     };
   });
@@ -260,8 +258,8 @@ export function bucketLikertVotesByGroup(votes, votersByUserId) {
     const voter = votersByUserId.get(v.userId);
     if (!voter) continue;
     const first = Array.isArray(v.vote) ? v.vote[0] : v.vote;
-    if (first === "abstain") continue;
-    const group = voter.voterGroup || "stake";
+    if (first === 'abstain') continue;
+    const group = voter.voterGroup || 'stake';
     if (!out.has(group)) out.set(group, []);
     out.get(group).push(v);
   }

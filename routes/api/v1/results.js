@@ -4,10 +4,10 @@
 //
 // The API-key-gated integrator copy lives at /api/v1/public/results.
 
-import { Router } from "express";
-import { cacheControl } from "../../../helper/cacheControl.js";
-import { readBallotResults, readProposalResult } from "../../../helper/resultReaders.js";
-import { aggregationLimiter } from "../../../helper/rateLimiters.js";
+import { Router } from 'express';
+import { cacheControl } from '../../../helper/cacheControl.js';
+import { readBallotResults, readProposalResult } from '../../../helper/resultReaders.js';
+import { aggregationLimiter } from '../../../helper/rateLimiters.js';
 
 const router = Router();
 
@@ -17,18 +17,18 @@ router.use(cacheControl(30)); // 30s — fine-grained enough for polling, short 
 // IP can't keep the aggregation pipeline busy.
 router.use(aggregationLimiter);
 
-router.get("/ballot/:ballotId", async (req, res) => {
+router.get('/ballot/:ballotId', async (req, res) => {
   const result = await readBallotResults(req.params.ballotId);
   if (result.error) {
-    return res.status(result.error.status).json({ status: "error", message: result.error.message });
+    return res.status(result.error.status).json({ status: 'error', message: result.error.message });
   }
   return res.json(result);
 });
 
-router.get("/proposal/:proposalId", async (req, res) => {
+router.get('/proposal/:proposalId', async (req, res) => {
   const result = await readProposalResult(req.params.proposalId);
   if (result.error) {
-    return res.status(result.error.status).json({ status: "error", message: result.error.message });
+    return res.status(result.error.status).json({ status: 'error', message: result.error.message });
   }
   return res.json(result);
 });

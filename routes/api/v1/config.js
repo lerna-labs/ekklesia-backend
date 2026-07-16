@@ -7,23 +7,22 @@
 // this deployment.
 //
 // All fields are public — no auth required.
-import express from "express";
+import express from 'express';
 
 const router = express.Router();
 
 const DEFAULTS = {
-  ipfsGatewayBase: "https://ipfs.io/ipfs/",
-  explorerTxBase: "https://cexplorer.io/tx/",
-  explorerAddressBase: "https://cexplorer.io/address/",
-  network: "preprod",
+  ipfsGatewayBase: 'https://ipfs.io/ipfs/',
+  explorerTxBase: 'https://cexplorer.io/tx/',
+  explorerAddressBase: 'https://cexplorer.io/address/',
+  network: 'preprod',
 };
 
-router.get("/", (req, res) => {
+router.get('/', (req, res) => {
   res.json({
     ipfsGatewayBase: process.env.IPFS_GATEWAY_BASE || DEFAULTS.ipfsGatewayBase,
     explorerTxBase: process.env.EXPLORER_TX_BASE || DEFAULTS.explorerTxBase,
-    explorerAddressBase:
-      process.env.EXPLORER_ADDRESS_BASE || DEFAULTS.explorerAddressBase,
+    explorerAddressBase: process.env.EXPLORER_ADDRESS_BASE || DEFAULTS.explorerAddressBase,
     network: process.env.CARDANO_NETWORK || DEFAULTS.network,
   });
 });

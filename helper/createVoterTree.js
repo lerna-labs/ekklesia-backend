@@ -1,5 +1,5 @@
-import { MerkleTree } from "merkletreejs";
-import crypto from "crypto";
+import { MerkleTree } from 'merkletreejs';
+import crypto from 'crypto';
 
 /**
  * Creates a Merkle tree from votes data and returns the root hash
@@ -10,7 +10,7 @@ export function createVoterTree(data) {
   const { ballotId, userId, votes } = data;
 
   if (!votes || !Array.isArray(votes) || votes.length === 0) {
-    throw new Error("Invalid votes data");
+    throw new Error('Invalid votes data');
   }
 
   // Create leaf data for each vote
@@ -30,7 +30,7 @@ export function createVoterTree(data) {
 
   // Create a hash function using SHA-256
   const hashFunction = (data) => {
-    return crypto.createHash("sha256").update(data).digest();
+    return crypto.createHash('sha256').update(data).digest();
   };
 
   // Create the Merkle tree

@@ -1,11 +1,11 @@
-import express from "express";
+import express from 'express';
 
 const router = express.Router();
 
-router.get("/", (req, res) => {
+router.get('/', (req, res) => {
   res.json({
-    version: "v1",
-    status: "ok",
+    version: 'v1',
+    status: 'ok',
     timestamp: new Date().toISOString(),
   });
 });

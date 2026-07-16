@@ -27,43 +27,40 @@ import {
   validateVoter as validateDRep,
   allowedVoterCount as dRepCount,
   getTotalWeight as dRepWeight,
-} from "./voterValidationDReps.js";
+} from './voterValidationDReps.js';
 import {
   validateVoter as validatePoolPledge,
   allowedVoterCount as poolCount,
   getTotalWeight as poolWeight,
-} from "./voterValidationPoolsPledge.js";
+} from './voterValidationPoolsPledge.js';
 import {
   validateVoter as validateStake,
   allowedVoterCount as stakeCount,
   getTotalWeight as stakeWeight,
-} from "./voterValidationStakeholder.js";
+} from './voterValidationStakeholder.js';
 
 function hrpOf(userId) {
-  if (!userId || typeof userId !== "string") return null;
+  if (!userId || typeof userId !== 'string') return null;
   const lower = userId.toLowerCase();
-  if (lower.startsWith("drep")) return "drep";
-  if (lower.startsWith("pool")) return "pool";
-  if (lower.startsWith("calidus")) return "calidus";
-  if (lower.startsWith("stake_test") || lower.startsWith("stake")) return "stake";
+  if (lower.startsWith('drep')) return 'drep';
+  if (lower.startsWith('pool')) return 'pool';
+  if (lower.startsWith('calidus')) return 'calidus';
+  if (lower.startsWith('stake_test') || lower.startsWith('stake')) return 'stake';
   return null;
 }
 
 export async function validateVoter(userId, ballotId) {
   const hrp = hrpOf(userId);
   switch (hrp) {
-    case "drep":
+    case 'drep':
       return validateDRep(userId, ballotId);
-    case "pool":
-    case "calidus":
+    case 'pool':
+    case 'calidus':
       return validatePoolPledge(userId, ballotId);
-    case "stake":
+    case 'stake':
       return validateStake(userId, ballotId);
     default:
-      console.log(
-        "[voterValidationByCredential] unsupported voter HRP; rejecting",
-        userId
-      );
+      console.log('[voterValidationByCredential] unsupported voter HRP; rejecting', userId);
       return false;
   }
 }
@@ -93,4 +90,4 @@ export async function getTotalWeight(ballotId) {
 // Per-voter power reader for snapshot/cron paths — falls back to
 // UserCache (the row will have been written by whichever per-group
 // validator ran for that voter at draft time).
-export { computeFromUserCache as computePerVoterPower } from "../helper/votingPower/computeFromUserCache.js";
+export { computeFromUserCache as computePerVoterPower } from '../helper/votingPower/computeFromUserCache.js';

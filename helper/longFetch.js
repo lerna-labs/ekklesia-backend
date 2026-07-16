@@ -11,7 +11,7 @@
 // legitimately take longer than 5 minutes. Internally it attaches a
 // per-request undici Agent whose header/body timeouts match `timeoutMs`.
 
-import { Agent } from "undici";
+import { Agent } from 'undici';
 
 /**
  * @param {string} url

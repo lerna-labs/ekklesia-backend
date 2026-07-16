@@ -1171,7 +1171,14 @@ paths:
                           nullable: true
                         status:
                           type: string
-                          enum: [draft, awaiting-signatures, awaiting-submission, broker-submitted, failed]
+                          enum:
+                            [
+                              draft,
+                              awaiting-signatures,
+                              awaiting-submission,
+                              broker-submitted,
+                              failed,
+                            ]
                         nonce:
                           type: integer
                         signatureCount:
@@ -1894,7 +1901,8 @@ paths:
                                   type: string
                                 voteType:
                                   type: string
-                                  enum: [choice, multi-choice, ranked, scale, likert, weighted, budget]
+                                  enum:
+                                    [choice, multi-choice, ranked, scale, likert, weighted, budget]
                                   description: |
                                     Voting method for the proposal. Drives the shape of the
                                     `vote` array below — clients should dispatch on this rather
@@ -2243,7 +2251,7 @@ components:
         requireAnswer:
           type: boolean
           default: false
-          description: "When true, voters must submit a selection — abstain is rejected. Default false (permissive): abstain is allowed."
+          description: 'When true, voters must submit a selection — abstain is rejected. Default false (permissive): abstain is allowed.'
         voteOptions:
           type: array
           items:

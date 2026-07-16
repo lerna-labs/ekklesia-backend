@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -38,7 +38,7 @@ const faqSchema = new Schema(
       type: Boolean,
       default: false,
       required: true,
-    }
+    },
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
@@ -55,7 +55,7 @@ const faqSchema = new Schema(
         return ret;
       },
     }, // Exclude id virtual when converting to plain objects
-  }
+  },
 );
 
 // Indexes for faster queries
@@ -66,7 +66,7 @@ faqSchema.index({ is_live: 1 });
 faqSchema.index({ featured: 1 });
 
 // Text index for search functionality
-faqSchema.index({ title: "text", content: "text" });
+faqSchema.index({ title: 'text', content: 'text' });
 
-const FAQ = mongoose.model("FAQ", faqSchema);
+const FAQ = mongoose.model('FAQ', faqSchema);
 export { FAQ };

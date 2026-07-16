@@ -19,11 +19,11 @@
  * change or a PUBLIC_URL migration — every URL changes, every cache
  * busts naturally.
  */
-import fs from "node:fs/promises";
-import path from "node:path";
-import mongoose from "mongoose";
-import { Ballot } from "../../schema/Ballot.js";
-import { Proposal } from "../../schema/Proposal.js";
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import mongoose from 'mongoose';
+import { Ballot } from '../../schema/Ballot.js';
+import { Proposal } from '../../schema/Proposal.js';
 
 // Tiny LRU with TTL. Map preserves insertion order, so re-inserting on
 // hit keeps the most-recently-used entries at the tail. Avoids a
@@ -55,14 +55,14 @@ function pngCacheSet(key, png) {
 
 export function rendererVersion() {
   const raw = process.env.OG_RENDERER_VERSION;
-  return raw && raw.trim() ? raw.trim() : "1";
+  return raw && raw.trim() ? raw.trim() : '1';
 }
 
 let satoriPromise = null;
 let resvgPromise = null;
 async function loadSatori() {
   if (!satoriPromise) {
-    satoriPromise = import("satori")
+    satoriPromise = import('satori')
       .then((m) => m.default || m)
       .catch((err) => {
         satoriPromise = null;
@@ -73,7 +73,7 @@ async function loadSatori() {
 }
 async function loadResvg() {
   if (!resvgPromise) {
-    resvgPromise = import("@resvg/resvg-js")
+    resvgPromise = import('@resvg/resvg-js')
       .then((m) => m)
       .catch((err) => {
         resvgPromise = null;
@@ -89,17 +89,14 @@ async function loadFonts() {
   const cwd = process.cwd();
   const reg = process.env.OG_FONT_REGULAR
     ? path.resolve(process.env.OG_FONT_REGULAR)
-    : path.join(cwd, "assets/og/Inter-Regular.ttf");
+    : path.join(cwd, 'assets/og/Inter-Regular.ttf');
   const bold = process.env.OG_FONT_BOLD
     ? path.resolve(process.env.OG_FONT_BOLD)
-    : path.join(cwd, "assets/og/Inter-Bold.ttf");
-  const [regData, boldData] = await Promise.all([
-    fs.readFile(reg),
-    fs.readFile(bold),
-  ]);
+    : path.join(cwd, 'assets/og/Inter-Bold.ttf');
+  const [regData, boldData] = await Promise.all([fs.readFile(reg), fs.readFile(bold)]);
   fontCache = [
-    { name: "Inter", data: regData, weight: 400, style: "normal" },
-    { name: "Inter", data: boldData, weight: 700, style: "normal" },
+    { name: 'Inter', data: regData, weight: 400, style: 'normal' },
+    { name: 'Inter', data: boldData, weight: 700, style: 'normal' },
   ];
   return fontCache;
 }
@@ -118,16 +115,16 @@ async function loadFonts() {
  * (and maybe the background gradient) to get a coherent card.
  */
 const DEFAULT_PALETTE = {
-  bgFrom: "#0F0F1A",
-  bgVia: "#1E1E2F",
-  bgTo: "#2A1B45",
-  brandPrimary: "#F97316",
-  brandSecondary: "#6366F1",
-  textPrimary: "#FFFFFF",
-  textSecondary: "#A0A0B8",
-  chipBg: "rgba(255, 255, 255, 0.08)",
-  chipBorder: "rgba(255, 255, 255, 0.18)",
-  decorativeOverlay: "#FFFFFF",
+  bgFrom: '#0F0F1A',
+  bgVia: '#1E1E2F',
+  bgTo: '#2A1B45',
+  brandPrimary: '#F97316',
+  brandSecondary: '#6366F1',
+  textPrimary: '#FFFFFF',
+  textSecondary: '#A0A0B8',
+  chipBg: 'rgba(255, 255, 255, 0.08)',
+  chipBorder: 'rgba(255, 255, 255, 0.18)',
+  decorativeOverlay: '#FFFFFF',
   // The next four default to derived values (see `resolvePalette`):
   //   glowPrimary    ← rgba(brandPrimary, 0.45)
   //   glowSecondary  ← rgba(brandSecondary, 0.55)
@@ -140,10 +137,14 @@ const DEFAULT_PALETTE = {
 };
 
 function hexToRgba(hex, alpha) {
-  const m = String(hex || "").match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  const m = String(hex || '').match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
   if (!m) return null;
   let h = m[1];
-  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  if (h.length === 3)
+    h = h
+      .split('')
+      .map((c) => c + c)
+      .join('');
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
@@ -153,12 +154,10 @@ function hexToRgba(hex, alpha) {
 function resolvePalette(input) {
   const p = { ...DEFAULT_PALETTE, ...(input || {}) };
   if (!p.glowPrimary) {
-    p.glowPrimary =
-      hexToRgba(p.brandPrimary, 0.45) || "rgba(249, 115, 22, 0.45)";
+    p.glowPrimary = hexToRgba(p.brandPrimary, 0.45) || 'rgba(249, 115, 22, 0.45)';
   }
   if (!p.glowSecondary) {
-    p.glowSecondary =
-      hexToRgba(p.brandSecondary, 0.55) || "rgba(99, 102, 241, 0.55)";
+    p.glowSecondary = hexToRgba(p.brandSecondary, 0.55) || 'rgba(99, 102, 241, 0.55)';
   }
   if (!p.accentTop) p.accentTop = p.brandPrimary;
   if (!p.accentBottom) p.accentBottom = p.brandSecondary;
@@ -178,19 +177,19 @@ let paletteCache = null;
  */
 export async function loadPalette() {
   if (paletteCache) return paletteCache;
-  const file = (process.env.OG_PALETTE_FILE || "").trim();
+  const file = (process.env.OG_PALETTE_FILE || '').trim();
   if (!file) {
     paletteCache = resolvePalette(null);
     return paletteCache;
   }
   try {
     const resolved = path.resolve(process.cwd(), file);
-    const raw = await fs.readFile(resolved, "utf8");
+    const raw = await fs.readFile(resolved, 'utf8');
     const json = JSON.parse(raw);
     paletteCache = resolvePalette(json);
   } catch (err) {
     console.warn(
-      `og palette: failed to load ${file} — falling back to defaults (${err?.message || err})`
+      `og palette: failed to load ${file} — falling back to defaults (${err?.message || err})`,
     );
     paletteCache = resolvePalette(null);
   }
@@ -212,30 +211,30 @@ export function _resetPaletteCache() {
 function brandHost() {
   const explicit = process.env.OG_BRAND_HOST;
   if (explicit && explicit.trim()) return explicit.trim();
-  const base = (process.env.PUBLIC_URL || process.env.FRONTEND_URL || "").trim();
-  if (!base) return "";
+  const base = (process.env.PUBLIC_URL || process.env.FRONTEND_URL || '').trim();
+  if (!base) return '';
   // Try as URL first. If the user dropped a bare hostname like
   // `vote.example.org` (no scheme) `new URL()` throws — fall back to
   // treating the string as host-only and strip any path the user may
   // have included.
   try {
-    return new URL(base).host || "";
+    return new URL(base).host || '';
   } catch {
-    return base.replace(/^\/+/, "").split("/")[0] || "";
+    return base.replace(/^\/+/, '').split('/')[0] || '';
   }
 }
 
 function brandName() {
   const explicit = process.env.OG_BRAND_NAME;
-  return explicit && explicit.trim() ? explicit.trim() : "EKKLESIA";
+  return explicit && explicit.trim() ? explicit.trim() : 'EKKLESIA';
 }
 
 function titleSizeFor(text) {
-  const len = String(text || "").length;
-  if (len > 110) return "44px";
-  if (len > 80) return "54px";
-  if (len > 50) return "64px";
-  return "76px";
+  const len = String(text || '').length;
+  if (len > 110) return '44px';
+  if (len > 80) return '54px';
+  if (len > 50) return '64px';
+  return '76px';
 }
 
 function formatDate(d) {
@@ -243,10 +242,10 @@ function formatDate(d) {
   try {
     const date = new Date(d);
     if (Number.isNaN(date.getTime())) return null;
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
     });
   } catch {
     return null;
@@ -266,7 +265,7 @@ function periodLabel(ballot) {
 
 function fadeTransparent(rgba) {
   // "rgba(r, g, b, a)" → "rgba(r, g, b, 0)" for the gradient outer stop.
-  return String(rgba || "").replace(/,\s*[\d.]+\s*\)$/, ", 0)");
+  return String(rgba || '').replace(/,\s*[\d.]+\s*\)$/, ', 0)');
 }
 
 function decorativeLayer(palette) {
@@ -275,74 +274,73 @@ function decorativeLayer(palette) {
   return [
     // Primary brand glow in the top-right
     {
-      type: "div",
+      type: 'div',
       props: {
         style: {
-          position: "absolute",
-          top: "-220px",
-          right: "-180px",
-          width: "620px",
-          height: "620px",
-          borderRadius: "310px",
+          position: 'absolute',
+          top: '-220px',
+          right: '-180px',
+          width: '620px',
+          height: '620px',
+          borderRadius: '310px',
           background: `radial-gradient(circle, ${palette.glowPrimary} 0%, ${glowPrimaryFade} 70%)`,
-          display: "flex",
+          display: 'flex',
         },
       },
     },
     // Secondary brand glow in the bottom-left
     {
-      type: "div",
+      type: 'div',
       props: {
         style: {
-          position: "absolute",
-          bottom: "-260px",
-          left: "-180px",
-          width: "560px",
-          height: "560px",
-          borderRadius: "280px",
+          position: 'absolute',
+          bottom: '-260px',
+          left: '-180px',
+          width: '560px',
+          height: '560px',
+          borderRadius: '280px',
           background: `radial-gradient(circle, ${palette.glowSecondary} 0%, ${glowSecondaryFade} 70%)`,
-          display: "flex",
+          display: 'flex',
         },
       },
     },
     // Vertical accent stripe along the left edge
     {
-      type: "div",
+      type: 'div',
       props: {
         style: {
-          position: "absolute",
+          position: 'absolute',
           top: 0,
           left: 0,
-          width: "10px",
-          height: "630px",
+          width: '10px',
+          height: '630px',
           background: `linear-gradient(180deg, ${palette.accentTop} 0%, ${palette.accentBottom} 100%)`,
-          display: "flex",
+          display: 'flex',
         },
       },
     },
     // Subtle diagonal hairline overlay (decorative SVG passthrough)
     {
-      type: "svg",
+      type: 'svg',
       props: {
-        width: "1200",
-        height: "630",
-        viewBox: "0 0 1200 630",
-        xmlns: "http://www.w3.org/2000/svg",
+        width: '1200',
+        height: '630',
+        viewBox: '0 0 1200 630',
+        xmlns: 'http://www.w3.org/2000/svg',
         style: {
-          position: "absolute",
+          position: 'absolute',
           top: 0,
           left: 0,
           opacity: 0.08,
         },
         children: [
           {
-            type: "path",
+            type: 'path',
             props: {
-              d:
-                "M -100 700 L 1300 -100 M -100 800 L 1300 0 M -100 900 L 1300 100",
+              d: 'M -100 700 L 1300 -100 M -100 800 L 1300 0 M -100 900 L 1300 100',
               stroke: palette.decorativeOverlay,
-              strokeWidth: "1",
-              fill: "none",
+              strokeWidth: '1',
+              fill: 'none',
             },
           },
         ],
@@ -355,19 +353,19 @@ function decorativeLayer(palette) {
 
 function chip({ label, accentColor, palette }) {
   return {
-    type: "div",
+    type: 'div',
     props: {
       style: {
-        display: "flex",
-        alignItems: "center",
-        padding: "8px 18px",
-        borderRadius: "100px",
+        display: 'flex',
+        alignItems: 'center',
+        padding: '8px 18px',
+        borderRadius: '100px',
         backgroundColor: palette.chipBg,
         border: `1px solid ${palette.chipBorder}`,
         color: accentColor || palette.textPrimary,
-        fontSize: "22px",
+        fontSize: '22px',
         fontWeight: 700,
-        letterSpacing: "0.12em",
+        letterSpacing: '0.12em',
       },
       children: label,
     },
@@ -376,12 +374,12 @@ function chip({ label, accentColor, palette }) {
 
 function topRow({ kindLabel, palette }) {
   return {
-    type: "div",
+    type: 'div',
     props: {
       style: {
-        display: "flex",
-        alignItems: "center",
-        width: "100%",
+        display: 'flex',
+        alignItems: 'center',
+        width: '100%',
       },
       children: [chip({ label: kindLabel, palette })],
     },
@@ -391,15 +389,15 @@ function topRow({ kindLabel, palette }) {
 function bottomRow({ period, host, name, palette }) {
   const wordmarkChildren = [
     {
-      type: "div",
+      type: 'div',
       props: {
         style: {
-          width: "10px",
-          height: "10px",
-          borderRadius: "5px",
+          width: '10px',
+          height: '10px',
+          borderRadius: '5px',
           backgroundColor: palette.brandPrimary,
-          marginRight: "12px",
-          display: "flex",
+          marginRight: '12px',
+          display: 'flex',
         },
       },
     },
@@ -407,13 +405,13 @@ function bottomRow({ period, host, name, palette }) {
   ];
   if (host) {
     wordmarkChildren.push({
-      type: "div",
+      type: 'div',
       props: {
         style: {
           color: palette.textSecondary,
           fontWeight: 400,
-          marginLeft: "12px",
-          display: "flex",
+          marginLeft: '12px',
+          display: 'flex',
         },
         children: host,
       },
@@ -422,40 +420,40 @@ function bottomRow({ period, host, name, palette }) {
 
   const right = period
     ? {
-        type: "div",
+        type: 'div',
         props: {
           style: {
-            display: "flex",
-            fontSize: "22px",
+            display: 'flex',
+            fontSize: '22px',
             color: palette.textSecondary,
             fontWeight: 600,
-            letterSpacing: "0.02em",
+            letterSpacing: '0.02em',
           },
           children: period,
         },
       }
-    : { type: "div", props: { style: { display: "flex" }, children: "" } };
+    : { type: 'div', props: { style: { display: 'flex' }, children: '' } };
 
   return {
-    type: "div",
+    type: 'div',
     props: {
       style: {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        width: "100%",
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
       },
       children: [
         {
-          type: "div",
+          type: 'div',
           props: {
             style: {
-              display: "flex",
-              alignItems: "center",
-              fontSize: "26px",
+              display: 'flex',
+              alignItems: 'center',
+              fontSize: '26px',
               fontWeight: 700,
               color: palette.textPrimary,
-              letterSpacing: "0.04em",
+              letterSpacing: '0.04em',
             },
             children: wordmarkChildren,
           },
@@ -473,59 +471,59 @@ function card({ kindLabel, eyebrow, title, period, palette }) {
     ...decorativeLayer(palette),
     {
       // Foreground content column
-      type: "div",
+      type: 'div',
       props: {
         style: {
-          position: "relative",
-          width: "1100px",
-          height: "486px",
-          marginLeft: "60px",
-          marginRight: "40px",
-          marginTop: "72px",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
+          position: 'relative',
+          width: '1100px',
+          height: '486px',
+          marginLeft: '60px',
+          marginRight: '40px',
+          marginTop: '72px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
           color: palette.textPrimary,
         },
         children: [
           topRow({ kindLabel, palette }),
           {
-            type: "div",
+            type: 'div',
             props: {
               style: {
-                display: "flex",
-                flexDirection: "column",
-                maxWidth: "1056px",
+                display: 'flex',
+                flexDirection: 'column',
+                maxWidth: '1056px',
               },
               children: [
                 eyebrow
                   ? {
-                      type: "div",
+                      type: 'div',
                       props: {
                         style: {
-                          display: "flex",
-                          fontSize: "26px",
+                          display: 'flex',
+                          fontSize: '26px',
                           fontWeight: 600,
                           color: palette.brandPrimary,
-                          letterSpacing: "0.06em",
-                          marginBottom: "18px",
+                          letterSpacing: '0.06em',
+                          marginBottom: '18px',
                         },
                         children: eyebrow,
                       },
                     }
-                  : { type: "div", props: { style: { display: "flex" }, children: "" } },
+                  : { type: 'div', props: { style: { display: 'flex' }, children: '' } },
                 {
-                  type: "div",
+                  type: 'div',
                   props: {
                     style: {
-                      display: "-webkit-box",
-                      WebkitBoxOrient: "vertical",
+                      display: '-webkit-box',
+                      WebkitBoxOrient: 'vertical',
                       WebkitLineClamp: 4,
-                      overflow: "hidden",
+                      overflow: 'hidden',
                       fontSize: titleSizeFor(title),
                       fontWeight: 700,
                       lineHeight: 1.12,
-                      letterSpacing: "-0.015em",
+                      letterSpacing: '-0.015em',
                       color: palette.textPrimary,
                     },
                     children: title,
@@ -541,16 +539,16 @@ function card({ kindLabel, eyebrow, title, period, palette }) {
   ];
 
   return {
-    type: "div",
+    type: 'div',
     props: {
       style: {
-        position: "relative",
-        width: "1200px",
-        height: "630px",
+        position: 'relative',
+        width: '1200px',
+        height: '630px',
         background: `linear-gradient(135deg, ${palette.bgFrom} 0%, ${palette.bgVia} 50%, ${palette.bgTo} 100%)`,
-        fontFamily: "Inter",
-        display: "flex",
-        overflow: "hidden",
+        fontFamily: 'Inter',
+        display: 'flex',
+        overflow: 'hidden',
       },
       children,
     },
@@ -569,33 +567,29 @@ async function renderPng(model) {
     height: 630,
     fonts,
   });
-  return new resvg.Resvg(svg, { fitTo: { mode: "width", value: 1200 } })
-    .render()
-    .asPng();
+  return new resvg.Resvg(svg, { fitTo: { mode: 'width', value: 1200 } }).render().asPng();
 }
 
 function isObjectId(s) {
-  return typeof s === "string" && mongoose.isValidObjectId(s);
+  return typeof s === 'string' && mongoose.isValidObjectId(s);
 }
 
 function authorityEyebrow(ballot) {
   // No `votingAuthority` field on the schema today; default to the
   // brand label until the field lands. See TRD §9 open-question 1.
-  const explicit =
-    ballot?.hydra?.ballot?.ekklesia?.votingAuthority ||
-    ballot?.votingAuthority;
-  const label = explicit ? String(explicit) : "EKKLESIA VOTE";
+  const explicit = ballot?.hydra?.ballot?.ekklesia?.votingAuthority || ballot?.votingAuthority;
+  const label = explicit ? String(explicit) : 'EKKLESIA VOTE';
   return label.toUpperCase();
 }
 
 function send503(res, err) {
   console.warn(`og image: setup error — ${err?.message || err}`);
   res.status(503).json({
-    error: "OG image rendering not available",
+    error: 'OG image rendering not available',
     detail:
-      "OG_CARDS_ENABLED is set but the renderer or its fonts could not be loaded. " +
-      "Install `satori` and `@resvg/resvg-js`, and place Inter-Regular.ttf / Inter-Bold.ttf " +
-      "under assets/og/ (or set OG_FONT_REGULAR / OG_FONT_BOLD).",
+      'OG_CARDS_ENABLED is set but the renderer or its fonts could not be loaded. ' +
+      'Install `satori` and `@resvg/resvg-js`, and place Inter-Regular.ttf / Inter-Bold.ttf ' +
+      'under assets/og/ (or set OG_FONT_REGULAR / OG_FONT_BOLD).',
   });
 }
 
@@ -613,9 +607,9 @@ export async function ogBallotImage(req, res, next) {
     if (!png) {
       try {
         png = await renderPng({
-          kindLabel: "BALLOT",
+          kindLabel: 'BALLOT',
           eyebrow: authorityEyebrow(ballot),
-          title: String(ballot.title || "Untitled ballot"),
+          title: String(ballot.title || 'Untitled ballot'),
           period: periodLabel(ballot),
         });
       } catch (err) {
@@ -625,8 +619,8 @@ export async function ogBallotImage(req, res, next) {
     }
 
     res.set({
-      "Content-Type": "image/png",
-      "Cache-Control": "public, max-age=86400, immutable",
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=86400, immutable',
       ETag: `"${cacheKey}"`,
     });
     res.send(png);
@@ -641,24 +635,20 @@ export async function ogProposalImage(req, res, next) {
     if (!isObjectId(proposalId)) return next();
     const proposal = await Proposal.findById(proposalId).lean();
     if (!proposal) return next();
-    const ballot = proposal.ballotId
-      ? await Ballot.findById(proposal.ballotId).lean()
-      : null;
+    const ballot = proposal.ballotId ? await Ballot.findById(proposal.ballotId).lean() : null;
 
-    const ts = proposal.updatedAt
-      ? new Date(proposal.updatedAt).getTime()
-      : 0;
+    const ts = proposal.updatedAt ? new Date(proposal.updatedAt).getTime() : 0;
     const v = rendererVersion();
     const cacheKey = `p-v${v}-${proposalId}-${ts}`;
     let png = pngCacheGet(cacheKey);
     if (!png) {
       try {
         png = await renderPng({
-          kindLabel: "PROPOSAL",
+          kindLabel: 'PROPOSAL',
           eyebrow: ballot?.title
             ? `PART OF — ${String(ballot.title).toUpperCase()}`
             : authorityEyebrow(ballot),
-          title: String(proposal.title || "Untitled proposal"),
+          title: String(proposal.title || 'Untitled proposal'),
           period: periodLabel(ballot),
         });
       } catch (err) {
@@ -668,8 +658,8 @@ export async function ogProposalImage(req, res, next) {
     }
 
     res.set({
-      "Content-Type": "image/png",
-      "Cache-Control": "public, max-age=86400, immutable",
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=86400, immutable',
       ETag: `"${cacheKey}"`,
     });
     res.send(png);

@@ -21,15 +21,15 @@
 // Integrators sending full witnesses continue to work — `normalizeWitness`
 // only derives fields that are missing.
 
-import cbor from "cbor";
-import blake from "blakejs";
+import cbor from 'cbor';
+import blake from 'blakejs';
 
 const cborDecode = cbor.decode || cbor.default?.decode;
 
 export class CoseWitnessError extends Error {
   constructor(message, { code } = {}) {
     super(message);
-    this.name = "CoseWitnessError";
+    this.name = 'CoseWitnessError';
     this.code = code;
   }
 }
@@ -39,9 +39,9 @@ export class CoseWitnessError extends Error {
  * `sig { keyHash }` entries of native scripts.
  */
 export function keyHashFromPublicKeyHex(publicKeyHex) {
-  if (!publicKeyHex) throw new CoseWitnessError("publicKeyHex required", { code: "BAD_INPUT" });
-  const bytes = Buffer.from(publicKeyHex, "hex");
-  return Buffer.from(blake.blake2b(bytes, null, 28)).toString("hex");
+  if (!publicKeyHex) throw new CoseWitnessError('publicKeyHex required', { code: 'BAD_INPUT' });
+  const bytes = Buffer.from(publicKeyHex, 'hex');
+  return Buffer.from(blake.blake2b(bytes, null, 28)).toString('hex');
 }
 
 /**
@@ -49,23 +49,23 @@ export function keyHashFromPublicKeyHex(publicKeyHex) {
  * COSE key is a CBOR map; the `-2` entry is the uncompressed pub-key bytes.
  */
 export function publicKeyFromCoseKey(coseKeyHex) {
-  if (!coseKeyHex) throw new CoseWitnessError("coseKeyHex required", { code: "BAD_INPUT" });
+  if (!coseKeyHex) throw new CoseWitnessError('coseKeyHex required', { code: 'BAD_INPUT' });
   let map;
   try {
-    map = cborDecode(Buffer.from(coseKeyHex, "hex"));
+    map = cborDecode(Buffer.from(coseKeyHex, 'hex'));
   } catch (err) {
     throw new CoseWitnessError(`coseKeyHex is not valid CBOR: ${err.message}`, {
-      code: "BAD_COSE_KEY",
+      code: 'BAD_COSE_KEY',
     });
   }
   // cbor.decode returns a Map for CBOR maps
   const pk = map instanceof Map ? map.get(-2) : map?.[-2];
   if (!pk) {
-    throw new CoseWitnessError("COSE key is missing the -2 (pub-key) field", {
-      code: "BAD_COSE_KEY",
+    throw new CoseWitnessError('COSE key is missing the -2 (pub-key) field', {
+      code: 'BAD_COSE_KEY',
     });
   }
-  return Buffer.from(pk).toString("hex");
+  return Buffer.from(pk).toString('hex');
 }
 
 /**
@@ -73,27 +73,27 @@ export function publicKeyFromCoseKey(coseKeyHex) {
  * COSE_Sign1 is a 4-element CBOR array: [protected, unprotected, payload, signature].
  */
 export function signatureFromCoseSign1(coseSign1Hex) {
-  if (!coseSign1Hex) throw new CoseWitnessError("coseSign1Hex required", { code: "BAD_INPUT" });
+  if (!coseSign1Hex) throw new CoseWitnessError('coseSign1Hex required', { code: 'BAD_INPUT' });
   let arr;
   try {
-    arr = cborDecode(Buffer.from(coseSign1Hex, "hex"));
+    arr = cborDecode(Buffer.from(coseSign1Hex, 'hex'));
   } catch (err) {
     throw new CoseWitnessError(`coseSign1Hex is not valid CBOR: ${err.message}`, {
-      code: "BAD_COSE_SIGN1",
+      code: 'BAD_COSE_SIGN1',
     });
   }
   if (!Array.isArray(arr) || arr.length < 4) {
-    throw new CoseWitnessError("COSE_Sign1 is not a 4-element array", {
-      code: "BAD_COSE_SIGN1",
+    throw new CoseWitnessError('COSE_Sign1 is not a 4-element array', {
+      code: 'BAD_COSE_SIGN1',
     });
   }
   const sig = arr[3];
   if (!sig) {
-    throw new CoseWitnessError("COSE_Sign1 signature element is empty", {
-      code: "BAD_COSE_SIGN1",
+    throw new CoseWitnessError('COSE_Sign1 signature element is empty', {
+      code: 'BAD_COSE_SIGN1',
     });
   }
-  return Buffer.from(sig).toString("hex");
+  return Buffer.from(sig).toString('hex');
 }
 
 /**
@@ -105,10 +105,11 @@ export function signatureFromCoseSign1(coseSign1Hex) {
  * @returns {{ coseSign1Hex, coseKeyHex, key, signature, publicKey }}
  */
 export function normalizeWitness(witness) {
-  if (!witness) throw new CoseWitnessError("witness required", { code: "BAD_INPUT" });
+  if (!witness) throw new CoseWitnessError('witness required', { code: 'BAD_INPUT' });
   const { coseSign1Hex, coseKeyHex } = witness;
-  if (!coseSign1Hex) throw new CoseWitnessError("witness.coseSign1Hex required", { code: "BAD_INPUT" });
-  if (!coseKeyHex) throw new CoseWitnessError("witness.coseKeyHex required", { code: "BAD_INPUT" });
+  if (!coseSign1Hex)
+    throw new CoseWitnessError('witness.coseSign1Hex required', { code: 'BAD_INPUT' });
+  if (!coseKeyHex) throw new CoseWitnessError('witness.coseKeyHex required', { code: 'BAD_INPUT' });
 
   const publicKey = witness.publicKey || publicKeyFromCoseKey(coseKeyHex);
   const signature = witness.signature || signatureFromCoseSign1(coseSign1Hex);

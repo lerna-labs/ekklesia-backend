@@ -8,24 +8,24 @@
 // See .claude/plans/jolly-copper-blakely.md for the design rationale.
 // See .claude/trds/ for the narrative TRD when delivered to frontend.
 
-import blake from "blakejs";
-import { Ballot } from "../../schema/Ballot.js";
-import { Result } from "../../schema/Result.js";
-import { Proposal } from "../../schema/Proposal.js";
-import { CertifiedSnapshot } from "../../schema/CertifiedSnapshot.js";
-import { canonicalBytes } from "../canonicalJson.js";
-import { forBallot } from "../hydraClient.js";
-import { deriveProposalTally } from "./hydraTally.js";
+import blake from 'blakejs';
+import { Ballot } from '../../schema/Ballot.js';
+import { Result } from '../../schema/Result.js';
+import { Proposal } from '../../schema/Proposal.js';
+import { CertifiedSnapshot } from '../../schema/CertifiedSnapshot.js';
+import { canonicalBytes } from '../canonicalJson.js';
+import { forBallot } from '../hydraClient.js';
+import { deriveProposalTally } from './hydraTally.js';
 
 function blake2b256Hex(bytes) {
-  return Buffer.from(blake.blake2b(bytes, null, 32)).toString("hex");
+  return Buffer.from(blake.blake2b(bytes, null, 32)).toString('hex');
 }
 
 export class CertifyError extends Error {
   constructor(message, { code, details } = {}) {
     super(message);
-    this.name = "CertifyError";
-    this.code = code || "CERTIFY_FAILED";
+    this.name = 'CertifyError';
+    this.code = code || 'CERTIFY_FAILED';
     this.details = details || null;
   }
 }
@@ -47,11 +47,11 @@ export function votersByUserIdFromSnapshot(snapshotVoters, auditFull) {
   const out = new Map();
   for (const row of snapshotVoters) {
     if (!row.eligible) continue;
-    const hrp = (hrpByVoter.get(row.voterId) || "").toLowerCase();
-    let voterGroup = "default";
-    if (hrp === "drep") voterGroup = "drep";
-    else if (hrp === "pool" || hrp === "calidus") voterGroup = "pool";
-    else if (hrp === "stake" || hrp === "stake_test") voterGroup = "stake";
+    const hrp = (hrpByVoter.get(row.voterId) || '').toLowerCase();
+    let voterGroup = 'default';
+    if (hrp === 'drep') voterGroup = 'drep';
+    else if (hrp === 'pool' || hrp === 'calidus') voterGroup = 'pool';
+    else if (hrp === 'stake' || hrp === 'stake_test') voterGroup = 'stake';
     // votingPower stored as a lovelace string in the snapshot; helpers
     // expect a number. Downgrade via Number() — safe up to 2^53 lovelace
     // (~9e15) which is >> total Cardano supply. BigInt everywhere would
@@ -70,27 +70,24 @@ export function votersByUserIdFromSnapshot(snapshotVoters, auditFull) {
  * Ingest validation. Returns on success; throws CertifyError on failure.
  */
 export function validatePayload(payload, ballotId) {
-  if (!payload || typeof payload !== "object") {
-    throw new CertifyError("Missing certification payload", {
-      code: "PAYLOAD_REQUIRED",
+  if (!payload || typeof payload !== 'object') {
+    throw new CertifyError('Missing certification payload', {
+      code: 'PAYLOAD_REQUIRED',
     });
   }
   const { snapshot, narrative } = payload;
   if (!snapshot && !narrative) {
-    throw new CertifyError(
-      "Must include `snapshot` and/or `narrative`",
-      { code: "PAYLOAD_EMPTY" }
-    );
+    throw new CertifyError('Must include `snapshot` and/or `narrative`', { code: 'PAYLOAD_EMPTY' });
   }
   if (narrative) {
-    if (typeof narrative.url !== "string" || !narrative.url) {
-      throw new CertifyError("narrative.url is required when narrative is set", {
-        code: "NARRATIVE_URL_REQUIRED",
+    if (typeof narrative.url !== 'string' || !narrative.url) {
+      throw new CertifyError('narrative.url is required when narrative is set', {
+        code: 'NARRATIVE_URL_REQUIRED',
       });
     }
-    if (typeof narrative.label !== "string" || !narrative.label) {
-      throw new CertifyError("narrative.label is required when narrative is set", {
-        code: "NARRATIVE_LABEL_REQUIRED",
+    if (typeof narrative.label !== 'string' || !narrative.label) {
+      throw new CertifyError('narrative.label is required when narrative is set', {
+        code: 'NARRATIVE_LABEL_REQUIRED',
       });
     }
   }
@@ -98,36 +95,35 @@ export function validatePayload(payload, ballotId) {
   if (snapshot.ballotId && String(snapshot.ballotId) !== String(ballotId)) {
     throw new CertifyError(
       `Snapshot.ballotId (${snapshot.ballotId}) does not match path (${ballotId})`,
-      { code: "BALLOT_ID_MISMATCH" }
+      { code: 'BALLOT_ID_MISMATCH' },
     );
   }
   if (!Array.isArray(snapshot.voters)) {
-    throw new CertifyError("snapshot.voters must be an array", {
-      code: "VOTERS_MISSING",
+    throw new CertifyError('snapshot.voters must be an array', {
+      code: 'VOTERS_MISSING',
     });
   }
   for (const [i, v] of snapshot.voters.entries()) {
-    if (!v || typeof v !== "object") {
+    if (!v || typeof v !== 'object') {
       throw new CertifyError(`snapshot.voters[${i}] is not an object`, {
-        code: "VOTER_SHAPE",
+        code: 'VOTER_SHAPE',
       });
     }
-    if (typeof v.voterId !== "string" || !v.voterId) {
+    if (typeof v.voterId !== 'string' || !v.voterId) {
       throw new CertifyError(`snapshot.voters[${i}].voterId missing`, {
-        code: "VOTER_ID_MISSING",
+        code: 'VOTER_ID_MISSING',
       });
     }
-    if (typeof v.votingPower !== "string") {
+    if (typeof v.votingPower !== 'string') {
       throw new CertifyError(
         `snapshot.voters[${i}].votingPower must be a decimal string (BigInt-safe)`,
-        { code: "VOTER_POWER_SHAPE" }
+        { code: 'VOTER_POWER_SHAPE' },
       );
     }
-    if (typeof v.eligible !== "boolean") {
-      throw new CertifyError(
-        `snapshot.voters[${i}].eligible must be a boolean`,
-        { code: "VOTER_ELIGIBLE_SHAPE" }
-      );
+    if (typeof v.eligible !== 'boolean') {
+      throw new CertifyError(`snapshot.voters[${i}].eligible must be a boolean`, {
+        code: 'VOTER_ELIGIBLE_SHAPE',
+      });
     }
   }
 }
@@ -152,13 +148,10 @@ export function assertSnapshotCoverage(snapshot, auditFull) {
     }
   }
   if (missing.length > 0) {
-    throw new CertifyError(
-      "Snapshot is missing voters present in Hydra evidence",
-      {
-        code: "SNAPSHOT_COVERAGE_INCOMPLETE",
-        details: { missingVoterIds: missing.slice(0, MISSING_CAP) },
-      }
-    );
+    throw new CertifyError('Snapshot is missing voters present in Hydra evidence', {
+      code: 'SNAPSHOT_COVERAGE_INCOMPLETE',
+      details: { missingVoterIds: missing.slice(0, MISSING_CAP) },
+    });
   }
 }
 
@@ -178,7 +171,7 @@ export function assertSnapshotCoverage(snapshot, auditFull) {
 export async function certifyBallot({
   ballotId,
   submittedBy,
-  source = "api",
+  source = 'api',
   chainTxHash = null,
   payload,
 }) {
@@ -187,7 +180,7 @@ export async function certifyBallot({
   const ballot = await Ballot.findById(ballotId).lean();
   if (!ballot) {
     throw new CertifyError(`Ballot ${ballotId} not found`, {
-      code: "BALLOT_NOT_FOUND",
+      code: 'BALLOT_NOT_FOUND',
     });
   }
 
@@ -204,9 +197,7 @@ export async function certifyBallot({
   const payloadBytes = canonicalBytes(canonicalPayload);
   const payloadHash = blake2b256Hex(payloadBytes);
 
-  const latest = await CertifiedSnapshot.findOne({ ballotId })
-    .sort({ version: -1 })
-    .lean();
+  const latest = await CertifiedSnapshot.findOne({ ballotId }).sort({ version: -1 }).lean();
   if (latest && latest.snapshotHash === payloadHash) {
     return {
       version: latest.version,
@@ -244,7 +235,7 @@ export async function certifyBallot({
           // "certified", so the "active certification" pointer only
           // advances on full snapshot ingests.
         },
-      }
+      },
     );
     return {
       version: nextVersion,
@@ -264,7 +255,7 @@ export async function certifyBallot({
   } catch (err) {
     throw new CertifyError(
       `Failed to fetch /audit/full for ballot — staging may have been archived: ${err.message}`,
-      { code: "AUDIT_FETCH_FAILED" }
+      { code: 'AUDIT_FETCH_FAILED' },
     );
   }
   assertSnapshotCoverage(snapshot, auditFull);
@@ -292,8 +283,7 @@ export async function certifyBallot({
     snapshotUrl: snapshotUrl || null,
     snapshotHash: payloadHash,
     narrativeOnly: false,
-    snapshotEpoch:
-      typeof snapshot.snapshotEpoch === "number" ? snapshot.snapshotEpoch : null,
+    snapshotEpoch: typeof snapshot.snapshotEpoch === 'number' ? snapshot.snapshotEpoch : null,
     voters: snapshot.voters,
     derivedPerProposal,
     narrative: narrative || null,
@@ -308,7 +298,7 @@ export async function certifyBallot({
       { proposalId: proposal._id },
       {
         $set: {
-          source: "certified",
+          source: 'certified',
           certifiedSnapshotId: snapshotDoc._id,
           certifiedVersion: nextVersion,
           certifiedAt,
@@ -324,7 +314,7 @@ export async function certifyBallot({
           proposalParticipation: tally.proposalParticipation,
         },
       },
-      { upsert: true }
+      { upsert: true },
     );
     proposalsUpdated += 1;
   }
@@ -336,7 +326,7 @@ export async function certifyBallot({
         currentCertifiedVersion: nextVersion,
         ...(narrative ? { authorityNarrative: narrative } : {}),
       },
-    }
+    },
   );
 
   return {

@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -29,7 +29,7 @@ const userCacheSchema = new Schema(
     ballotId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: "Ballot",
+      ref: 'Ballot',
     },
     userId: {
       type: String,
@@ -45,8 +45,8 @@ const userCacheSchema = new Schema(
     },
     voterGroup: {
       type: String,
-      enum: ["drep", "pool", "stake"],
-      default: "stake",
+      enum: ['drep', 'pool', 'stake'],
+      default: 'stake',
     },
     // Last committed Hydra voter-token nonce. Reserved optimistically during
     // draft creation and committed on Hydra acceptance; cleared/rolled back on
@@ -59,7 +59,7 @@ const userCacheSchema = new Schema(
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
     versionKey: false, // Remove __v field from documents
-  }
+  },
 );
 
 // Indexes for faster queries
@@ -67,6 +67,5 @@ userCacheSchema.index({ userId: 1 });
 userCacheSchema.index({ ballotId: 1 });
 userCacheSchema.index({ ballotId: 1, voterGroup: 1 });
 
-
-const UserCache = mongoose.model("UserCache", userCacheSchema);
+const UserCache = mongoose.model('UserCache', userCacheSchema);
 export { UserCache };
