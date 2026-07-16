@@ -61,3 +61,25 @@ jobs:
       - run: npm ci
 
       - run: npm audit --omit=dev --audit-level=critical
+
+  changelog:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.base_ref == 'development' &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-changeset')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm ci
+
+      - run: npx changeset status --since=origin/${{ github.base_ref }}
