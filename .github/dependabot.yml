@@ -17,10 +17,7 @@ updates:
       interval: 'weekly'
     target-branch: 'development'
     cooldown:
-      default-days: 3
-      semver-patch-days: 3
-      semver-minor-days: 7
-      semver-major-days: 14
+      default-days: 7
 
   - package-ecosystem: 'docker'
     directory: '/'
@@ -28,7 +25,4 @@ updates:
       interval: 'weekly'
     target-branch: 'development'
     cooldown:
-      default-days: 3
-      semver-patch-days: 3
-      semver-minor-days: 7
-      semver-major-days: 14
+      default-days: 7
