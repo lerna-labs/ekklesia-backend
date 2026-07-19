@@ -1,15 +1,16 @@
 // imports
-import validator from "validator";
+import validator from 'validator';
 
 // schema imports
-import { Ballot } from "../schema/Ballot.js";
-import { Proposal } from "../schema/Proposal.js";
-import { Transaction } from "../schema/Transaction.js";
+import { Ballot } from '../schema/Ballot.js';
+import { Proposal } from '../schema/Proposal.js';
+import { Transaction } from '../schema/Transaction.js';
 
 // helper imports
-import { verifyToken } from "../helper/verifyToken.js";
-import { validateAddress } from "../helper/validateAddress.js";
-import { PublicKey } from "@emurgo/cardano-serialization-lib-nodejs";
+import { verifyToken } from '../helper/verifyToken.js';
+import { validateAddress, getAddressType } from '../helper/validateAddress.js';
+import { resolveBallot, resolveProposal } from '../helper/idResolver.js';
+import { PublicKey } from '@emurgo/cardano-serialization-lib-nodejs';
 
 /**
  * Middleware to verify user authentication token
@@ -33,9 +34,9 @@ import { PublicKey } from "@emurgo/cardano-serialization-lib-nodejs";
 export function isAuthenticated(req, res, next) {
   try {
     const voterToken = verifyToken(req);
-    if (voterToken.status === "error") {
+    if (voterToken.status === 'error') {
       return res.status(voterToken.code).json({
-        status: "error",
+        status: 'error',
         message: voterToken.message,
       });
     } else {
@@ -46,8 +47,8 @@ export function isAuthenticated(req, res, next) {
     }
   } catch (error) {
     return res.status(500).json({
-      status: "error",
-      message: "Internal Server Error",
+      status: 'error',
+      message: 'Internal Server Error',
     });
   }
 }
@@ -76,8 +77,8 @@ export async function getTransaction(req, res, next) {
   // check if transactionId is a valid mongo id
   if (!transactionId && !validator.isMongoId(transactionId)) {
     return res.status(400).json({
-      status: "error",
-      message: "Invalid Transaction ID",
+      status: 'error',
+      message: 'Invalid Transaction ID',
     });
   }
 
@@ -89,8 +90,8 @@ export async function getTransaction(req, res, next) {
     });
     if (!transaction) {
       return res.status(404).json({
-        status: "error",
-        message: "Transaction not found",
+        status: 'error',
+        message: 'Transaction not found',
       });
     }
     req.transaction = transaction;
@@ -99,8 +100,8 @@ export async function getTransaction(req, res, next) {
     next();
   } catch (error) {
     return res.status(500).json({
-      status: "error",
-      message: "Internal Server Error",
+      status: 'error',
+      message: 'Internal Server Error',
     });
   }
 }
@@ -126,52 +127,54 @@ export async function getTransaction(req, res, next) {
  * - req.ballotId: The validated ballot ID
  */
 export async function getBallot(req, res, next) {
-  // get ballotId from request
+  // The ID param can be either the canonical Mongo `_id` or the
+  // upstream `proposalSource.externalBallotId` set by the proposals
+  // module at import time. `resolveBallot` handles both and reports
+  // ambiguity for the rare cross-module collision case.
   const ballotId = req.params.ballotId;
-  if (!ballotId) {
+  if (!ballotId || typeof ballotId !== 'string' || ballotId.length > 128) {
     return res.status(400).json({
-      status: "error",
-      message: "Ballot ID is required",
+      status: 'error',
+      message: 'Ballot ID is required',
     });
   }
 
-  if (ballotId) {
-    // check if ballotId is a valid mongo id
-    if (!validator.isMongoId(ballotId)) {
-      return res.status(400).json({
-        status: "error",
-        message: "Invalid Ballot ID",
+  try {
+    const result = await resolveBallot(ballotId, {
+      lean: false, // callers (e.g. /api/v0/ballots/:id) do .toObject()
+      selectFields:
+        '_id title description votePeriodStart votePeriodEnd voterType ' +
+        'voteWeighted voterValidationScript voteFilters status source ' +
+        'facets proposalSource votingPowerSource proposalPeriodStart ' +
+        'proposalPeriodEnd voteAuthorityId ipfsHash hydraEndpoint ' +
+        'hydraHeadId hydraHeadStatus ballotCid instancePolicyId ' +
+        'provisionalResultsEnabled',
+    });
+
+    if (!result) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Ballot not found',
+      });
+    }
+    if (result.ambiguous) {
+      return res.status(409).json({
+        status: 'error',
+        code: 'ID_COLLISION',
+        message: 'External ballot id matches multiple ballots; use the canonical _id',
+        candidates: result.ambiguous,
       });
     }
 
-    // find ballot in database
-    try {
-      let ballot = await Ballot.findOne({
-        _id: ballotId,
-      }).select(
-        "_id title description votePeriodStart votePeriodEnd voterType " +
-        "voteWeighted voterValidationScript voteFilters status source " +
-        "facets proposalSource votingPowerSource proposalPeriodStart " +
-        "proposalPeriodEnd voteAuthorityId ipfsHash hydraEndpoint " +
-        "hydraHeadId hydraHeadStatus ballotCid instancePolicyId " +
-        "provisionalResultsEnabled"
-      );
-      if (!ballot) {
-        return res.status(404).json({
-          status: "error",
-          message: "Ballot not found",
-        });
-      }
-
-      req.ballot = ballot;
-      req.ballotId = ballotId;
-      return next();
-    } catch (error) {
-      return res.status(500).json({
-        status: "error",
-        message: "Internal Server Error",
-      });
-    }
+    req.ballot = result.doc;
+    req.ballotId = String(result.doc._id);
+    req.ballotResolvedFrom = result.source; // 'internal' | 'external'
+    return next();
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal Server Error',
+    });
   }
 }
 
@@ -195,45 +198,50 @@ export async function getBallot(req, res, next) {
  * - req.proposalId: The validated proposal ID
  */
 export async function getProposal(req, res, next) {
-  const { proposalId } = req.params;
-  // Check if proposalId is provided
-  if (!proposalId) {
+  const { proposalId, ballotId } = req.params;
+  // The ID param can be either the canonical Mongo `_id` or the
+  // upstream `externalProposal.id` set by the proposals module at
+  // import time. When the path also carries `:ballotId`, the lookup
+  // is scoped to that parent — the only realistic external-id
+  // collision path (same upstream id reused across ballots).
+  if (!proposalId || typeof proposalId !== 'string' || proposalId.length > 128) {
     return res.status(400).json({
-      status: "error",
-      message: "Proposal ID is required",
-    });
-  }
-  // Validate the proposalId format
-  if (!validator.isAlphanumeric(proposalId)) {
-    return res.status(400).json({
-      status: "error",
-      message: "Invalid proposal ID format",
+      status: 'error',
+      message: 'Proposal ID is required',
     });
   }
 
-  // check length of proposalId
-  if (proposalId.length !== 24) {
-    return res.status(400).json({
-      status: "error",
-      message: "Invalid proposal ID length",
+  try {
+    const result = await resolveProposal(proposalId, {
+      ballotId, // may be undefined; resolver ignores when so
+      lean: false,
+    });
+
+    if (!result) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Proposal not found',
+      });
+    }
+    if (result.ambiguous) {
+      return res.status(409).json({
+        status: 'error',
+        code: 'ID_COLLISION',
+        message: 'External proposal id matches multiple proposals; use the canonical _id',
+        candidates: result.ambiguous,
+      });
+    }
+
+    req.proposal = result.doc.toObject();
+    req.proposalId = result.doc._id;
+    req.proposalResolvedFrom = result.source; // 'internal' | 'external'
+    return next();
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal Server Error',
     });
   }
-
-  // get proposalData from the database
-  const proposalData = await Proposal.findOne({ _id: proposalId });
-  if (!proposalData) {
-    return res.status(404).json({
-      status: "error",
-      message: "Proposal not found",
-    });
-  }
-  // Check if the proposalId is a valid ObjectId
-
-  // store the proposalId in the request object for later use
-  req.proposal = proposalData.toObject();
-  req.proposalId = proposalData._id;
-
-  next();
 }
 
 /**
@@ -263,28 +271,87 @@ export function validateSessionRequest(req, res, next) {
   // Check if signerAddress exists in the request
   if (!signerAddress) {
     return res.status(400).json({
-      status: "error",
-      message: "Missing signerAddress in request body",
+      status: 'error',
+      message: 'Missing signerAddress in request body',
     });
   }
 
   // Check if signType exists in the request
   if (!signType) {
     return res.status(400).json({
-      status: "error",
-      message: "Missing signType in request body",
+      status: 'error',
+      message: 'Missing signType in request body',
     });
   }
 
-  // Payment-address logins are blocked at the session layer — the
-  // Hydra role space contracted to drep / pool / stake. Voters with
-  // an addr1... / addr_test1... must register via their stake
-  // credential instead.
-  if (signType === "addr" || signType === "addr_test") {
+  // Multisig / script path. When the body carries a scriptAddress the
+  // session identity is the script itself, and membership is settled
+  // downstream by isPartyToScript — it hashes the COSE signing key and
+  // checks it against the script's keyHashes. The signer's wrapper
+  // credential is therefore irrelevant: we cannot dictate how a multisig
+  // member's CIP-30 wallet is configured, and it may present a payment
+  // (addr...), stake, or drep address. So we skip the signType/HRP gate
+  // (and the payment-address block below) that the standalone path
+  // enforces, and let the signing key's hash speak for itself.
+  //
+  // A native script has a single hash that can be wrapped as either a
+  // drep_script or a stake_script credential, and both are valid multisig
+  // identities (drep-group vs stake-group voter). We derive the session
+  // signType from the script address's own credential kind so the voter is
+  // evaluated against the matching group. Pool credentials are always
+  // key-based, so only drep/stake script wrappers are accepted.
+  const scriptAddress = req.body?.scriptAddress;
+  if (typeof scriptAddress === 'string' && scriptAddress.trim()) {
+    const trimmedScript = scriptAddress.trim();
+    const scriptParts = getAddressType(trimmedScript);
+    if (
+      scriptParts.error ||
+      scriptParts.hashType !== 'script' ||
+      (scriptParts.type !== 'drep' && scriptParts.type !== 'stake')
+    ) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'scriptAddress must be a drep or stake script (multisig) address.',
+      });
+    }
+    // Stake scripts encode the network in their header byte, so a
+    // wrong-network address is detectable up front with a clear message —
+    // far better than letting it fail later as an opaque "not found". (A
+    // drep_script carries no network byte; those surface at verify time
+    // when the script can't be resolved on our network.)
+    const expectedNetwork = Number.parseInt(process.env.NETWORK_ID ?? '', 10);
+    if (
+      scriptParts.type === 'stake' &&
+      Number.isInteger(expectedNetwork) &&
+      Number.isInteger(scriptParts.networkId) &&
+      scriptParts.networkId !== expectedNetwork
+    ) {
+      return res.status(400).json({
+        status: 'error',
+        message:
+          `scriptAddress is for the wrong network (address network id ` +
+          `${scriptParts.networkId}, this service expects ${expectedNetwork}).`,
+      });
+    }
+    req.isScript = true;
+    req.signType = scriptParts.type;
+    req.signerAddress = signerAddress.trim();
+    req.addressBech32 = trimmedScript;
+    return next();
+  }
+
+  // Payment-address logins are blocked on the standalone path — the
+  // Hydra role space contracted to drep / pool / stake. A standalone
+  // voter's identity is their stake credential, so admitting an
+  // addr1... / addr_test1... would mint a second identity for the same
+  // wallet. (Payment addresses ARE accepted on the multisig path above,
+  // where identity is the script and the payment key only proves
+  // membership.)
+  if (signType === 'addr' || signType === 'addr_test') {
     return res.status(400).json({
-      status: "error",
+      status: 'error',
       message:
-        "Payment addresses are not accepted. Use your stake credential (stake1... or stake_test1...) or one of: drep, pool.",
+        'Payment addresses are not accepted. Use your stake credential (stake1... or stake_test1...) or one of: drep, pool.',
     });
   }
 
@@ -293,21 +360,21 @@ export function validateSessionRequest(req, res, next) {
   // console.log("Address validation in validateSessionRequest MW", addressBech32);
   if (addressBech32.error) {
     return res.status(400).json({
-      status: "error",
+      status: 'error',
       message: addressBech32.error,
     });
   }
 
   // check if address is drep id and if not cip129, throw error
   if (
-    signerAddress.startsWith("drep") &&
+    signerAddress.startsWith('drep') &&
     addressBech32.cip129 &&
     addressBech32.cip129 != signerAddress.trim()
   ) {
-    console.log("MW: Not a CIP129 Address", addressBech32);
+    console.log('MW: Not a CIP129 Address', addressBech32);
     return res.status(400).json({
-      status: "error",
-      message: "Please use a CIP129 address",
+      status: 'error',
+      message: 'Please use a CIP129 address',
     });
   }
 
@@ -318,10 +385,10 @@ export function validateSessionRequest(req, res, next) {
   }
 
   // converting drep PubKey to hex or whatever
-  if (signerAddress.length === 64 && signType === "drep") {
+  if (signerAddress.length === 64 && signType === 'drep') {
     const pubkey = PublicKey.from_hex(signerAddress);
     let keyhash = pubkey.hash();
-    const keyHashHex = Buffer.from(keyhash.to_bytes()).toString("hex");
+    const keyHashHex = Buffer.from(keyhash.to_bytes()).toString('hex');
     signerAddress = keyHashHex;
   }
 

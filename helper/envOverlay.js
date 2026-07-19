@@ -7,12 +7,12 @@
 //   .env.development  (written by the docs docker-compose at container start)
 //   .env.local        (host-owned, user-editable, optional)
 
-import { existsSync } from "fs";
-import path from "path";
-import dotenv from "dotenv";
+import { existsSync } from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
 
 export function loadLocalOverrides(rootDir) {
-  const p = path.join(rootDir, ".env.local");
+  const p = path.join(rootDir, '.env.local');
   if (!existsSync(p)) return { loaded: false, path: p };
   const result = dotenv.config({ path: p, override: true });
   if (result.error) {

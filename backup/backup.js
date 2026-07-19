@@ -1,8 +1,8 @@
-import { exec } from "child_process";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-import { loadEnvironmentVariables } from "../helper/envLoader.js";
+import { exec } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { loadEnvironmentVariables } from '../helper/envLoader.js';
 
 // Get directory name
 const __filename = fileURLToPath(import.meta.url);
@@ -11,31 +11,31 @@ const __dirname = path.dirname(__filename);
 // Load environment variables
 try {
   // Load from project root (one directory up from backup folder)
-  loadEnvironmentVariables(path.resolve(__dirname, ".."));
+  loadEnvironmentVariables(path.resolve(__dirname, '..'));
 } catch (error) {
   console.error(`Error loading environment variables: ${error.message}`);
   process.exit(1);
 }
 
 // Get NODE_ENV for backup naming
-const NODE_ENV = process.env.NODE_ENV || "development";
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // MongoDB connection details from environment variables
-const host = process.env.MONGODB_HOST || "localhost";
-const port = process.env.MONGODB_PORT || "27017";
+const host = process.env.MONGODB_HOST || 'localhost';
+const port = process.env.MONGODB_PORT || '27017';
 const database = process.env.MONGODB_DATABASE;
 const username = process.env.MONGODB_USERNAME;
 const password = process.env.MONGODB_PASSWORD;
-const authSource = process.env.MONGODB_AUTH_SOURCE || "admin";
+const authSource = process.env.MONGODB_AUTH_SOURCE || 'admin';
 
 // Validate required environment variables
 if (!database) {
-  console.error("Error: MONGODB_DATABASE environment variable is required");
+  console.error('Error: MONGODB_DATABASE environment variable is required');
   process.exit(1);
 }
 
 // Backup directory
-const backupDir = path.join(__dirname, "../backup/data/");
+const backupDir = path.join(__dirname, '../backup/data/');
 
 // Create backup directory if it doesn't exist
 if (!fs.existsSync(backupDir)) {
@@ -44,7 +44,7 @@ if (!fs.existsSync(backupDir)) {
 
 // Function to delete old backups (older than 30 days)
 function deleteOldBackups() {
-  console.log("Checking for old backups to delete...");
+  console.log('Checking for old backups to delete...');
 
   const files = fs.readdirSync(backupDir);
   const now = new Date();
@@ -78,11 +78,9 @@ function deleteOldBackups() {
 
   if (deletedCount > 0) {
     const totalSizeMB = (deletedSize / (1024 * 1024)).toFixed(2);
-    console.log(
-      `Deleted ${deletedCount} old backups (${totalSizeMB} MB freed)`
-    );
+    console.log(`Deleted ${deletedCount} old backups (${totalSizeMB} MB freed)`);
   } else {
-    console.log("No old backups to delete");
+    console.log('No old backups to delete');
   }
 }
 
@@ -90,7 +88,7 @@ function deleteOldBackups() {
 deleteOldBackups();
 
 // Timestamp for backup filename
-const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 const backupPath = path.join(backupDir, `${database}-${NODE_ENV}-${timestamp}`);
 
 // Build the mongodump command
@@ -115,7 +113,7 @@ exec(mongodumpCmd, (error, stdout, stderr) => {
     return;
   }
 
-  if (stderr && !stderr.includes("done")) {
+  if (stderr && !stderr.includes('done')) {
     console.error(`MongoDB stderr: ${stderr}`);
   }
 
@@ -125,7 +123,7 @@ exec(mongodumpCmd, (error, stdout, stderr) => {
   // Create a compressed archive of the backup
   const archivePath = `${backupPath}.tar.gz`;
   const compressCmd = `tar -czf ${archivePath} -C ${path.dirname(
-    backupPath
+    backupPath,
   )} ${path.basename(backupPath)}`;
 
   console.log(`Compressing backup to: ${archivePath}`);

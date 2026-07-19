@@ -43,8 +43,7 @@ function unweightedStats(values) {
   const sorted = [...values].sort((a, b) => a - b);
   const sum = sorted.reduce((s, v) => s + v, 0);
   const mean = sum / sorted.length;
-  const variance =
-    sorted.reduce((s, v) => s + (v - mean) ** 2, 0) / sorted.length;
+  const variance = sorted.reduce((s, v) => s + (v - mean) ** 2, 0) / sorted.length;
   return {
     count: sorted.length,
     mean,
@@ -71,8 +70,7 @@ function weightedStats(samples) {
 
   const weightedSum = sorted.reduce((s, x) => s + x.value * x.weight, 0);
   const mean = weightedSum / totalWeight;
-  const variance =
-    sorted.reduce((s, x) => s + x.weight * (x.value - mean) ** 2, 0) / totalWeight;
+  const variance = sorted.reduce((s, x) => s + x.weight * (x.value - mean) ** 2, 0) / totalWeight;
 
   function weightedQuantile(q) {
     let cum = 0;
@@ -165,10 +163,10 @@ export function bucketScaleSamplesByGroup(votes, votersByUserId) {
     const voter = votersByUserId.get(v.userId);
     if (!voter) continue;
     const raw = Array.isArray(v.vote) ? v.vote[0] : v.vote;
-    if (raw === "abstain" || raw == null) continue;
+    if (raw === 'abstain' || raw == null) continue;
     const num = Number(raw);
     if (!Number.isFinite(num)) continue;
-    const group = voter.voterGroup || "stake";
+    const group = voter.voterGroup || 'stake';
     if (!out.has(group)) out.set(group, []);
     out.get(group).push({ value: num, weight: voter.votingPower ?? 1 });
   }

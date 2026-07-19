@@ -1,23 +1,20 @@
-import {
-  computeScaleStats,
-  bucketScaleSamplesByGroup,
-} from "../helper/results/scaleStats.js";
+import { computeScaleStats, bucketScaleSamplesByGroup } from '../helper/results/scaleStats.js';
 
 const proposal = {
   voteOptions: [
-    { id: -100, label: "-100" },
-    { id: 0, label: "0" },
-    { id: 100, label: "100" },
+    { id: -100, label: '-100' },
+    { id: 0, label: '0' },
+    { id: 100, label: '100' },
   ],
   voteIncrement: 1,
 };
 
-describe("scaleStats.computeScaleStats", () => {
-  test("returns null on empty samples", () => {
+describe('scaleStats.computeScaleStats', () => {
+  test('returns null on empty samples', () => {
     expect(computeScaleStats({ proposal, samples: [], voteWeighted: true })).toBeNull();
   });
 
-  test("computes basic stats over a small sample", () => {
+  test('computes basic stats over a small sample', () => {
     const samples = [
       { value: -50, weight: 100 },
       { value: 0, weight: 200 },
@@ -40,7 +37,7 @@ describe("scaleStats.computeScaleStats", () => {
     expect(totalCount).toBe(5);
   });
 
-  test("histogram renders for small groups (votes are public record)", () => {
+  test('histogram renders for small groups (votes are public record)', () => {
     const samples = [
       { value: 10, weight: 1 },
       { value: 20, weight: 1 },
@@ -54,7 +51,7 @@ describe("scaleStats.computeScaleStats", () => {
     expect(r.stats.count).toBe(3);
   });
 
-  test("weightedStats omitted when voteWeighted false", () => {
+  test('weightedStats omitted when voteWeighted false', () => {
     const samples = Array.from({ length: 10 }, (_, i) => ({ value: i * 10, weight: 1 }));
     const r = computeScaleStats({ proposal, samples, voteWeighted: false });
     expect(r.weightedStats).toBeNull();
@@ -62,34 +59,31 @@ describe("scaleStats.computeScaleStats", () => {
   });
 });
 
-describe("scaleStats.bucketScaleSamplesByGroup", () => {
+describe('scaleStats.bucketScaleSamplesByGroup', () => {
   const voters = new Map([
-    ["a", { voterGroup: "drep", votingPower: 100 }],
-    ["b", { voterGroup: "drep", votingPower: 200 }],
-    ["c", { voterGroup: "pool", votingPower: 5000 }],
+    ['a', { voterGroup: 'drep', votingPower: 100 }],
+    ['b', { voterGroup: 'drep', votingPower: 200 }],
+    ['c', { voterGroup: 'pool', votingPower: 5000 }],
   ]);
 
-  test("groups by voterGroup, drops abstain", () => {
+  test('groups by voterGroup, drops abstain', () => {
     const m = bucketScaleSamplesByGroup(
       [
-        { userId: "a", vote: [10] },
-        { userId: "b", vote: [-20] },
-        { userId: "c", vote: ["abstain"] },
+        { userId: 'a', vote: [10] },
+        { userId: 'b', vote: [-20] },
+        { userId: 'c', vote: ['abstain'] },
       ],
-      voters
+      voters,
     );
-    expect(m.get("drep")).toEqual([
+    expect(m.get('drep')).toEqual([
       { value: 10, weight: 100 },
       { value: -20, weight: 200 },
     ]);
-    expect(m.get("pool")).toBeUndefined();
+    expect(m.get('pool')).toBeUndefined();
   });
 
-  test("ignores votes from unknown voters", () => {
-    const m = bucketScaleSamplesByGroup(
-      [{ userId: "z", vote: [50] }],
-      voters
-    );
+  test('ignores votes from unknown voters', () => {
+    const m = bucketScaleSamplesByGroup([{ userId: 'z', vote: [50] }], voters);
     expect(m.size).toBe(0);
   });
 });

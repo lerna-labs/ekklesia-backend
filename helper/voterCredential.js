@@ -8,11 +8,11 @@
 export function credentialHrp(bech32Id) {
   if (!bech32Id) return null;
   const lower = bech32Id.toLowerCase();
-  if (lower.startsWith("drep")) return "drep";
-  if (lower.startsWith("pool")) return "pool";
-  if (lower.startsWith("stake_test") || lower.startsWith("stake")) return "stake";
-  if (lower.startsWith("calidus")) return "calidus";
-  return "unknown";
+  if (lower.startsWith('drep')) return 'drep';
+  if (lower.startsWith('pool')) return 'pool';
+  if (lower.startsWith('stake_test') || lower.startsWith('stake')) return 'stake';
+  if (lower.startsWith('calidus')) return 'calidus';
+  return 'unknown';
 }
 
 // Canonical evidence `responderRole` derived from the credential. Hydra
@@ -30,9 +30,9 @@ export function credentialHrp(bech32Id) {
 //   anything else → null  (route layer should reject)
 export function responderRoleFor(bech32Id) {
   const hrp = credentialHrp(bech32Id);
-  if (hrp === "drep") return "drep";
-  if (hrp === "pool") return "pool";
-  if (hrp === "calidus") return "pool";
-  if (hrp === "stake") return "stake";
+  if (hrp === 'drep') return 'drep';
+  if (hrp === 'pool') return 'pool';
+  if (hrp === 'calidus') return 'pool';
+  if (hrp === 'stake') return 'stake';
   return null;
 }

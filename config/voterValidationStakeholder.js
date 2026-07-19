@@ -30,15 +30,10 @@ import {
   checkVoterValidation,
   saveVoterValidation,
   saveVotingPower,
-} from "../helper/voterValidation.js";
-import { Ballot } from "../schema/Ballot.js";
-import { UserCache } from "../schema/UserCache.js";
-import {
-  accountInfo,
-  accountAssets,
-  accountUtxos,
-  CardanoApiError,
-} from "../helper/cardanoApi.js";
+} from '../helper/voterValidation.js';
+import { Ballot } from '../schema/Ballot.js';
+import { UserCache } from '../schema/UserCache.js';
+import { accountInfo, accountAssets, accountUtxos, CardanoApiError } from '../helper/cardanoApi.js';
 
 const VALIDATION_CACHE_HOURS = 8;
 
@@ -49,7 +44,7 @@ const VALIDATION_CACHE_HOURS = 8;
  */
 function stakeRequirementsFor(ballot) {
   const groups = Array.isArray(ballot?.voterGroups) ? ballot.voterGroups : [];
-  const stakeGroup = groups.find((g) => g?.group === "stake");
+  const stakeGroup = groups.find((g) => g?.group === 'stake');
   return stakeGroup?.requirements || {};
 }
 
@@ -71,12 +66,12 @@ function poolOk(delegatedPool, allowedPools) {
 function tokensOk(assets, tokenHoldings) {
   if (!Array.isArray(tokenHoldings) || tokenHoldings.length === 0) return true;
   for (const req of tokenHoldings) {
-    const threshold = BigInt(req.minQuantity ?? "0");
+    const threshold = BigInt(req.minQuantity ?? '0');
     let total = 0n;
     for (const a of assets) {
       if (a.policyId !== req.policyId) continue;
       if (req.assetName != null && a.assetName !== req.assetName) continue;
-      total += BigInt(a.quantity || "0");
+      total += BigInt(a.quantity || '0');
       if (total >= threshold) break;
     }
     if (total < threshold) return false;
@@ -94,7 +89,7 @@ async function existsOnChain(stakeAddr, info) {
     const utxos = await accountUtxos(stakeAddr);
     return Array.isArray(utxos) && utxos.length > 0;
   } catch (err) {
-    console.log("[voterValidationStakeholder] utxo probe failed:", err.message);
+    console.log('[voterValidationStakeholder] utxo probe failed:', err.message);
     return false;
   }
 }
@@ -114,7 +109,7 @@ export async function validateVoter(userId, ballotId) {
   // Ballots only validate while live. `checkVoterValidation` readers
   // elsewhere expect this guard (mirrors the pattern in
   // voterValidationDReps).
-  if (ballot.status !== "live") {
+  if (ballot.status !== 'live') {
     if (!existing) return false;
     return Boolean(existing.validated);
   }
@@ -127,9 +122,9 @@ export async function validateVoter(userId, ballotId) {
     const exists = await existsOnChain(userId, info);
 
     if (mustExist && !exists) {
-      console.log("[voterValidationStakeholder] not on chain:", userId);
-      await saveVoterValidation(userId, ballotId, false, "stake");
-      await saveVotingPower(userId, ballotId, 0, "stake");
+      console.log('[voterValidationStakeholder] not on chain:', userId);
+      await saveVoterValidation(userId, ballotId, false, 'stake');
+      await saveVotingPower(userId, ballotId, 0, 'stake');
       return false;
     }
 
@@ -138,12 +133,12 @@ export async function validateVoter(userId, ballotId) {
     // reject if an allow-list is configured.
     if (!poolOk(info?.delegatedPool || null, req.allowedPools)) {
       console.log(
-        "[voterValidationStakeholder] pool not in allow-list:",
+        '[voterValidationStakeholder] pool not in allow-list:',
         userId,
-        info?.delegatedPool
+        info?.delegatedPool,
       );
-      await saveVoterValidation(userId, ballotId, false, "stake");
-      await saveVotingPower(userId, ballotId, 0, "stake");
+      await saveVoterValidation(userId, ballotId, false, 'stake');
+      await saveVotingPower(userId, ballotId, 0, 'stake');
       return false;
     }
 
@@ -151,12 +146,9 @@ export async function validateVoter(userId, ballotId) {
     if (Array.isArray(req.tokenHoldings) && req.tokenHoldings.length > 0) {
       const assets = await accountAssets(userId);
       if (!tokensOk(assets, req.tokenHoldings)) {
-        console.log(
-          "[voterValidationStakeholder] token thresholds not met:",
-          userId
-        );
-        await saveVoterValidation(userId, ballotId, false, "stake");
-        await saveVotingPower(userId, ballotId, 0, "stake");
+        console.log('[voterValidationStakeholder] token thresholds not met:', userId);
+        await saveVoterValidation(userId, ballotId, false, 'stake');
+        await saveVotingPower(userId, ballotId, 0, 'stake');
         return false;
       }
     }
@@ -165,17 +157,17 @@ export async function validateVoter(userId, ballotId) {
     // account (total_balance lovelace). Falls back to 0 when
     // account_info was null (UTxO-only existence) — the voter still
     // counts as eligible, just with no weight under StakeBased.
-    const power = info?.totalBalance ? String(info.totalBalance) : "0";
-    await saveVoterValidation(userId, ballotId, true, "stake");
-    await saveVotingPower(userId, ballotId, power, "stake");
+    const power = info?.totalBalance ? String(info.totalBalance) : '0';
+    await saveVoterValidation(userId, ballotId, true, 'stake');
+    await saveVotingPower(userId, ballotId, power, 'stake');
     return true;
   } catch (err) {
     if (err instanceof CardanoApiError) {
       console.error(
-        `[voterValidationStakeholder] upstream failure: ${err.code} ${err.status || ""} — ${err.message}`
+        `[voterValidationStakeholder] upstream failure: ${err.code} ${err.status || ''} — ${err.message}`,
       );
     } else {
-      console.error("[voterValidationStakeholder] unexpected error:", err);
+      console.error('[voterValidationStakeholder] unexpected error:', err);
     }
     // Do not cache a false result on upstream failure — let the next
     // attempt re-hit the API. Propagate so the route can return 502
@@ -193,16 +185,16 @@ export async function allowedVoterCount(ballotId) {
   return UserCache.countDocuments({
     ballotId,
     validated: true,
-    voterGroup: "stake",
+    voterGroup: 'stake',
   });
 }
 
 export async function getTotalWeight(ballotId) {
   const agg = await UserCache.aggregate([
-    { $match: { ballotId, validated: true, voterGroup: "stake" } },
-    { $group: { _id: null, total: { $sum: "$votingPower" } } },
+    { $match: { ballotId, validated: true, voterGroup: 'stake' } },
+    { $group: { _id: null, total: { $sum: '$votingPower' } } },
   ]);
   return agg[0]?.total || 0;
 }
 
-export { computeFromUserCache as computePerVoterPower } from "../helper/votingPower/computeFromUserCache.js";
+export { computeFromUserCache as computePerVoterPower } from '../helper/votingPower/computeFromUserCache.js';

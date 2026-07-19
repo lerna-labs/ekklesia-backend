@@ -15,18 +15,18 @@
 // by) is derived client-side via blake2b_224 of publicKey — cardano-signer
 // doesn't emit it directly.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import path from "node:path";
-import os from "node:os";
-import fs from "node:fs/promises";
-import { normalizeWitness } from "../../../helper/coseWitness.js";
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import path from 'node:path';
+import os from 'node:os';
+import fs from 'node:fs/promises';
+import { normalizeWitness } from '../../../helper/coseWitness.js';
 
 const exec = promisify(execFile);
 
 /** Expand a leading `~` in a path. */
 export function expandHome(p) {
-  return p?.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p;
+  return p?.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p;
 }
 
 /**
@@ -45,7 +45,7 @@ export function expandHome(p) {
  * @param {string} address        — bech32 address for the COSE header
  */
 export async function signCose(canonicalJson, skeyPath, address) {
-  if (!address) throw new Error("signCose: address (bech32) is required");
+  if (!address) throw new Error('signCose: address (bech32) is required');
   const resolved = expandHome(skeyPath);
   try {
     await fs.access(resolved);
@@ -53,25 +53,26 @@ export async function signCose(canonicalJson, skeyPath, address) {
     throw new Error(`skey not found: ${resolved}`);
   }
 
-  const hex = Buffer.from(canonicalJson, "utf8").toString("hex");
+  const hex = Buffer.from(canonicalJson, 'utf8').toString('hex');
   const args = [
-    "sign",
-    "--cip30",
-    "--data-hex", hex,
-    "--secret-key", resolved,
-    "--address", address,
-    "--nohashcheck",
-    "--json-extended",
+    'sign',
+    '--cip30',
+    '--data-hex',
+    hex,
+    '--secret-key',
+    resolved,
+    '--address',
+    address,
+    '--nohashcheck',
+    '--json-extended',
   ];
 
   let stdout;
   try {
-    const result = await exec("cardano-signer", args, { maxBuffer: 10 * 1024 * 1024 });
+    const result = await exec('cardano-signer', args, { maxBuffer: 10 * 1024 * 1024 });
     stdout = result.stdout;
   } catch (err) {
-    throw new Error(
-      `cardano-signer failed: ${err.stderr || err.stdout || err.message}`
-    );
+    throw new Error(`cardano-signer failed: ${err.stderr || err.stdout || err.message}`);
   }
 
   let parsed;
@@ -84,9 +85,7 @@ export async function signCose(canonicalJson, skeyPath, address) {
   const coseSign1Hex = parsed.output?.COSE_Sign1_hex || parsed.COSE_Sign1_hex;
   const coseKeyHex = parsed.output?.COSE_Key_hex || parsed.COSE_Key_hex;
   if (!coseSign1Hex || !coseKeyHex) {
-    throw new Error(
-      `cardano-signer output missing fields: ${JSON.stringify(Object.keys(parsed))}`
-    );
+    throw new Error(`cardano-signer output missing fields: ${JSON.stringify(Object.keys(parsed))}`);
   }
 
   // Derive key/signature/publicKey centrally — same helper the backend's

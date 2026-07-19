@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -24,7 +24,7 @@ const resultSchema = new Schema(
     proposalId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: "Proposal",
+      ref: 'Proposal',
       unique: true,
     },
     results: {
@@ -45,17 +45,17 @@ const resultSchema = new Schema(
       // "final" (legacy) — kept for backwards compatibility with pre-
       //                  certification docs; mapped to "provisional" at
       //                  read time by the /certified endpoint.
-      enum: ["provisional", "final", "certified"],
-      default: "provisional",
+      enum: ['provisional', 'final', 'certified'],
+      default: 'provisional',
     },
     ballotSource: {
       type: String,
-      enum: ["legacy", "hydra"],
-      default: "legacy",
+      enum: ['legacy', 'hydra'],
+      default: 'legacy',
     },
     ballotId: {
       type: Schema.Types.ObjectId,
-      ref: "Ballot",
+      ref: 'Ballot',
       required: false,
     },
     finalizedAt: {
@@ -86,6 +86,26 @@ const resultSchema = new Schema(
     // over-count when a voter selects multiple targets in one vote
     // (budget, ranked).
     proposalParticipation: {
+      type: Object,
+      default: null,
+    },
+    // Per-group count + voting power of voters who are in the ballot-wide
+    // participation pool (`ballotParticipation`: cast ≥1 non-abstain vote
+    // anywhere on the ballot) AND explicitly abstained on THIS proposal.
+    //
+    // This is the *intersection* — NOT every abstainer on the proposal. A
+    // voter who abstained on everything is never in the pool, so subtracting
+    // them would shrink a denominator they were never part of. The frontend's
+    // participation-mode denominator is therefore:
+    //   ballotParticipation.voterCount[g] − participatingAbstainers.voterCount[g]
+    // (and the votingPower analog for weighted ballots). The same number is
+    // the "Abstain" cohort the UI shows, so the four cohorts partition the
+    // pool exactly. Emitted on every ballot regardless of
+    // `resultsCalculationMode`; "standard"-mode frontends simply ignore it.
+    //
+    // Shape mirrors ballotParticipation:
+    //   { totalVotingPower: { <group>: <number> }, voterCount: { <group>: <int> } }
+    participatingAbstainers: {
       type: Object,
       default: null,
     },
@@ -148,7 +168,7 @@ const resultSchema = new Schema(
     // the newest version.
     certifiedSnapshotId: {
       type: Schema.Types.ObjectId,
-      ref: "CertifiedSnapshot",
+      ref: 'CertifiedSnapshot',
       default: null,
     },
     certifiedVersion: {
@@ -172,8 +192,8 @@ const resultSchema = new Schema(
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
     versionKey: false, // Remove __v field from documents
-  }
+  },
 );
 
-const Result = mongoose.model("Result", resultSchema);
+const Result = mongoose.model('Result', resultSchema);
 export { Result };

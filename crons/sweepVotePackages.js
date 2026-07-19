@@ -12,16 +12,12 @@
 // repeatedly; packages that hit the cutoff mid-call are picked up on
 // the next tick.
 
-import { VotePackage } from "../schema/VotePackage.js";
-import * as nonceManager from "../helper/nonceManager.js";
+import { VotePackage } from '../schema/VotePackage.js';
+import * as nonceManager from '../helper/nonceManager.js';
 
 const DEFAULT_TTL_MINUTES = 60;
 
-const NON_TERMINAL_STATUSES = [
-  "draft",
-  "awaiting-signatures",
-  "awaiting-submission",
-];
+const NON_TERMINAL_STATUSES = ['draft', 'awaiting-signatures', 'awaiting-submission'];
 
 function resolveTtlMinutes() {
   const raw = Number(process.env.VOTE_PACKAGE_TTL_MINUTES);
@@ -59,11 +55,11 @@ export async function sweepStaleVotePackages({ ttlMinutes } = {}) {
       { _id: pkg._id, status: { $in: NON_TERMINAL_STATUSES } },
       {
         $set: {
-          status: "abandoned",
+          status: 'abandoned',
           failureReason: `TTL sweep: no activity in ${ttl} minutes`,
           lastActivityAt: new Date(),
         },
-      }
+      },
     );
     if (update.modifiedCount === 0) continue;
     await nonceManager.release({
@@ -75,9 +71,7 @@ export async function sweepStaleVotePackages({ ttlMinutes } = {}) {
   }
 
   if (swept > 0) {
-    console.log(
-      `[sweepVotePackages] abandoned ${swept} stale package(s) (TTL ${ttl}m)`
-    );
+    console.log(`[sweepVotePackages] abandoned ${swept} stale package(s) (TTL ${ttl}m)`);
   }
   return { swept, ttlMinutes: ttl };
 }

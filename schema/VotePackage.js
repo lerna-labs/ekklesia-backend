@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -16,12 +16,12 @@ const votePackageSchema = new Schema(
     ballotId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: "Ballot",
+      ref: 'Ballot',
     },
     userId: {
       type: String,
       required: true,
-      ref: "Voter",
+      ref: 'Voter',
     },
 
     // Canonical signed-vote payload (matches Hydra SignedVotePayload).
@@ -82,21 +82,21 @@ const votePackageSchema = new Schema(
     status: {
       type: String,
       enum: [
-        "draft",
-        "awaiting-signatures",
-        "awaiting-submission",
-        "broker-submitted",
-        "hydra-confirmed",
-        "failed",
-        "cancelled",
+        'draft',
+        'awaiting-signatures',
+        'awaiting-submission',
+        'broker-submitted',
+        'hydra-confirmed',
+        'failed',
+        'cancelled',
         // Set by the staleVotePackageSweep cron or an explicit DELETE
         // when a voter walks away from an unfinished draft. Terminal —
         // NOT resumable. The nonce is released back to UserCache so the
         // next fresh draft reserves the same value (Hydra enforces
         // strict nonce === currentVersion + 1).
-        "abandoned",
+        'abandoned',
       ],
-      default: "draft",
+      default: 'draft',
       required: true,
     },
     failureReason: {
@@ -118,7 +118,7 @@ const votePackageSchema = new Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 votePackageSchema.index({ userId: 1 });
@@ -129,5 +129,5 @@ votePackageSchema.index({ ballotId: 1, userId: 1 });
 // lastActivityAt cutoff. Compound index keeps the scan fast.
 votePackageSchema.index({ status: 1, lastActivityAt: 1 });
 
-const VotePackage = mongoose.model("VotePackage", votePackageSchema);
+const VotePackage = mongoose.model('VotePackage', votePackageSchema);
 export { VotePackage };

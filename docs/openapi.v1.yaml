@@ -24,6 +24,26 @@ info:
       endpoints.
     - Same JWT + admin allowlist/claim for `/admin/*`.
     - API key (Bearer or x-api-key) for `/public/*`.
+
+    ## Dual-id resolution (`:id` / `:ballotId` / `:proposalId` / `:qid`)
+
+    Every path parameter that names a ballot or proposal accepts either:
+
+    - the canonical Mongo `_id` (24-char hex), or
+    - the upstream identifier the proposals module assigned at import
+      time — `proposalSource.externalBallotId` for ballots,
+      `externalProposal.id` for proposals.
+
+    Internal `_id` always wins on tie. An ambiguous external-id match
+    that has no internal-id tiebreaker returns **`409 ID_COLLISION`**
+    with the candidate `_id`s. Responses to requests that resolved via
+    an external id carry an additional top-level `canonical` field
+    (canonical API URL) and a `Link: <…>; rel="canonical"` header.
+    SPA URLs are 301-redirected to the canonical form by the SPA
+    fallback so search engines only index one URL per resource.
+
+    Schema: `BallotIdOrExternal` / `ProposalIdOrExternal`. Response:
+    `ConflictExternalIdCollision`.
   version: 1.0.0
   contact:
     name: Adam Dean, Mad Orkestra
@@ -55,15 +75,15 @@ paths:
       tags: [Health]
       summary: v1 version + liveness probe
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  version: { type: string, example: "v1" }
-                  status:  { type: string, example: "ok" }
+                  version: { type: string, example: 'v1' }
+                  status: { type: string, example: 'ok' }
                   timestamp: { type: string, format: date-time }
 
   /config:
@@ -77,7 +97,7 @@ paths:
         `EXPLORER_ADDRESS_BASE`, `CARDANO_NETWORK` env vars (with safe
         defaults).
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
@@ -87,17 +107,17 @@ paths:
                 properties:
                   ipfsGatewayBase:
                     type: string
-                    example: "https://ipfs.io/ipfs/"
+                    example: 'https://ipfs.io/ipfs/'
                   explorerTxBase:
                     type: string
-                    example: "https://cexplorer.io/tx/"
+                    example: 'https://cexplorer.io/tx/'
                   explorerAddressBase:
                     type: string
-                    example: "https://cexplorer.io/address/"
+                    example: 'https://cexplorer.io/address/'
                   network:
                     type: string
                     enum: [preprod, preview, mainnet]
-                    example: "preprod"
+                    example: 'preprod'
 
   /ballots:
     get:
@@ -127,7 +147,7 @@ paths:
           description: Restrict to a single adapter (`legacy` or `hydra`).
           schema: { type: string, enum: [legacy, hydra] }
       responses:
-        "200":
+        '200':
           description: Paginated list
           content:
             application/json:
@@ -136,8 +156,8 @@ paths:
                 properties:
                   data:
                     type: array
-                    items: { $ref: "#/components/schemas/UnifiedBallot" }
-                  pagination: { $ref: "#/components/schemas/Pagination" }
+                    items: { $ref: '#/components/schemas/UnifiedBallot' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
 
   /ballots/{id}:
     get:
@@ -147,21 +167,26 @@ paths:
         Cache-Control varies by status: `closed` → `max-age=3600`, `live` →
         `max-age=120`, `upcoming` → `max-age=30`. Results are **not** embedded —
         call `/results/ballot/{id}` separately.
+
+        `id` accepts either the canonical `_id` or the upstream
+        `proposalSource.externalBallotId`. When resolved via external id,
+        the response includes a top-level `canonical` field and a
+        `Link: <…>; rel="canonical"` header.
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
-        "200":
+        '200':
           description: Ballot
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data: { $ref: "#/components/schemas/UnifiedBallot" }
-        "404": { description: Not found }
+                allOf:
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/UnifiedBallot' }
+                  - $ref: '#/components/schemas/CanonicalEnvelope'
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/ConflictExternalIdCollision' }
 
   /ballots/{id}/questions/{qid}/content:
     get:
@@ -180,25 +205,24 @@ paths:
               → per-proposal content blob (this endpoint).
 
         Cache-Control mirrors `/ballots/{id}` and varies by ballot status.
+
+        `id` and `qid` each accept the canonical `_id` or the upstream
+        external id. Proposal lookup is scoped to the parent ballot.
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-        - in: path
-          name: qid
-          required: true
-          description: Proposal id (must belong to the ballot).
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
+        - $ref: '#/components/parameters/ProposalIdOrExternalAsQid'
       responses:
-        "200":
-          description: Canonical content bytes
+        '200':
+          description: |
+            Canonical content bytes. When either segment resolved via
+            external id, the response carries `Link: <…>; rel="canonical"`.
           content:
             application/json:
               schema:
                 type: object
                 description: Canonical proposal content blob; byte stream is the authoritative artifact.
-        "404": { description: Ballot or proposal not found }
+        '404': { description: Ballot or proposal not found }
+        '409': { $ref: '#/components/responses/ConflictExternalIdCollision' }
 
   /ballots/{id}/archive:
     get:
@@ -213,13 +237,16 @@ paths:
 
         The response is served with `Content-Disposition: attachment` so
         browsers download instead of preview.
+
+        `id` accepts either the canonical `_id` or the upstream
+        `proposalSource.externalBallotId`. The downloaded bundle's
+        internal `ballot.id` is always the canonical `_id`; when the
+        caller used the external id, a `Link: <…>; rel="canonical"`
+        header is also set.
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
-        "200":
+        '200':
           description: Audit bundle
           content:
             application/json:
@@ -227,7 +254,7 @@ paths:
                 type: object
                 required: [schemaVersion, generatedAt, ballot, proposals, manifest, readme]
                 properties:
-                  schemaVersion: { type: string, example: "1" }
+                  schemaVersion: { type: string, example: '1' }
                   generatedAt: { type: string, format: date-time }
                   ballot:
                     type: object
@@ -247,8 +274,10 @@ paths:
                         bytes: { type: integer }
                         blake2b_256: { type: string }
                         sha256: { type: string }
-                  readme: { type: string, description: Verification recipe + chain-of-custody notes. }
-        "404": { description: Ballot not found }
+                  readme:
+                    { type: string, description: Verification recipe + chain-of-custody notes. }
+        '404': { description: Ballot not found }
+        '409': { $ref: '#/components/responses/ConflictExternalIdCollision' }
 
   /ballots/{id}/certified:
     get:
@@ -264,20 +293,22 @@ paths:
           shape includes per-proposal tallies and snapshot metadata.
         - `certified: false` → no active certification. `narrative` may
           still be set if a narrative-only publication exists.
+
+        `id` accepts either the canonical `_id` or the upstream
+        `proposalSource.externalBallotId`. When resolved via external
+        id, the response includes a top-level `canonical` field and a
+        `Link: <…>; rel="canonical"` header.
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
-        "200":
+        '200':
           description: Certification state
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status: { type: string, example: "success" }
+                  status: { type: string, example: 'success' }
                   data:
                     oneOf:
                       - type: object
@@ -292,7 +323,7 @@ paths:
                               label: { type: string }
                           history:
                             type: array
-                            items: { $ref: "#/components/schemas/CertifiedHistoryEntry" }
+                            items: { $ref: '#/components/schemas/CertifiedHistoryEntry' }
                       - type: object
                         required: [certified, version, certifiedAt, history]
                         properties:
@@ -320,8 +351,9 @@ paths:
                                 resultsByGroup: { type: object }
                           history:
                             type: array
-                            items: { $ref: "#/components/schemas/CertifiedHistoryEntry" }
-        "404": { description: Ballot not found }
+                            items: { $ref: '#/components/schemas/CertifiedHistoryEntry' }
+        '404': { description: Ballot not found }
+        '409': { $ref: '#/components/responses/ConflictExternalIdCollision' }
 
   /results/ballot/{ballotId}:
     get:
@@ -331,42 +363,45 @@ paths:
         Served with `Cache-Control: public, max-age=30` so clients can poll
         cheaply while the cron updates provisional tallies every ~10 min.
         Final tallies land the moment `/admin/ballots/{id}/finalize` completes.
+        `ballotId` accepts the canonical `_id` or upstream
+        `proposalSource.externalBallotId`.
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
       responses:
-        "200":
+        '200':
           description: Array of Result rows
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items: { $ref: "#/components/schemas/Result" }
+                allOf:
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Result' }
+                  - $ref: '#/components/schemas/CanonicalEnvelope'
+        '404': { description: Ballot not found }
+        '409': { $ref: '#/components/responses/ConflictExternalIdCollision' }
 
   /results/proposal/{proposalId}:
     get:
       tags: [Results]
       summary: Single proposal result — anonymous, short-cached
+      description: |
+        `proposalId` accepts the canonical `_id` or upstream
+        `externalProposal.id`.
       parameters:
-        - in: path
-          name: proposalId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/ProposalIdOrExternalAsProposalId'
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  data: { $ref: "#/components/schemas/Result" }
-        "404": { description: No results yet }
+                  data: { $ref: '#/components/schemas/Result' }
+        '404': { description: No results yet }
 
   /votes/{ballotId}/draft:
     post:
@@ -397,10 +432,7 @@ paths:
         releases the nonce so the next fresh /draft reuses the same value.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
       requestBody:
         required: true
         content:
@@ -411,7 +443,7 @@ paths:
               properties:
                 votes:
                   type: array
-                  items: { $ref: "#/components/schemas/VoteSelection" }
+                  items: { $ref: '#/components/schemas/VoteSelection' }
                 nativeScript:
                   description: For multisig DReps — the native-script definition.
                   type: object
@@ -425,18 +457,18 @@ paths:
                 # matches the on-chain hash Hydra commits at /vote /
                 # /settle. Any client-supplied value is ignored.
       responses:
-        "200":
+        '200':
           description: Existing active package returned or updated in place
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/DraftResponse" }
-        "201":
+              schema: { $ref: '#/components/schemas/DraftResponse' }
+        '201':
           description: New draft created
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/DraftResponse" }
-        "403": { description: Voter is not eligible }
-        "409":
+              schema: { $ref: '#/components/schemas/DraftResponse' }
+        '403': { description: Voter is not eligible }
+        '409':
           description: |
             Package already has collected signatures; mutating selections
             would invalidate cosigners. Call DELETE and redraft.
@@ -448,7 +480,7 @@ paths:
                   status: { type: string, enum: [error] }
                   code: { type: string, enum: [PACKAGE_ALREADY_SIGNED] }
                   message: { type: string }
-                  package: { $ref: "#/components/schemas/VotePackage" }
+                  package: { $ref: '#/components/schemas/VotePackage' }
 
   /votes/{ballotId}/signature:
     post:
@@ -456,10 +488,7 @@ paths:
       summary: Append a signature; submits to Hydra when threshold is met
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
       requestBody:
         required: true
         content:
@@ -469,9 +498,9 @@ paths:
               required: [packageId, witness]
               properties:
                 packageId: { type: string }
-                witness: { $ref: "#/components/schemas/CoseWitness" }
+                witness: { $ref: '#/components/schemas/CoseWitness' }
       responses:
-        "200":
+        '200':
           description: Signature appended (and possibly submitted)
           content:
             application/json:
@@ -480,10 +509,10 @@ paths:
                 properties:
                   status: { type: string }
                   submitted: { type: boolean }
-                  package: { $ref: "#/components/schemas/VotePackage" }
-                  multisig: { $ref: "#/components/schemas/MultisigStatus", nullable: true }
-        "409": { description: Package in terminal state }
-        "502": { description: Hydra submission failed }
+                  package: { $ref: '#/components/schemas/VotePackage' }
+                  multisig: { $ref: '#/components/schemas/MultisigStatus', nullable: true }
+        '409': { description: Package in terminal state }
+        '502': { description: Hydra submission failed }
 
   /votes/{ballotId}/mine:
     get:
@@ -507,19 +536,16 @@ paths:
         confirmed state.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
       responses:
-        "200":
+        '200':
           description: Voter's per-ballot state
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status: { type: string, example: "success" }
+                  status: { type: string, example: 'success' }
                   ballotId: { type: string }
                   confirmed:
                     nullable: true
@@ -536,7 +562,7 @@ paths:
                       hydraTxId: { type: string, nullable: true }
                       votes:
                         type: object
-                        additionalProperties: { $ref: "#/components/schemas/MineVoteEntry" }
+                        additionalProperties: { $ref: '#/components/schemas/MineVoteEntry' }
                   inFlight:
                     type: array
                     description: |
@@ -547,12 +573,16 @@ paths:
                       type: object
                       properties:
                         packageId: { type: string }
-                        status: { type: string, enum: [draft, awaiting-signatures, awaiting-submission, failed] }
+                        status:
+                          {
+                            type: string,
+                            enum: [draft, awaiting-signatures, awaiting-submission, failed],
+                          }
                         nonce: { type: integer }
                         createdAt: { type: string, format: date-time }
                         votes:
                           type: object
-                          additionalProperties: { $ref: "#/components/schemas/MineVoteEntry" }
+                          additionalProperties: { $ref: '#/components/schemas/MineVoteEntry' }
                         multisig:
                           nullable: true
                           type: object
@@ -568,8 +598,8 @@ paths:
                       awaitingSubmission: { type: integer }
                       draft: { type: integer }
                       failed: { type: integer }
-        "401": { description: Auth required }
-        "404": { description: Ballot not found or not Hydra-backed }
+        '401': { description: Auth required }
+        '404': { description: Ballot not found or not Hydra-backed }
 
   /votes/{ballotId}/submit:
     post:
@@ -577,10 +607,7 @@ paths:
       summary: Manual retry of submission for a package in awaiting-submission
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
       requestBody:
         required: true
         content:
@@ -591,7 +618,7 @@ paths:
               properties:
                 packageId: { type: string }
       responses:
-        "200":
+        '200':
           description: Submission state
           content:
             application/json:
@@ -599,7 +626,7 @@ paths:
                 type: object
                 properties:
                   status: { type: string }
-                  package: { $ref: "#/components/schemas/VotePackage" }
+                  package: { $ref: '#/components/schemas/VotePackage' }
 
   /votes/{ballotId}/packages:
     get:
@@ -617,40 +644,51 @@ paths:
         `signedPayloadJson`, `multisig`).
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
         - in: query
           name: status
           description: Exact-match status filter; takes precedence over `includeTerminal`.
-          schema: { type: string, enum: [draft, awaiting-signatures, awaiting-submission, broker-submitted, hydra-confirmed, failed, cancelled, abandoned] }
+          schema:
+            {
+              type: string,
+              enum:
+                [
+                  draft,
+                  awaiting-signatures,
+                  awaiting-submission,
+                  broker-submitted,
+                  hydra-confirmed,
+                  failed,
+                  cancelled,
+                  abandoned,
+                ],
+            }
         - in: query
           name: includeTerminal
           description: When `true`, include terminal-state packages in the default filter.
-          schema: { type: string, enum: ["true", "false"] }
+          schema: { type: string, enum: ['true', 'false'] }
         - in: query
           name: limit
           schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
       responses:
-        "200":
+        '200':
           description: Newest-first list of packages
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status: { type: string, example: "success" }
+                  status: { type: string, example: 'success' }
                   data:
                     type: array
-                    items: { $ref: "#/components/schemas/VotePackage" }
+                    items: { $ref: '#/components/schemas/VotePackage' }
                   pagination:
                     type: object
                     properties:
                       limit: { type: integer }
                       returned: { type: integer }
-        "401": { description: Auth required }
-        "404": { description: Ballot not found or not Hydra-backed }
+        '401': { description: Auth required }
+        '404': { description: Ballot not found or not Hydra-backed }
 
   /votes/{ballotId}/package/{packageId}:
     get:
@@ -658,16 +696,13 @@ paths:
       summary: Current VotePackage state for the session voter
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
         - in: path
           name: packageId
           required: true
           schema: { type: string }
       responses:
-        "200":
+        '200':
           description: Package
           content:
             application/json:
@@ -675,7 +710,7 @@ paths:
                 type: object
                 properties:
                   status: { type: string }
-                  package: { $ref: "#/components/schemas/VotePackage" }
+                  package: { $ref: '#/components/schemas/VotePackage' }
     delete:
       tags: [Votes (v1)]
       summary: Voter-initiated abandonment of an in-flight package
@@ -699,16 +734,13 @@ paths:
         TTL sweep also uses this semantic on long-idle packages.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
         - in: path
           name: packageId
           required: true
           schema: { type: string }
       responses:
-        "200":
+        '200':
           description: Package abandoned; nonce released.
           content:
             application/json:
@@ -722,9 +754,9 @@ paths:
                       id: { type: string }
                       status: { type: string, enum: [abandoned] }
                       nonce: { type: integer }
-        "403": { description: Not the package owner }
-        "404": { description: Package not found }
-        "409": { description: Package already in a terminal state }
+        '403': { description: Not the package owner }
+        '404': { description: Package not found }
+        '409': { description: Package already in a terminal state }
 
   /proposals/{proposalId}:
     get:
@@ -736,19 +768,16 @@ paths:
         `voterType`, `voteWeighted`) so the detail page can render
         facet labels without a second roundtrip.
       parameters:
-        - in: path
-          name: proposalId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/ProposalIdOrExternalAsProposalId'
       responses:
-        "200":
+        '200':
           description: Proposal + parent ballot sidecar
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status: { type: string, example: "success" }
+                  status: { type: string, example: 'success' }
                   data: { type: object, description: Full Proposal document. }
                   ballot:
                     nullable: true
@@ -759,12 +788,12 @@ paths:
                       title: { type: string }
                       facets:
                         type: array
-                        items: { $ref: "#/components/schemas/FacetDefinition" }
+                        items: { $ref: '#/components/schemas/FacetDefinition' }
                       status: { type: string, enum: [upcoming, live, closed] }
                       source: { type: string, enum: [legacy, hydra] }
                       voterType: { type: string }
                       voteWeighted: { type: boolean }
-        "404":
+        '404':
           description: Proposal not found
           content:
             application/json:
@@ -787,13 +816,10 @@ paths:
         ballot goes live, so the filter UI can safely cache the
         facet list for the ballot's lifetime.
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
         - in: query
           name: sort
-          description: "Facet key to sort by. Must have `sortable: true`."
+          description: 'Facet key to sort by. Must have `sortable: true`.'
           schema: { type: string }
         - in: query
           name: dir
@@ -815,14 +841,14 @@ paths:
           name: limit
           schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
       responses:
-        "200":
+        '200':
           description: Paginated proposals
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status: { type: string, example: "success" }
+                  status: { type: string, example: 'success' }
                   data: { type: array, items: { type: object } }
                   pagination:
                     type: object
@@ -844,9 +870,9 @@ paths:
                           key: { type: string }
                           direction: { type: string, enum: [asc, desc] }
                           source: { type: string, enum: [default, fallback] }
-        "400":
+        '400':
           description: Unknown facet key, unsortable sort target, or bad filter value
-        "404": { description: Ballot not found }
+        '404': { description: Ballot not found }
 
   /admin/me:
     get:
@@ -863,7 +889,7 @@ paths:
         - cookieAuth: []
         - bearerAuth: []
       responses:
-        "200":
+        '200':
           description: Authenticated voter is an admin
           content:
             application/json:
@@ -878,9 +904,9 @@ paths:
                     properties:
                       userId: { type: string }
                       isAdmin: { type: boolean, enum: [true] }
-        "401":
+        '401':
           description: No authenticated session (no/invalid JWT cookie or bearer)
-        "404":
+        '404':
           description: Authenticated voter is not an admin
 
   /admin/ballots/import:
@@ -908,27 +934,27 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/CompiledBallot" }
+            schema: { $ref: '#/components/schemas/CompiledBallot' }
       responses:
-        "200":
+        '200':
           description: Existing ballot updated
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/BallotImportResult" }
-        "201":
+              schema: { $ref: '#/components/schemas/BallotImportResult' }
+        '201':
           description: New ballot created
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/BallotImportResult" }
-        "400":
+              schema: { $ref: '#/components/schemas/BallotImportResult' }
+        '400':
           description: Validation failed
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status: { type: string, example: "error" }
-                  code: { type: string, example: "VALIDATION_FAILED" }
+                  status: { type: string, example: 'error' }
+                  code: { type: string, example: 'VALIDATION_FAILED' }
                   message: { type: string }
                   errors:
                     type: array
@@ -937,9 +963,9 @@ paths:
                       properties:
                         path: { type: string }
                         message: { type: string }
-        "401": { description: Auth required (admin JWT or API key) }
-        "403": { description: API key missing write:ballot-import scope }
-        "409":
+        '401': { description: Auth required (admin JWT or API key) }
+        '403': { description: API key missing write:ballot-import scope }
+        '409':
           description: Ballot is live/closed and cannot be re-imported
 
   /admin/ballots/{id}/prepare:
@@ -948,23 +974,24 @@ paths:
       summary: Call Hydra /prepare, stamp Hydra metadata on the Ballot
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
-                endpoint: { type: string, description: "Override the default Hydra endpoint for this ballot" }
+                endpoint:
+                  {
+                    type: string,
+                    description: 'Override the default Hydra endpoint for this ballot',
+                  }
                 ballotCid: { type: string }
       responses:
-        "200": { description: Success }
-        "401": { description: Not authenticated }
-        "403": { description: Admin privileges required }
-        "502": { description: Hydra upstream error }
+        '200': { description: Success }
+        '401': { description: Not authenticated }
+        '403': { description: Admin privileges required }
+        '502': { description: Hydra upstream error }
 
   /admin/ballots/{id}/start:
     post:
@@ -977,10 +1004,7 @@ paths:
         the ballot and flips the user-facing status to `live`.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       requestBody:
         content:
           application/json:
@@ -991,14 +1015,14 @@ paths:
                 ballotPolicy: { type: string }
                 ballotToken: { type: string }
       responses:
-        "200":
+        '200':
           description: Head opened
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AdminHydraEnvelope" }
-        "400": { description: Missing required field(s) for /start }
-        "404": { description: Ballot not found }
-        "502": { description: Hydra upstream error }
+              schema: { $ref: '#/components/schemas/AdminHydraEnvelope' }
+        '400': { description: Missing required field(s) for /start }
+        '404': { description: Ballot not found }
+        '502': { description: Hydra upstream error }
 
   /admin/ballots/{id}/finalize:
     post:
@@ -1012,18 +1036,15 @@ paths:
         for inspection and one-off re-tallies.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
-        "200":
+        '200':
           description: Tally written
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AdminHydraEnvelope" }
-        "404": { description: Ballot not found }
-        "502": { description: Hydra upstream error }
+              schema: { $ref: '#/components/schemas/AdminHydraEnvelope' }
+        '404': { description: Ballot not found }
+        '502': { description: Hydra upstream error }
 
   /admin/ballots/{id}/settle/burn:
     post:
@@ -1038,18 +1059,15 @@ paths:
         `remaining === 0` before proceeding to `/settle/finalize`.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
-        "200":
+        '200':
           description: Burn batch result
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AdminHydraEnvelope" }
-        "404": { description: Ballot not found }
-        "502": { description: Hydra upstream error }
+              schema: { $ref: '#/components/schemas/AdminHydraEnvelope' }
+        '404': { description: Ballot not found }
+        '502': { description: Hydra upstream error }
 
   /admin/ballots/{id}/settle/finalize:
     post:
@@ -1064,18 +1082,15 @@ paths:
         `/settle/close`.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
-        "200":
+        '200':
           description: Finalize succeeded
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AdminHydraEnvelope" }
-        "404": { description: Ballot not found }
-        "502": { description: Hydra upstream error }
+              schema: { $ref: '#/components/schemas/AdminHydraEnvelope' }
+        '404': { description: Ballot not found }
+        '502': { description: Hydra upstream error }
 
   /admin/ballots/{id}/settle/close:
     post:
@@ -1088,10 +1103,7 @@ paths:
         mirror to reflect FINAL on the Hydra side.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       requestBody:
         required: true
         content:
@@ -1102,14 +1114,14 @@ paths:
               properties:
                 closeToken: { type: string }
       responses:
-        "200":
+        '200':
           description: Head closed
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AdminHydraEnvelope" }
-        "400": { description: Missing required field — closeToken }
-        "404": { description: Ballot not found }
-        "502": { description: Hydra upstream error }
+              schema: { $ref: '#/components/schemas/AdminHydraEnvelope' }
+        '400': { description: Missing required field — closeToken }
+        '404': { description: Ballot not found }
+        '502': { description: Hydra upstream error }
 
   /admin/ballots/{id}/results/recover:
     post:
@@ -1127,18 +1139,15 @@ paths:
         current staging directory.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
-        "200":
+        '200':
           description: Recovered
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AdminHydraEnvelope" }
-        "404": { description: No finalize response persisted on Hydra (or ballot not found) }
-        "502": { description: Hydra upstream error }
+              schema: { $ref: '#/components/schemas/AdminHydraEnvelope' }
+        '404': { description: No finalize response persisted on Hydra (or ballot not found) }
+        '502': { description: Hydra upstream error }
 
   /admin/ballots/{id}/count:
     post:
@@ -1150,18 +1159,15 @@ paths:
         write Result rows.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
-        "200":
+        '200':
           description: Burn result
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AdminHydraEnvelope" }
-        "404": { description: Ballot not found }
-        "502": { description: Hydra upstream error }
+              schema: { $ref: '#/components/schemas/AdminHydraEnvelope' }
+        '404': { description: Ballot not found }
+        '502': { description: Hydra upstream error }
 
   /admin/ballots/{id}/queue/status:
     get:
@@ -1169,17 +1175,14 @@ paths:
       summary: Hydra in-head queue observability passthrough
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
-        "200":
+        '200':
           description: Queue status
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AdminHydraEnvelope" }
-        "502": { description: Hydra upstream error }
+              schema: { $ref: '#/components/schemas/AdminHydraEnvelope' }
+        '502': { description: Hydra upstream error }
 
   /admin/ballots/{id}/queue/drain:
     post:
@@ -1187,21 +1190,18 @@ paths:
       summary: Hydra in-head queue maintenance passthrough
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       requestBody:
         content:
           application/json:
             schema: { type: object, description: Pass-through payload to Hydra middleware. }
       responses:
-        "200":
+        '200':
           description: Drain result
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AdminHydraEnvelope" }
-        "502": { description: Hydra upstream error }
+              schema: { $ref: '#/components/schemas/AdminHydraEnvelope' }
+        '502': { description: Hydra upstream error }
 
   /admin/ballots/{id}/head-info:
     get:
@@ -1209,17 +1209,14 @@ paths:
       summary: Hydra head-info passthrough
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
-        "200":
+        '200':
           description: Head info
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AdminHydraEnvelope" }
-        "502": { description: Hydra upstream error }
+              schema: { $ref: '#/components/schemas/AdminHydraEnvelope' }
+        '502': { description: Hydra upstream error }
 
   /admin/ballots/{id}/voting-power:
     post:
@@ -1234,10 +1231,7 @@ paths:
         `ImportedBallotPayload`.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       requestBody:
         required: true
         content:
@@ -1266,18 +1260,18 @@ paths:
                         minimum: 0
                         description: Lovelace, non-negative finite.
       responses:
-        "201":
+        '201':
           description: Snapshot replaced
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status: { type: string, example: "success" }
+                  status: { type: string, example: 'success' }
                   ballotId: { type: string }
                   votersWritten: { type: integer }
                   uploadedAt: { type: string, format: date-time }
-        "400":
+        '400':
           description: Validation failed
           content:
             application/json:
@@ -1294,7 +1288,7 @@ paths:
                       properties:
                         path: { type: string }
                         message: { type: string }
-        "404": { description: Ballot not found }
+        '404': { description: Ballot not found }
 
   /admin/ballots/{id}/certify:
     post:
@@ -1317,10 +1311,7 @@ paths:
         canonical JSON) short-circuit to the existing version.
       security: [{ cookieAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       requestBody:
         required: true
         content:
@@ -1361,18 +1352,18 @@ paths:
                     url: { type: string }
                     label: { type: string }
       responses:
-        "200":
+        '200':
           description: Certification recorded (idempotent re-submit or narrative-only)
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status: { type: string, example: "success" }
-        "400": { description: Bad input }
-        "404": { description: Ballot not found }
-        "409": { description: Snapshot coverage incomplete (missing voters) }
-        "502": { description: Audit fetch failed (could not reach Hydra results endpoint) }
+                  status: { type: string, example: 'success' }
+        '400': { description: Bad input }
+        '404': { description: Ballot not found }
+        '409': { description: Snapshot coverage incomplete (missing voters) }
+        '502': { description: Audit fetch failed (could not reach Hydra results endpoint) }
 
   /public/ballots:
     get:
@@ -1390,7 +1381,7 @@ paths:
           name: limit
           schema: { type: integer }
       responses:
-        "200":
+        '200':
           description: Paginated list
           content:
             application/json:
@@ -1399,11 +1390,11 @@ paths:
                 properties:
                   data:
                     type: array
-                    items: { $ref: "#/components/schemas/UnifiedBallot" }
-                  pagination: { $ref: "#/components/schemas/Pagination" }
-        "401": { description: Missing or invalid API key }
-        "403": { description: Scope mismatch }
-        "429": { description: Rate limit exceeded }
+                    items: { $ref: '#/components/schemas/UnifiedBallot' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '401': { description: Missing or invalid API key }
+        '403': { description: Scope mismatch }
+        '429': { description: Rate limit exceeded }
 
   /public/ballots/{id}:
     get:
@@ -1411,13 +1402,10 @@ paths:
       summary: Public ballot detail
       security: [{ apiKeyHeader: [] }, { bearerAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsId'
       responses:
-        "200": { description: OK }
-        "404": { description: Not found }
+        '200': { description: OK }
+        '404': { description: Not found }
 
   /public/results/ballot/{ballotId}:
     get:
@@ -1425,12 +1413,9 @@ paths:
       summary: All Result rows for a ballot (provisional + final)
       security: [{ apiKeyHeader: [] }, { bearerAuth: [] }]
       parameters:
-        - in: path
-          name: ballotId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/BallotIdOrExternalAsBallotId'
       responses:
-        "200":
+        '200':
           description: Array of results
           content:
             application/json:
@@ -1439,7 +1424,7 @@ paths:
                 properties:
                   data:
                     type: array
-                    items: { $ref: "#/components/schemas/Result" }
+                    items: { $ref: '#/components/schemas/Result' }
 
   /public/results/proposal/{proposalId}:
     get:
@@ -1447,13 +1432,10 @@ paths:
       summary: Single proposal result
       security: [{ apiKeyHeader: [] }, { bearerAuth: [] }]
       parameters:
-        - in: path
-          name: proposalId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/ProposalIdOrExternalAsProposalId'
       responses:
-        "200": { description: OK }
-        "404": { description: No results yet }
+        '200': { description: OK }
+        '404': { description: No results yet }
 
 components:
   securitySchemes:
@@ -1515,6 +1497,19 @@ components:
             headInfo: { type: object, nullable: true }
             ballot: { type: object, nullable: true }
         provisionalResultsEnabled: { type: boolean }
+        resultsCalculationMode:
+          type: string
+          enum: [standard, participation]
+          default: standard
+          description: >
+            Frontend results-rendering hint; the backend applies no
+            threshold and does not decide pass/fail. "standard" (default,
+            and the meaning when omitted) renders yes / expressed votes.
+            "participation" renders yes / (ballot participation pool −
+            abstainers on the proposal), using `Result.ballotParticipation`
+            as the pool baseline and `Result.participatingAbstainers` as the
+            per-proposal subtraction. Treat undefined/null/"standard"
+            identically.
         proposalSource:
           nullable: true
           description: |
@@ -1533,7 +1528,7 @@ components:
         facets:
           type: array
           description: Sort/filter dimensions declared for this ballot.
-          items: { $ref: "#/components/schemas/FacetDefinition" }
+          items: { $ref: '#/components/schemas/FacetDefinition' }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -1541,13 +1536,13 @@ components:
       type: object
       required: [status, ballotId, created, proposalsImported, schemaVersion]
       properties:
-        status: { type: string, example: "success" }
+        status: { type: string, example: 'success' }
         ballotId: { type: string }
         created:
           type: boolean
           description: true on first import; false on subsequent updates
         proposalsImported: { type: integer }
-        schemaVersion: { type: string, example: "1" }
+        schemaVersion: { type: string, example: '1' }
 
     CompiledBallot:
       type: object
@@ -1560,14 +1555,14 @@ components:
       properties:
         schemaVersion:
           type: string
-          enum: ["1"]
+          enum: ['1']
         source:
           type: object
           required: [moduleId, externalBallotId]
           properties:
-            moduleId: { type: string, example: "catalyst-v2" }
+            moduleId: { type: string, example: 'catalyst-v2' }
             moduleUrl: { type: string, nullable: true }
-            externalBallotId: { type: string, example: "fund-11" }
+            externalBallotId: { type: string, example: 'fund-11' }
             version: { type: string, nullable: true }
         ballot:
           type: object
@@ -1615,6 +1610,13 @@ components:
             proposalPeriodEnd: { type: string, format: date-time }
             voteAuthorityId: { type: string }
             voteAuthorityAddress: { type: string }
+            resultsCalculationMode:
+              type: string
+              enum: [standard, participation]
+              default: standard
+              description: >
+                Optional results-rendering hint. Omitted → backend stores
+                "standard". See UnifiedBallot.resultsCalculationMode.
             ipfsHash: { type: string, nullable: true }
             voterValidationScript: { type: string }
             rollupScript: { type: string }
@@ -1622,12 +1624,12 @@ components:
         facets:
           type: array
           maxItems: 20
-          items: { $ref: "#/components/schemas/FacetDefinition" }
+          items: { $ref: '#/components/schemas/FacetDefinition' }
         proposals:
           type: array
           minItems: 1
           maxItems: 500
-          items: { $ref: "#/components/schemas/CompiledProposal" }
+          items: { $ref: '#/components/schemas/CompiledProposal' }
 
     FacetDefinition:
       type: object
@@ -1639,7 +1641,7 @@ components:
       properties:
         key:
           type: string
-          pattern: "^[a-zA-Z0-9_-]+$"
+          pattern: '^[a-zA-Z0-9_-]+$'
         label: { type: string, maxLength: 120 }
         type:
           type: string
@@ -1692,7 +1694,7 @@ components:
             required: [id, label]
             properties:
               id:
-                oneOf: [{ type: integer }, { type: string, enum: ["abstain"] }]
+                oneOf: [{ type: integer }, { type: string, enum: ['abstain'] }]
                 description: Integer option id; the string "abstain" is a legacy sentinel retained for back-compat only.
               label: { type: string, maxLength: 120 }
               cost:
@@ -1814,7 +1816,7 @@ components:
     CoseWitness:
       type: object
       properties:
-        key: { type: string, description: "signer key hash hex" }
+        key: { type: string, description: 'signer key hash hex' }
         coseSign1Hex: { type: string }
         coseKeyHex: { type: string }
         signature: { type: string }
@@ -1845,7 +1847,7 @@ components:
           type: string
           description: Canonical JSON serialization of `signingPayload`, supplied so the frontend can display what the voter is signing without re-serializing.
         prelimVoteHash: { type: string }
-        multisig: { $ref: "#/components/schemas/MultisigStatus", nullable: true }
+        multisig: { $ref: '#/components/schemas/MultisigStatus', nullable: true }
 
     VotePackage:
       description: |
@@ -1862,13 +1864,23 @@ components:
         _id: { type: string }
         status:
           type: string
-          enum: [draft, awaiting-signatures, awaiting-submission, broker-submitted, hydra-confirmed, failed, cancelled, abandoned]
+          enum:
+            [
+              draft,
+              awaiting-signatures,
+              awaiting-submission,
+              broker-submitted,
+              hydra-confirmed,
+              failed,
+              cancelled,
+              abandoned,
+            ]
         nonce: { type: integer }
         voteHash: { type: string, nullable: true }
         hydraTxId: { type: string, nullable: true }
         ipfsCid: { type: string, nullable: true }
         confirmedAt: { type: string, format: date-time, nullable: true }
-        signatures: { type: array, items: { $ref: "#/components/schemas/CoseWitness" } }
+        signatures: { type: array, items: { $ref: '#/components/schemas/CoseWitness' } }
         merkleRoot:
           type: string
           nullable: true
@@ -1883,7 +1895,7 @@ components:
           description: Derived; canonical JSON serialization of `signingPayload`.
         multisig:
           nullable: true
-          allOf: [{ $ref: "#/components/schemas/MultisigStatus" }]
+          allOf: [{ $ref: '#/components/schemas/MultisigStatus' }]
           description: Derived; populated only when the package has a `nativeScript`.
 
     MultisigStatus:
@@ -1903,7 +1915,7 @@ components:
         and `ballot` depends on the upstream call; documented here as a
         loose object so the frontend can treat them uniformly.
       properties:
-        status: { type: string, example: "success" }
+        status: { type: string, example: 'success' }
         hydra:
           type: object
           description: Verbatim Hydra middleware response.
@@ -1922,7 +1934,7 @@ components:
         version: { type: integer }
         submittedAt: { type: string, format: date-time }
         submittedBy: { type: string }
-        source: { type: string, description: "Origin of the certification (e.g. \"api\", \"chain\")." }
+        source: { type: string, description: 'Origin of the certification (e.g. "api", "chain").' }
         chainTxHash: { type: string, nullable: true }
         snapshotUrl: { type: string, nullable: true }
         snapshotHash: { type: string, nullable: true }
@@ -1939,7 +1951,7 @@ components:
       properties:
         proposalId: { type: string }
         ballotId: { type: string, nullable: true }
-        source: { type: string, enum: [provisional, final] }
+        source: { type: string, enum: [provisional, final, certified] }
         ballotSource: { type: string, enum: [legacy, hydra] }
         finalizedAt: { type: string, format: date-time, nullable: true }
         # Hydra settlement artifacts (populated only on source=="final")
@@ -1980,8 +1992,153 @@ components:
           items:
             type: object
             properties:
-              id: { oneOf: [ { type: number }, { type: string } ] }
+              id: { oneOf: [{ type: number }, { type: string }] }
               label: { type: string }
               count: { type: integer }
               votingPower: { type: number }
         resultsByGroup: { type: object, nullable: true }
+        ballotParticipation:
+          type: object
+          nullable: true
+          description: >
+            Ballot-wide participation pool, per voter group: distinct voters
+            who cast ≥1 non-abstain vote on ANY proposal in the parent
+            ballot. This is the participation denominator (NOT eligibility —
+            eligibility headcount lives on the v0 ballot endpoint as
+            totalAllowedVoterCount). Identical across every proposal in the
+            ballot. Emitted on every ballot. Keys are group names
+            (drep/pool/stake/default).
+          properties:
+            totalVotingPower:
+              type: object
+              additionalProperties: { type: number }
+            voterCount:
+              type: object
+              additionalProperties: { type: integer }
+        proposalParticipation:
+          type: object
+          nullable: true
+          description: >
+            Same shape as ballotParticipation but scoped to THIS proposal:
+            distinct voters who cast ≥1 non-abstain vote here. Distinct from
+            resultsByGroup[g].totalVotes, which can over-count when a voter
+            selects multiple targets in one vote (budget, ranked).
+          properties:
+            totalVotingPower:
+              type: object
+              additionalProperties: { type: number }
+            voterCount:
+              type: object
+              additionalProperties: { type: integer }
+        participatingAbstainers:
+          type: object
+          nullable: true
+          description: >
+            Per-group count + voting power of voters who are in
+            `ballotParticipation` (the pool) AND explicitly abstained on THIS
+            proposal — the intersection, not every abstainer. The
+            participation-mode denominator is
+            `ballotParticipation.voterCount[g] − participatingAbstainers.voterCount[g]`
+            (and the votingPower analog); the same number is the "Abstain"
+            cohort the UI shows. Emitted on every ballot regardless of
+            resultsCalculationMode.
+          properties:
+            totalVotingPower:
+              type: object
+              additionalProperties: { type: number }
+            voterCount:
+              type: object
+              additionalProperties: { type: integer }
+
+    BallotIdOrExternal:
+      type: string
+      maxLength: 128
+      description: |
+        Canonical Mongo `_id` (24-char hex) **or** the upstream
+        `proposalSource.externalBallotId`. See the top-level "Dual-id
+        resolution" note. Internal `_id` always wins on tie.
+
+    ProposalIdOrExternal:
+      type: string
+      maxLength: 128
+      description: |
+        Canonical Mongo `_id` (24-char hex) **or** the upstream
+        `externalProposal.id`. Scoped to the parent ballot when the
+        path carries `:ballotId`; otherwise an ambiguous external id
+        returns 409 `ID_COLLISION`.
+
+    CanonicalEnvelope:
+      type: object
+      description: |
+        Mixin used by routes that may have been addressed via an
+        upstream external id. When present, `canonical` is the API
+        URL for the same resource keyed by its canonical `_id`. The
+        response also carries `Link: <…>; rel="canonical"`. Absent
+        when the request was already canonical.
+      properties:
+        canonical:
+          type: string
+
+  parameters:
+    BallotIdOrExternalAsBallotId:
+      name: ballotId
+      in: path
+      required: true
+      description: |
+        Either the canonical `_id` or the upstream
+        `proposalSource.externalBallotId`. 409 `ID_COLLISION` on
+        ambiguous external-id matches.
+      schema:
+        $ref: '#/components/schemas/BallotIdOrExternal'
+
+    BallotIdOrExternalAsId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Either the canonical `_id` or the upstream
+        `proposalSource.externalBallotId`. 409 `ID_COLLISION` on
+        ambiguous external-id matches.
+      schema:
+        $ref: '#/components/schemas/BallotIdOrExternal'
+
+    ProposalIdOrExternalAsProposalId:
+      name: proposalId
+      in: path
+      required: true
+      description: |
+        Either the canonical `_id` or the upstream
+        `externalProposal.id`. Scoped to the parent ballot when one is
+        in the path; otherwise an ambiguous external id returns 409.
+      schema:
+        $ref: '#/components/schemas/ProposalIdOrExternal'
+
+    ProposalIdOrExternalAsQid:
+      name: qid
+      in: path
+      required: true
+      description: |
+        Either the canonical proposal `_id` or the upstream
+        `externalProposal.id`. Resolved under the parent ballot in
+        the path, so collisions are not possible.
+      schema:
+        $ref: '#/components/schemas/ProposalIdOrExternal'
+
+  responses:
+    ConflictExternalIdCollision:
+      description: |
+        The supplied id matches multiple rows via the upstream
+        external id and no internal `_id` tiebreaker is available.
+        Re-issue with the canonical `_id` from `candidates[]`.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [status, code, message, candidates]
+            properties:
+              status: { type: string, example: error }
+              code: { type: string, example: ID_COLLISION }
+              message: { type: string }
+              candidates:
+                type: array
+                items: { type: string }

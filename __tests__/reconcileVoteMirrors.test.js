@@ -7,12 +7,12 @@
  * votePackageLifecycle.test.js).
  */
 
-import path from "path";
-import { fileURLToPath } from "url";
-import dotenv from "dotenv";
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, "..", ".env.development") });
+dotenv.config({ path: path.join(__dirname, '..', '.env.development') });
 
 function getMongoUri() {
   if (process.env.MONGODB_URI_TEST || process.env.MONGODB_URI) {
@@ -20,13 +20,13 @@ function getMongoUri() {
   }
   const database = process.env.MONGODB_DATABASE;
   if (!database) return null;
-  const host = process.env.MONGODB_HOST || "localhost";
-  const port = process.env.MONGODB_PORT || "27017";
+  const host = process.env.MONGODB_HOST || 'localhost';
+  const port = process.env.MONGODB_PORT || '27017';
   const username = process.env.MONGODB_USERNAME;
   const password = process.env.MONGODB_PASSWORD;
-  const authSource = process.env.MONGODB_AUTH_SOURCE || "admin";
+  const authSource = process.env.MONGODB_AUTH_SOURCE || 'admin';
   const dbName = process.env.MONGODB_DATABASE_TEST || `${database}_test`;
-  let uri = "mongodb://";
+  let uri = 'mongodb://';
   if (username && password) {
     uri += `${encodeURIComponent(username)}:${encodeURIComponent(password)}@`;
   }
@@ -35,11 +35,11 @@ function getMongoUri() {
   return uri;
 }
 
-import mongoose from "mongoose";
-import { Ballot } from "../schema/Ballot.js";
-import { VotePackage } from "../schema/VotePackage.js";
-import { Vote } from "../schema/Vote.js";
-import { reconcileVoteMirrors } from "../crons/reconcileVoteMirrors.js";
+import mongoose from 'mongoose';
+import { Ballot } from '../schema/Ballot.js';
+import { VotePackage } from '../schema/VotePackage.js';
+import { Vote } from '../schema/Vote.js';
+import { reconcileVoteMirrors } from '../crons/reconcileVoteMirrors.js';
 
 const mongoUri = getMongoUri();
 const runId = Date.now();
@@ -53,15 +53,15 @@ let proposalIdA;
 let proposalIdB;
 
 const runDescribe = mongoUri ? describe : describe.skip;
-runDescribe("reconcileVoteMirrors (mongo)", () => {
+runDescribe('reconcileVoteMirrors (mongo)', () => {
   beforeAll(async () => {
-    mongoose.set("strictQuery", true);
+    mongoose.set('strictQuery', true);
     try {
       await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 2000 });
       mongoReady = true;
     } catch (err) {
       console.warn(
-        `[reconcileVoteMirrors] skipping: MongoDB unreachable at ${mongoUri} (${err.message}).`
+        `[reconcileVoteMirrors] skipping: MongoDB unreachable at ${mongoUri} (${err.message}).`,
       );
     }
     if (!mongoReady) return;
@@ -70,19 +70,19 @@ runDescribe("reconcileVoteMirrors (mongo)", () => {
     const later = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const ballot = await Ballot.create({
       title: `reconcile-test-${runId}`,
-      description: "test",
-      voterType: "test",
-      voterDescription: "test",
+      description: 'test',
+      voterType: 'test',
+      voterDescription: 'test',
       voteWeighted: false,
       voteFilters: false,
       votePeriodStart: now,
       votePeriodEnd: later,
       proposalPeriodStart: now,
       proposalPeriodEnd: later,
-      voteAuthorityId: "test-authority",
-      voteAuthorityAddress: "addr_test_authority",
-      status: "live",
-      source: "hydra",
+      voteAuthorityId: 'test-authority',
+      voteAuthorityAddress: 'addr_test_authority',
+      status: 'live',
+      source: 'hydra',
     });
     ballotId = ballot._id;
     proposalIdA = new mongoose.Types.ObjectId();
@@ -120,11 +120,11 @@ runDescribe("reconcileVoteMirrors (mongo)", () => {
       nonce: 1,
       hydraTxId: `tx-${userId}`,
       confirmedAt: new Date(),
-      status: "hydra-confirmed",
+      status: 'hydra-confirmed',
     };
   }
 
-  test("orphaned package: no Vote rows exist → mirror restores all", async () => {
+  test('orphaned package: no Vote rows exist → mirror restores all', async () => {
     if (!mongoReady) return;
     await VotePackage.create(makePackage(USER_A));
 
@@ -136,14 +136,12 @@ runDescribe("reconcileVoteMirrors (mongo)", () => {
     const votes = await Vote.find({ userId: USER_A, ballotId }).lean();
     expect(votes).toHaveLength(2);
     const proposalIds = votes.map((v) => v.proposalId.toString()).sort();
-    expect(proposalIds).toEqual(
-      [proposalIdA.toString(), proposalIdB.toString()].sort()
-    );
-    expect(votes.every((v) => v.status === "hydra-confirmed")).toBe(true);
+    expect(proposalIds).toEqual([proposalIdA.toString(), proposalIdB.toString()].sort());
+    expect(votes.every((v) => v.status === 'hydra-confirmed')).toBe(true);
     expect(votes.every((v) => v.hydraTxId === `tx-${USER_A}`)).toBe(true);
   });
 
-  test("partially mirrored: one row exists → reconciler fills the gap", async () => {
+  test('partially mirrored: one row exists → reconciler fills the gap', async () => {
     if (!mongoReady) return;
     await VotePackage.create(makePackage(USER_B));
     await Vote.create({
@@ -153,7 +151,7 @@ runDescribe("reconcileVoteMirrors (mongo)", () => {
       vote: [1],
       submittedVote: [1],
       submittedAt: new Date(),
-      status: "hydra-confirmed",
+      status: 'hydra-confirmed',
       hydraTxId: `tx-${USER_B}`,
     });
 
@@ -164,7 +162,7 @@ runDescribe("reconcileVoteMirrors (mongo)", () => {
     expect(votes).toHaveLength(2);
   });
 
-  test("fully mirrored: no-op, restored count unchanged", async () => {
+  test('fully mirrored: no-op, restored count unchanged', async () => {
     if (!mongoReady) return;
     await VotePackage.create(makePackage(USER_C));
     await Vote.insertMany([
@@ -175,7 +173,7 @@ runDescribe("reconcileVoteMirrors (mongo)", () => {
         vote: [1],
         submittedVote: [1],
         submittedAt: new Date(),
-        status: "hydra-confirmed",
+        status: 'hydra-confirmed',
       },
       {
         userId: USER_C,
@@ -184,7 +182,7 @@ runDescribe("reconcileVoteMirrors (mongo)", () => {
         vote: [2],
         submittedVote: [2],
         submittedAt: new Date(),
-        status: "hydra-confirmed",
+        status: 'hydra-confirmed',
       },
     ]);
 

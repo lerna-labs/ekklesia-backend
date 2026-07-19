@@ -1,0 +1,64 @@
+name: Promote development to staging
+
+# Keeps a single open development -> staging promotion PR alive. As features
+# merge into development, GitHub keeps this PR's diff current, so it acts as the
+# running accumulator of everything queued for the next preprod release
+# candidate. A human merges it when development is ready to test on staging.
+#
+# No versioning happens here. development is never versioned; it only
+# accumulates changeset files.
+on:
+  push:
+    branches: [development]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.RELEASE_MANAGER_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_MANAGER_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Open or refresh the development -> staging promotion PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # Compare content trees, not commit counts. Merge-commit promotions
+          # leave each branch with a merge commit the other lacks, so an
+          # ahead_by check opens empty PRs; identical trees mean nothing to promote.
+          base_tree=$(gh api "repos/$GITHUB_REPOSITORY/commits/staging" --jq '.commit.tree.sha')
+          head_tree=$(gh api "repos/$GITHUB_REPOSITORY/commits/development" --jq '.commit.tree.sha')
+          if [ "$base_tree" = "$head_tree" ]; then
+            echo "development and staging have identical trees; nothing to promote."
+            exit 0
+          fi
+          # Also skip when development already matches the released baseline (main):
+          # everything on development is released, so there is nothing unreleased to
+          # promote. This makes the post-release backports order-independent — a
+          # main -> development backport landing before main -> staging no longer
+          # opens a stray promotion PR.
+          main_tree=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq '.commit.tree.sha')
+          if [ "$head_tree" = "$main_tree" ]; then
+            echo "development matches the released baseline (main); nothing unreleased to promote."
+            exit 0
+          fi
+          # Body lists the pending changesets so the accumulator shows what is queued.
+          node .github/scripts/promotion-body.mjs staging > pr-body.md
+          num=$(gh pr list --repo "$GITHUB_REPOSITORY" --base staging --head development --state open --json number --jq '.[0].number // empty')
+          if [ -n "$num" ]; then
+            jq -Rs '{body: .}' pr-body.md | gh api -X PATCH "repos/$GITHUB_REPOSITORY/pulls/$num" --input - >/dev/null
+            echo "Refreshed promotion PR #$num body."
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --base staging --head development \
+              --title "Promote development to staging" --body-file pr-body.md --label promotion
+          fi

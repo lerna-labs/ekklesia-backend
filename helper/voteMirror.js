@@ -17,8 +17,8 @@
 //      packages whose mirror is incomplete (e.g. process restart
 //      between pkg.save() and the inline mirror call).
 
-import { Vote } from "../schema/Vote.js";
-import { checkVotingPower } from "./voterValidation.js";
+import { Vote } from '../schema/Vote.js';
+import { checkVotingPower } from './voterValidation.js';
 
 /**
  * @param {object} pkg     Mongoose VotePackage doc OR plain object with
@@ -32,7 +32,7 @@ export async function syncVoteRecords(pkg, ballot) {
     // Keeping ["abstain"] as the internal marker lets the existing
     // rollup / aggregation code keep pattern-matching on first === "abstain"
     // without a wider refactor.
-    const stored = answer.abstain === true ? ["abstain"] : (answer.selection || []);
+    const stored = answer.abstain === true ? ['abstain'] : answer.selection || [];
     const base = {
       userId: pkg.userId,
       ballotId: ballot._id,
@@ -46,13 +46,13 @@ export async function syncVoteRecords(pkg, ballot) {
       hydraProof: pkg.hydraProof,
       ipfsCid: pkg.ipfsCid,
       confirmedAt: pkg.confirmedAt,
-      status: "hydra-confirmed",
+      status: 'hydra-confirmed',
     };
     try {
       await Vote.updateOne(
         { proposalId: answer.questionId, userId: pkg.userId },
         { $set: base },
-        { upsert: true }
+        { upsert: true },
       );
     } catch (err) {
       // proposalId may not be a Mongo ObjectId for Hydra-native questions —

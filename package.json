@@ -7,7 +7,13 @@
     "start:prod": "NODE_ENV=production nodemon --watch '**/*.js' --ignore 'node_modules/' server.js",
     "backup:dev": "NODE_ENV=development node backup/backup.js",
     "backup:prod": "NODE_ENV=production node backup/backup.js",
-    "test": "node --experimental-vm-modules ./node_modules/.bin/jest"
+    "test": "node --experimental-vm-modules ./node_modules/.bin/jest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "changeset:tag": "node scripts/tag-release.mjs",
+    "changeset:snapshot": "changeset version --snapshot rc"
   },
   "type": "module",
   "keywords": [],
@@ -17,7 +23,7 @@
   "description": "Ekklesia Voting Backend",
   "dependencies": {
     "@emurgo/cardano-serialization-lib-nodejs": "^15.0.3",
-    "@lerna-labs/ekklesia-helpers": "^1.0.0",
+    "@lerna-labs/ekklesia-helpers": "^1.1.0",
     "@meshsdk/common": "^1.9.0-beta.100",
     "@meshsdk/core": "^1.9.0-beta.100",
     "@resvg/resvg-js": "^2.6.2",
@@ -43,8 +49,15 @@
   "devDependencies": {
     "@babel/core": "^7.28.6",
     "@babel/preset-env": "^7.28.6",
+    "@changesets/cli": "^2.31.1",
+    "@eslint/compat": "^2.1.0",
+    "@eslint/js": "^10.0.1",
     "babel-jest": "^30.2.0",
+    "eslint": "^10.7.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.7.0",
     "jest": "^30.3.0",
-    "nodemon": "^3.1.9"
+    "nodemon": "^3.1.9",
+    "prettier": "^3.9.5"
   }
 }

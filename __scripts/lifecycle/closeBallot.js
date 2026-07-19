@@ -13,28 +13,28 @@
 //   --jwtUserId          admin user id (uses ADMIN_USER_IDS[0] when unset)
 //   --maxBurnRounds      safety cap on /settle/burn iterations (default 20)
 
-import process from "process";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-import dotenv from "dotenv";
-import jwt from "jsonwebtoken";
-import { parseArgs } from "../scaffold/common/env.js";
-import { loadLocalOverrides } from "../../helper/envOverlay.js";
-import { longFetch } from "../../helper/longFetch.js";
+import process from 'process';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken';
+import { parseArgs } from '../scaffold/common/env.js';
+import { loadLocalOverrides } from '../../helper/envOverlay.js';
+import { longFetch } from '../../helper/longFetch.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(here, "..", "..");
-const envName = process.env.NODE_ENV || "development";
+const repoRoot = join(here, '..', '..');
+const envName = process.env.NODE_ENV || 'development';
 dotenv.config({ path: join(repoRoot, `.env.${envName}`) });
 loadLocalOverrides(repoRoot);
 
 const { flags } = parseArgs();
 if (!flags.ballotId) {
-  console.error("Missing --ballotId");
+  console.error('Missing --ballotId');
   process.exit(1);
 }
 if (!flags.closeToken) {
-  console.error("Missing --closeToken");
+  console.error('Missing --closeToken');
   process.exit(1);
 }
 const backend = flags.backend || `http://localhost:${process.env.SERVER_PORT || 3000}`;
@@ -42,20 +42,23 @@ const maxBurnRounds = Number(flags.maxBurnRounds || 20);
 
 const secret = process.env.JWT_SECRET;
 if (!secret) {
-  console.error("JWT_SECRET missing from env");
+  console.error('JWT_SECRET missing from env');
   process.exit(1);
 }
 const adminId =
   flags.jwtUserId ||
-  (process.env.ADMIN_USER_IDS || "").split(",").map((s) => s.trim()).filter(Boolean)[0];
+  (process.env.ADMIN_USER_IDS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)[0];
 if (!adminId) {
-  console.error("No admin userId — pass --jwtUserId or set ADMIN_USER_IDS");
+  console.error('No admin userId — pass --jwtUserId or set ADMIN_USER_IDS');
   process.exit(1);
 }
 const adminJwt = jwt.sign(
-  { userId: adminId, signType: "stake", multiSig: false, role: "admin" },
+  { userId: adminId, signType: 'stake', multiSig: false, role: 'admin' },
   secret,
-  { expiresIn: process.env.JWT_MAX_AGE || "1h" }
+  { expiresIn: process.env.JWT_MAX_AGE || '1h' },
 );
 
 // Per-path timeout for the outbound POST. Must be >= the backend's own
@@ -63,9 +66,9 @@ const adminJwt = jwt.sign(
 // while the backend is still waiting on Hydra. /settle/close can take
 // up to 15 min server-side (fanout).
 const PATH_TIMEOUTS_MS = {
-  "/settle/burn": 12 * 60_000,
-  "/settle/finalize": 7 * 60_000,
-  "/settle/close": 18 * 60_000,
+  '/settle/burn': 12 * 60_000,
+  '/settle/finalize': 7 * 60_000,
+  '/settle/close': 18 * 60_000,
 };
 function timeoutForPath(path) {
   for (const [prefix, ms] of Object.entries(PATH_TIMEOUTS_MS)) {
@@ -78,17 +81,17 @@ async function post(path, body) {
   const res = await longFetch(
     `${backend}${path}`,
     {
-      method: "POST",
+      method: 'POST',
       headers: {
         cookie: `token=${adminJwt}`,
-        "content-type": "application/json",
+        'content-type': 'application/json',
       },
-      body: body === undefined ? "{}" : JSON.stringify(body),
+      body: body === undefined ? '{}' : JSON.stringify(body),
     },
-    { timeoutMs: timeoutForPath(path) }
+    { timeoutMs: timeoutForPath(path) },
   );
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.status === "error") {
+  if (!res.ok || data.status === 'error') {
     throw new Error(`${path} failed: ${JSON.stringify(data)}`);
   }
   return data;
@@ -102,29 +105,31 @@ async function post(path, body) {
 async function get(path) {
   const res = await longFetch(
     `${backend}${path}`,
-    { method: "GET", headers: { cookie: `token=${adminJwt}` } },
-    { timeoutMs: 30_000 }
+    { method: 'GET', headers: { cookie: `token=${adminJwt}` } },
+    { timeoutMs: 30_000 },
   );
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`${path} failed: ${JSON.stringify(data)}`);
   return data;
 }
 
-console.log("[closeBallot] GET /head-info (preflight)");
+console.log('[closeBallot] GET /head-info (preflight)');
 const headInfo = await get(`/api/v1/admin/ballots/${flags.ballotId}/head-info`);
-const headStatus = headInfo?.hydra?.headStatus || headInfo?.hydra?.status || "(unknown)";
+const headStatus = headInfo?.hydra?.headStatus || headInfo?.hydra?.status || '(unknown)';
 console.log(`  headStatus=${headStatus}`);
 
 // Finalized upstream: /settle/close short-circuits, admin route stamps
 // the Ballot doc via syncHeadStateToBallot.
-if (["FINAL", "Final"].includes(headStatus)) {
-  console.log("[closeBallot] head already finalized upstream — syncing ballot doc and exiting.");
-  const closeData = await post(
-    `/api/v1/admin/ballots/${flags.ballotId}/settle/close`,
-    { closeToken: flags.closeToken }
+if (['FINAL', 'Final'].includes(headStatus)) {
+  console.log('[closeBallot] head already finalized upstream — syncing ballot doc and exiting.');
+  const closeData = await post(`/api/v1/admin/ballots/${flags.ballotId}/settle/close`, {
+    closeToken: flags.closeToken,
+  });
+  console.log('  ' + JSON.stringify(closeData.hydra));
+  console.log(
+    '[closeBallot] done — ballot marked closed, head in state ' +
+      (closeData.ballot?.hydraHeadStatus || '?'),
   );
-  console.log("  " + JSON.stringify(closeData.hydra));
-  console.log("[closeBallot] done — ballot marked closed, head in state " + (closeData.ballot?.hydraHeadStatus || "?"));
   process.exit(0);
 }
 
@@ -133,15 +138,13 @@ if (["FINAL", "Final"].includes(headStatus)) {
 // yet processed), so don't jump straight to orphan-cleanup. Cross-check
 // by counting confirmed VotePackages for this ballot — if any exist,
 // the head MUST be live upstream and /head-info is just stale.
-if (["Idle", "Unknown", null, undefined, "(unknown)"].includes(headStatus)) {
-  const { connectToDatabase, disconnectFromDatabase } = await import(
-    "../../helper/dbManager.js"
-  );
-  const { VotePackage } = await import("../../schema/VotePackage.js");
+if (['Idle', 'Unknown', null, undefined, '(unknown)'].includes(headStatus)) {
+  const { connectToDatabase, disconnectFromDatabase } = await import('../../helper/dbManager.js');
+  const { VotePackage } = await import('../../schema/VotePackage.js');
   await connectToDatabase();
   const confirmedVotes = await VotePackage.countDocuments({
     ballotId: flags.ballotId,
-    status: "hydra-confirmed",
+    status: 'hydra-confirmed',
   });
   await disconnectFromDatabase();
 
@@ -150,31 +153,31 @@ if (["Idle", "Unknown", null, undefined, "(unknown)"].includes(headStatus)) {
       `[closeBallot] head-info says "${headStatus}" but ${confirmedVotes} ` +
         `VotePackage(s) are hydra-confirmed on this ballot — the head IS live ` +
         `and the middleware cache is stale. Proceeding with the normal ` +
-        `burn → finalize → close sequence.`
+        `burn → finalize → close sequence.`,
     );
     // Fall through to the normal sequence below.
   } else {
     console.log(
       "[closeBallot] head is Idle and no confirmed votes recorded — this ballot's\n" +
-        "               head was truly never opened or the hydra-node was wiped.\n" +
-        "               marking the Mongo ballot doc closed locally (no Hydra calls)."
+        '               head was truly never opened or the hydra-node was wiped.\n' +
+        '               marking the Mongo ballot doc closed locally (no Hydra calls).',
     );
-    const { Ballot } = await import("../../schema/Ballot.js");
+    const { Ballot } = await import('../../schema/Ballot.js');
     await connectToDatabase();
     const updated = await Ballot.findByIdAndUpdate(
       flags.ballotId,
-      { $set: { status: "closed", hydraHeadStatus: "Final" } },
-      { new: true }
+      { $set: { status: 'closed', hydraHeadStatus: 'Final' } },
+      { new: true },
     ).lean();
     await disconnectFromDatabase();
     if (!updated) {
       console.error(`[closeBallot] Ballot ${flags.ballotId} not found in Mongo`);
       process.exit(1);
     }
-    console.log("[closeBallot] done — ballot doc marked status=closed, hydraHeadStatus=Final");
+    console.log('[closeBallot] done — ballot doc marked status=closed, hydraHeadStatus=Final');
     console.log(
-      "  Note: if you want to also clean up L1 tokens, call Hydra /prepare/cancel\n" +
-        "  for this ballot's namespace before the timelock expires."
+      '  Note: if you want to also clean up L1 tokens, call Hydra /prepare/cancel\n' +
+        "  for this ballot's namespace before the timelock expires.",
     );
     process.exit(0);
   }
@@ -186,26 +189,29 @@ for (let round = 1; round <= maxBurnRounds; round++) {
   const data = await post(`/api/v1/admin/ballots/${flags.ballotId}/settle/burn`);
   const hydra = data.hydra || {};
   console.log(
-    `  burned=${hydra.burned ?? 0} failed=${hydra.failed ?? 0} remaining=${hydra.remaining ?? "?"} total=${hydra.total ?? "?"}`
+    `  burned=${hydra.burned ?? 0} failed=${hydra.failed ?? 0} remaining=${hydra.remaining ?? '?'} total=${hydra.total ?? '?'}`,
   );
   if ((hydra.remaining ?? 0) === 0) break;
   if (round === maxBurnRounds) {
-    console.error(`[closeBallot] hit maxBurnRounds=${maxBurnRounds} with remaining=${hydra.remaining}`);
+    console.error(
+      `[closeBallot] hit maxBurnRounds=${maxBurnRounds} with remaining=${hydra.remaining}`,
+    );
     process.exit(1);
   }
 }
 
 // Step 2: finalize
-console.log("[closeBallot] /settle/finalize");
+console.log('[closeBallot] /settle/finalize');
 const finalizeData = await post(`/api/v1/admin/ballots/${flags.ballotId}/settle/finalize`);
-console.log("  " + JSON.stringify(finalizeData.hydra));
+console.log('  ' + JSON.stringify(finalizeData.hydra));
 
 // Step 3: close
-console.log("[closeBallot] /settle/close");
-const closeData = await post(
-  `/api/v1/admin/ballots/${flags.ballotId}/settle/close`,
-  { closeToken: flags.closeToken }
+console.log('[closeBallot] /settle/close');
+const closeData = await post(`/api/v1/admin/ballots/${flags.ballotId}/settle/close`, {
+  closeToken: flags.closeToken,
+});
+console.log('  ' + JSON.stringify(closeData.hydra));
+console.log(
+  '[closeBallot] done — ballot closed, head in state ' + (closeData.ballot?.hydraHeadStatus || '?'),
 );
-console.log("  " + JSON.stringify(closeData.hydra));
-console.log("[closeBallot] done — ballot closed, head in state " + (closeData.ballot?.hydraHeadStatus || "?"));
 process.exit(0);

@@ -1,17 +1,17 @@
 // express router
-import { Router } from "express";
+import { Router } from 'express';
 const router = Router();
 
 // schema import
-import { Comment } from "../../../schema/Comment.js";
-import { Vote } from "../../../schema/Vote.js";
-import { Ballot } from "../../../schema/Ballot.js";
-import { Result } from "../../../schema/Result.js";
+import { Comment } from '../../../schema/Comment.js';
+import { Vote } from '../../../schema/Vote.js';
+import { Ballot } from '../../../schema/Ballot.js';
+import { Result } from '../../../schema/Result.js';
 
 // helper
-import { cacheControl } from "../../../helper/cacheControl.js";
-import { getProposal } from "../../../helper/middleWare.js";
-import { verifyToken } from "../../../helper/verifyToken.js";
+import { cacheControl } from '../../../helper/cacheControl.js';
+import { getProposal } from '../../../helper/middleWare.js';
+import { verifyToken } from '../../../helper/verifyToken.js';
 
 /**
  * @route GET /api/v0/proposals/:proposalId
@@ -32,22 +32,29 @@ import { verifyToken } from "../../../helper/verifyToken.js";
  * @returns {Object} 404 - Error if proposal not found (handled by getProposal middleware)
  * @returns {Object} 500 - Server error (handled by getProposal middleware)
  */
-router.get("/:proposalId", cacheControl(300), getProposal, async (req, res) => {
+router.get('/:proposalId', cacheControl(300), getProposal, async (req, res) => {
   const { proposalId, proposal } = req;
   const voterToken = verifyToken(req);
   const userId = voterToken.userId || false;
 
   // fetch total vote count
+  // `excludedAt: null` honors the operator soft-exclusion overlay on Vote
+  // so this results-page count agrees with the cron-written tally.
   const totalVotes = await Vote.countDocuments({
     proposalId,
     submittedVote: { $exists: true, $ne: null },
+    excludedAt: null,
   });
 
-  // fetch user vote
+  // fetch user vote — `excludedAt: null` hides the row from the voter
+  // themselves when an operator has flagged it as invalid. They see "no
+  // vote on file" on the offending ballot, consistent with the voter
+  // directory + results pages dropping the same row.
   if (userId) {
     const userVote = await Vote.findOne({
       proposalId,
       userId,
+      excludedAt: null,
     }).lean();
 
     // add user vote to proposal object
@@ -65,11 +72,9 @@ router.get("/:proposalId", cacheControl(300), getProposal, async (req, res) => {
 
   // get total voter count (loadValidationScript so dev edits to
   // config/*.js are picked up without a full server restart)
-  const { loadValidationScript } = await import(
-    "../../../helper/loadValidationScript.js"
-  );
+  const { loadValidationScript } = await import('../../../helper/loadValidationScript.js');
   const { allowedVoterCount, getTotalWeight } = await loadValidationScript(
-    ballot.voterValidationScript
+    ballot.voterValidationScript,
   );
   const totalVoterCount = await allowedVoterCount(ballot._id);
   const totalVotingPower = await getTotalWeight(ballot._id);
@@ -102,7 +107,7 @@ router.get("/:proposalId", cacheControl(300), getProposal, async (req, res) => {
  * @returns {Object} 404 - Error if proposal not found (handled by getProposal middleware)
  * @returns {Object} 500 - Server error
  */
-router.get("/:proposalId/comments", getProposal, async (req, res) => {
+router.get('/:proposalId/comments', getProposal, async (req, res) => {
   const { proposalId } = req;
   // Fetch the comments from the database
   const comments = await Comment.find({
@@ -112,8 +117,8 @@ router.get("/:proposalId/comments", getProposal, async (req, res) => {
   // Return 404 if no comments are found
   if (!comments) {
     return res.status(404).json({
-      status: "error",
-      message: "No comments found",
+      status: 'error',
+      message: 'No comments found',
     });
   }
 
@@ -128,7 +133,7 @@ router.get("/:proposalId/comments", getProposal, async (req, res) => {
  * @param {string} req.params.proposalId - MongoDB ObjectId of the proposal
  * @returns {Object} 200 - { proposalId, groups: { "<voterGroup>": { results: [{ value, label, count, votingPower }], totalVotes }, ... } }
  */
-router.get("/:proposalId/results/grouped", getProposal, async (req, res) => {
+router.get('/:proposalId/results/grouped', getProposal, async (req, res) => {
   const { proposalId, proposal } = req;
   const ballotId = proposal.ballotId;
 
@@ -156,29 +161,35 @@ router.get("/:proposalId/results/grouped", getProposal, async (req, res) => {
 
   // Fallback: on-the-fly aggregation (mirror cron: unwind submittedVote, group by voterGroup + vote value)
   const byGroupAggregation = await Vote.aggregate([
-    { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
+    { $match: { proposalId, submittedVote: { $exists: true, $ne: null }, excludedAt: null } },
     {
       $lookup: {
-        from: "usercaches",
-        let: { userId: "$userId", ballotId },
+        from: 'usercaches',
+        let: { userId: '$userId', ballotId },
         pipeline: [
-          { $match: { $expr: { $and: [{ $eq: ["$userId", "$$userId"] }, { $eq: ["$ballotId", "$$ballotId"] }] } } },
+          {
+            $match: {
+              $expr: {
+                $and: [{ $eq: ['$userId', '$$userId'] }, { $eq: ['$ballotId', '$$ballotId'] }],
+              },
+            },
+          },
         ],
-        as: "voterData",
+        as: 'voterData',
       },
     },
     {
       $addFields: {
-        votingPower: { $ifNull: [{ $arrayElemAt: ["$voterData.votingPower", 0] }, 1] },
-        voterGroup: { $ifNull: [{ $arrayElemAt: ["$voterData.voterGroup", 0] }, "stake"] },
+        votingPower: { $ifNull: [{ $arrayElemAt: ['$voterData.votingPower', 0] }, 1] },
+        voterGroup: { $ifNull: [{ $arrayElemAt: ['$voterData.voterGroup', 0] }, 'stake'] },
       },
     },
-    { $unwind: { path: "$submittedVote", preserveNullAndEmptyArrays: false } },
+    { $unwind: { path: '$submittedVote', preserveNullAndEmptyArrays: false } },
     {
       $group: {
-        _id: { voterGroup: "$voterGroup", voteValue: "$submittedVote" },
+        _id: { voterGroup: '$voterGroup', voteValue: '$submittedVote' },
         count: { $sum: 1 },
-        votingPower: { $sum: "$votingPower" },
+        votingPower: { $sum: '$votingPower' },
       },
     },
   ]);
@@ -187,10 +198,13 @@ router.get("/:proposalId/results/grouped", getProposal, async (req, res) => {
   for (const row of byGroupAggregation) {
     const groupKey = row._id.voterGroup;
     if (!groups[groupKey]) groups[groupKey] = { results: [], totalVotes: 0 };
-    const option = proposal.voteOptions?.find((o) => o.id == row._id.voteValue || o.value == row._id.voteValue);
+    const option = proposal.voteOptions?.find(
+      (o) => o.id == row._id.voteValue || o.value == row._id.voteValue,
+    );
     groups[groupKey].results.push({
       value: option?.value ?? row._id.voteValue,
-      label: option?.label ?? (row._id.voteValue === "abstain" ? "Abstain" : String(row._id.voteValue)),
+      label:
+        option?.label ?? (row._id.voteValue === 'abstain' ? 'Abstain' : String(row._id.voteValue)),
       count: row.count,
       votingPower: row.votingPower,
     });
@@ -198,13 +212,13 @@ router.get("/:proposalId/results/grouped", getProposal, async (req, res) => {
   }
   if (proposal.requireAnswer !== true) {
     for (const groupKey of Object.keys(groups)) {
-      if (!groups[groupKey].results.some((r) => r.value === "abstain")) {
+      if (!groups[groupKey].results.some((r) => r.value === 'abstain')) {
         const abstainRow = byGroupAggregation.find(
-          (r) => r._id.voterGroup === groupKey && r._id.voteValue === "abstain"
+          (r) => r._id.voterGroup === groupKey && r._id.voteValue === 'abstain',
         );
         groups[groupKey].results.push({
-          value: "abstain",
-          label: "Abstain",
+          value: 'abstain',
+          label: 'Abstain',
           count: abstainRow ? abstainRow.count : 0,
           votingPower: abstainRow ? abstainRow.votingPower : 0,
         });
@@ -235,7 +249,7 @@ router.get("/:proposalId/results/grouped", getProposal, async (req, res) => {
  * @returns {Object} 404 - Error if proposal not found (handled by getProposal middleware)
  * @returns {Object} 500 - Server error
  */
-router.get("/:proposalId/results", getProposal, async (req, res) => {
+router.get('/:proposalId/results', getProposal, async (req, res) => {
   let { proposalId, proposal } = req;
 
   // Get the ballot ID from the proposal
@@ -243,39 +257,36 @@ router.get("/:proposalId/results", getProposal, async (req, res) => {
 
   // vote aggregation (only submitted votes; group by first option in submittedVote array)
   const voteAggregation = await Vote.aggregate([
-    { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
+    { $match: { proposalId, submittedVote: { $exists: true, $ne: null }, excludedAt: null } },
     {
       $lookup: {
-        from: "usercaches", // collection name in MongoDB
-        let: { userId: "$userId", ballotId: ballotId },
+        from: 'usercaches', // collection name in MongoDB
+        let: { userId: '$userId', ballotId: ballotId },
         pipeline: [
           {
             $match: {
               $expr: {
-                $and: [
-                  { $eq: ["$userId", "$$userId"] },
-                  { $eq: ["$ballotId", "$$ballotId"] },
-                ],
+                $and: [{ $eq: ['$userId', '$$userId'] }, { $eq: ['$ballotId', '$$ballotId'] }],
               },
             },
           },
         ],
-        as: "voterData",
+        as: 'voterData',
       },
     },
     {
       $addFields: {
         // Extract the votingPower directly from the first element of voterData array
         votingPower: {
-          $ifNull: [{ $arrayElemAt: ["$voterData.votingPower", 0] }, 1],
+          $ifNull: [{ $arrayElemAt: ['$voterData.votingPower', 0] }, 1],
         },
       },
     },
     {
       $group: {
-        _id: { $arrayElemAt: ["$submittedVote", 0] },
+        _id: { $arrayElemAt: ['$submittedVote', 0] },
         count: { $sum: 1 },
-        votingPower: { $sum: "$votingPower" },
+        votingPower: { $sum: '$votingPower' },
       },
     },
     {
@@ -293,7 +304,7 @@ router.get("/:proposalId/results", getProposal, async (req, res) => {
   // out every row.
   const resultsWithLabels = proposal.voteOptions.map((option) => {
     const matchingResult = voteAggregation.find(
-      (result) => String(result._id) === String(option.id)
+      (result) => String(result._id) === String(option.id),
     );
 
     return {
@@ -308,10 +319,10 @@ router.get("/:proposalId/results", getProposal, async (req, res) => {
   // — the aggregation produces `_id: "abstain"` rows but voteOptions
   // doesn't list them, so they were getting dropped.
   if (proposal.requireAnswer !== true) {
-    const abstainAgg = voteAggregation.find((r) => r._id === "abstain");
+    const abstainAgg = voteAggregation.find((r) => r._id === 'abstain');
     resultsWithLabels.push({
-      id: "abstain",
-      label: "Abstain",
+      id: 'abstain',
+      label: 'Abstain',
       count: abstainAgg ? abstainAgg.count : 0,
       votingPower: abstainAgg ? abstainAgg.votingPower : 0,
     });
@@ -322,10 +333,7 @@ router.get("/:proposalId/results", getProposal, async (req, res) => {
 
   // add additional fields to proposal object
   response.results = resultsWithLabels;
-  response.totalVotes = voteAggregation.reduce(
-    (acc, result) => acc + result.count,
-    0
-  );
+  response.totalVotes = voteAggregation.reduce((acc, result) => acc + result.count, 0);
 
   return res.status(200).json(response); // Return the processed response instead of raw aggregation
 });
@@ -342,7 +350,7 @@ router.get("/:proposalId/results", getProposal, async (req, res) => {
  * @returns {Object} 404 - Error if proposal not found (handled by getProposal middleware)
  * @returns {Object} 500 - Server error
  */
-router.get("/:proposalId/short", getProposal, async (req, res) => {
+router.get('/:proposalId/short', getProposal, async (req, res) => {
   let { proposalId, proposal } = req;
 
   delete proposal.data;

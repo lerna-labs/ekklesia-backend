@@ -10,22 +10,22 @@
 // `votingPowerScript` resolution. Routes shouldn't `import()` config
 // files directly.
 
-import { fileURLToPath, pathToFileURL } from "url";
-import { dirname, join } from "path";
-import { stat } from "fs/promises";
+import { fileURLToPath, pathToFileURL } from 'url';
+import { dirname, join } from 'path';
+import { stat } from 'fs/promises';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const CONFIG_DIR = join(__dirname, "..", "config");
+const CONFIG_DIR = join(__dirname, '..', 'config');
 
-const isDev = process.env.NODE_ENV !== "production";
+const isDev = process.env.NODE_ENV !== 'production';
 
 // Per-script mtime cache so we only re-import when the file actually
 // changes, not on every request.
 const lastSeen = new Map(); // name → mtime ms
 
 export async function loadValidationScript(name) {
-  if (!name || typeof name !== "string" || name.includes("/") || name.includes("..")) {
+  if (!name || typeof name !== 'string' || name.includes('/') || name.includes('..')) {
     throw new Error(`Invalid validation script name: ${name}`);
   }
   const fullPath = join(CONFIG_DIR, name);

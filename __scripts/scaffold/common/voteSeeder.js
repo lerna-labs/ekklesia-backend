@@ -14,29 +14,36 @@
 // Scope: scaffold use only. Does NOT talk to Hydra. For real Hydra
 // rollups see crons/10minAggregateVotes.js.
 
-import crypto from "node:crypto";
-import { Vote } from "../../../schema/Vote.js";
-import { Result } from "../../../schema/Result.js";
-import {
-  turnoutForBallot,
-  participates,
-} from "./votingPowerDistribution.js";
+import crypto from 'node:crypto';
+import { Vote } from '../../../schema/Vote.js';
+import { Result } from '../../../schema/Result.js';
+import { turnoutForBallot, participates } from './votingPowerDistribution.js';
 import {
   computeBallotParticipation,
   computeProposalParticipation,
-} from "../../../helper/results/ballotParticipation.js";
-import { computeScaleStats, bucketScaleSamplesByGroup } from "../../../helper/results/scaleStats.js";
-import { computeRankedDistribution } from "../../../helper/results/rankedDistribution.js";
-import { computeLikertStats, bucketLikertVotesByGroup } from "../../../helper/results/likertStats.js";
-import { computeWeightedStats, bucketWeightedVotesByGroup } from "../../../helper/results/weightedStats.js";
+  computeParticipatingAbstainers,
+} from '../../../helper/results/ballotParticipation.js';
+import {
+  computeScaleStats,
+  bucketScaleSamplesByGroup,
+} from '../../../helper/results/scaleStats.js';
+import { computeRankedDistribution } from '../../../helper/results/rankedDistribution.js';
+import {
+  computeLikertStats,
+  bucketLikertVotesByGroup,
+} from '../../../helper/results/likertStats.js';
+import {
+  computeWeightedStats,
+  bucketWeightedVotesByGroup,
+} from '../../../helper/results/weightedStats.js';
 
 /**
  * Stable 0..1 pseudo-random per (ballot, user, proposal, salt). Using
  * SHA-256 of the concatenation so repeat runs produce identical values.
  */
-function prand(ballotId, userId, proposalId, salt = "") {
+function prand(ballotId, userId, proposalId, salt = '') {
   const h = crypto
-    .createHash("sha256")
+    .createHash('sha256')
     .update(`${ballotId}|${userId}|${proposalId}|${salt}`)
     .digest();
   const n = h.readUInt32BE(0);
@@ -49,8 +56,8 @@ function prand(ballotId, userId, proposalId, salt = "") {
  *   abstainRate in [0.02, 0.18]
  */
 function defaultSkew(ballotId) {
-  const a = prand(ballotId, "__skew", "yes");
-  const b = prand(ballotId, "__skew", "abstain");
+  const a = prand(ballotId, '__skew', 'yes');
+  const b = prand(ballotId, '__skew', 'abstain');
   return {
     yesMargin: 0.2 + a * 0.65,
     abstainRate: 0.02 + b * 0.16,
@@ -61,18 +68,19 @@ function pickOption(proposal, r, ballotId) {
   const opts = Array.isArray(proposal.voteOptions) ? proposal.voteOptions : [];
   if (opts.length === 0) return null;
 
-  if (proposal.voteType === "choice" && opts.length === 2) {
+  if (proposal.voteType === 'choice' && opts.length === 2) {
     const { yesMargin, abstainRate } = defaultSkew(ballotId);
-    if (proposal.requireAnswer !== true && r < abstainRate) return ["abstain"];
+    if (proposal.requireAnswer !== true && r < abstainRate) return ['abstain'];
     // After abstain bucket, normalize r into [0, 1) for the Yes/No
     // split so the skew percentages stay accurate.
-    const r2 = (r - (proposal.requireAnswer !== true ? abstainRate : 0)) /
+    const r2 =
+      (r - (proposal.requireAnswer !== true ? abstainRate : 0)) /
       (1 - (proposal.requireAnswer !== true ? abstainRate : 0));
     return [r2 < yesMargin ? opts[0].id : opts[1].id];
   }
 
-  if (proposal.voteType === "scale") {
-    if (proposal.requireAnswer !== true && r < 0.06) return ["abstain"];
+  if (proposal.voteType === 'scale') {
+    if (proposal.requireAnswer !== true && r < 0.06) return ['abstain'];
     // Spread votes across the FULL [min, max] range, snapped to the
     // declared increment — declared anchor points (e.g. -100/0/100)
     // are just the legal range boundaries, not the only legal votes.
@@ -84,10 +92,10 @@ function pickOption(proposal, r, ballotId) {
     const inc = Number(proposal.voteIncrement) || 1;
     // Use a per-ballot Gaussian-ish skew so different scale proposals
     // look distinct rather than all uniform.
-    const skewCenter = min + (max - min) * (0.3 + 0.4 * prand(ballotId, "scale", "center"));
+    const skewCenter = min + (max - min) * (0.3 + 0.4 * prand(ballotId, 'scale', 'center'));
     // Box-Muller-ish: average two uniforms → triangular distribution
     // centered on skewCenter.
-    const r2 = prand(ballotId, "scale", "second_" + r.toFixed(8));
+    const r2 = prand(ballotId, 'scale', 'second_' + r.toFixed(8));
     const triangular = (r + r2) / 2; // [0, 1)
     const span = max - min;
     const drift = (triangular - 0.5) * span; // [-span/2, +span/2)
@@ -98,41 +106,38 @@ function pickOption(proposal, r, ballotId) {
     value = Math.round(value / inc) * inc;
     return [value];
   }
-  if (proposal.voteType === "ranked") {
-    if (proposal.requireAnswer !== true && r < 0.05) return ["abstain"];
+  if (proposal.voteType === 'ranked') {
+    if (proposal.requireAnswer !== true && r < 0.05) return ['abstain'];
     // Random permutation of option ids, deterministic per (proposal, voter).
-    const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
+    const ids = opts.map((o) => o.id).filter((id) => id !== 'abstain');
     const sorted = ids
-      .map((id, i) => ({ id, sort: prand(ballotId, "ranked", `${id}_${i}_${r.toFixed(8)}`) }))
+      .map((id, i) => ({ id, sort: prand(ballotId, 'ranked', `${id}_${i}_${r.toFixed(8)}`) }))
       .sort((a, b) => a.sort - b.sort)
       .map((x) => x.id);
     // Some voters only rank a subset (random truncation [1, full]).
     const depth = Math.max(1, Math.ceil(r * sorted.length));
     return sorted.slice(0, depth);
   }
-  if (proposal.voteType === "likert") {
-    if (proposal.requireAnswer !== true && r < 0.05) return ["abstain"];
+  if (proposal.voteType === 'likert') {
+    if (proposal.requireAnswer !== true && r < 0.05) return ['abstain'];
     const range = proposal.ratingRange || { min: 1, max: 5, step: 1 };
     const step = Number(range.step) || 1;
     const steps = Math.floor((range.max - range.min) / step) + 1;
-    const opts = proposal.voteOptions?.filter((o) => o.id !== "abstain") || [];
+    const opts = proposal.voteOptions?.filter((o) => o.id !== 'abstain') || [];
     // Hydra v2 unified shape: {option, value} — value = rating snapped
     // to the ratingRange grid. Matches the wire format the backend
     // sends on /draft, so Vote.vote mirrors Hydra's selection[].
     return opts.map((o) => ({
       option: o.id,
-      value:
-        range.min +
-        Math.floor(prand(ballotId, `likert_${o.id}`, r.toFixed(8)) * steps) *
-          step,
+      value: range.min + Math.floor(prand(ballotId, `likert_${o.id}`, r.toFixed(8)) * steps) * step,
     }));
   }
-  if (proposal.voteType === "multi-choice") {
-    if (proposal.requireAnswer !== true && r < 0.05) return ["abstain"];
+  if (proposal.voteType === 'multi-choice') {
+    if (proposal.requireAnswer !== true && r < 0.05) return ['abstain'];
     // Pick minSelections..maxSelections selections, deterministic per
     // (proposal, voter, r). Popularity skew differs per option so the
     // tally doesn't come out flat.
-    const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
+    const ids = opts.map((o) => o.id).filter((id) => id !== 'abstain');
     const min = Number.isFinite(Number(proposal.minSelections))
       ? Math.max(1, Number(proposal.minSelections))
       : 1;
@@ -140,20 +145,20 @@ function pickOption(proposal, r, ballotId) {
       ? Math.min(Number(proposal.maxSelections), ids.length)
       : ids.length;
     const ranked = ids
-      .map((id, i) => ({ id, sort: prand(ballotId, "multi-choice", `${id}_${i}_${r.toFixed(8)}`) }))
+      .map((id, i) => ({ id, sort: prand(ballotId, 'multi-choice', `${id}_${i}_${r.toFixed(8)}`) }))
       .sort((a, b) => a.sort - b.sort)
       .map((x) => x.id);
     const n = pickInt(ballotId, r, min, Math.max(min, max));
     return ranked.slice(0, n);
   }
-  if (proposal.voteType === "budget") {
-    if (proposal.requireAnswer !== true && r < 0.05) return ["abstain"];
+  if (proposal.voteType === 'budget') {
+    if (proposal.requireAnswer !== true && r < 0.05) return ['abstain'];
     // Knapsack: pick options whose summed `cost` ≤ voterBudget. Emits
     // number[] (multi-choice shape) — matches Hydra method:"multi-choice".
     const budget = Number(proposal.voterBudget) || 1;
-    const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
+    const ids = opts.map((o) => o.id).filter((id) => id !== 'abstain');
     const ranked = ids
-      .map((id, i) => ({ id, sort: prand(ballotId, "budget", `${id}_${i}_${r.toFixed(8)}`) }))
+      .map((id, i) => ({ id, sort: prand(ballotId, 'budget', `${id}_${i}_${r.toFixed(8)}`) }))
       .sort((a, b) => a.sort - b.sort);
     const out = [];
     let used = 0;
@@ -166,17 +171,17 @@ function pickOption(proposal, r, ballotId) {
     }
     return out.length > 0 ? out : [ranked[0].id];
   }
-  if (proposal.voteType === "weighted") {
-    if (proposal.requireAnswer !== true && r < 0.05) return ["abstain"];
+  if (proposal.voteType === 'weighted') {
+    if (proposal.requireAnswer !== true && r < 0.05) return ['abstain'];
     // Point allocation: distribute voterBudget integer points across
     // options with deterministic per-option popularity skew. Emits
     // [{option, value}] summing EXACTLY to voterBudget — matches
     // Hydra method:"weighted". Uses largest-remainder rounding so the
     // sum lands precisely even when pure weighting would round off.
     const budget = Math.max(1, Math.floor(Number(proposal.voterBudget) || 100));
-    const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
-    const weights = ids.map((id) =>
-      0.1 + prand(ballotId, "weighted", `${id}_${r.toFixed(8)}`) * 0.9
+    const ids = opts.map((o) => o.id).filter((id) => id !== 'abstain');
+    const weights = ids.map(
+      (id) => 0.1 + prand(ballotId, 'weighted', `${id}_${r.toFixed(8)}`) * 0.9,
     );
     const totalWeight = weights.reduce((s, w) => s + w, 0);
     const raw = weights.map((w) => (w / totalWeight) * budget);
@@ -198,10 +203,10 @@ function pickOption(proposal, r, ballotId) {
   // Fallthrough for voteType:"choice" with ≥3 options (e.g. the CC
   // election with 7 candidates). Pick exactly one, weighted by a
   // per-option popularity coefficient so the tally isn't uniform.
-  if (proposal.voteType === "choice") {
-    if (proposal.requireAnswer !== true && r < 0.05) return ["abstain"];
-    const ids = opts.map((o) => o.id).filter((id) => id !== "abstain");
-    const weights = ids.map((id) => 1 + prand(ballotId, "popularity", id) * 4);
+  if (proposal.voteType === 'choice') {
+    if (proposal.requireAnswer !== true && r < 0.05) return ['abstain'];
+    const ids = opts.map((o) => o.id).filter((id) => id !== 'abstain');
+    const weights = ids.map((id) => 1 + prand(ballotId, 'popularity', id) * 4);
     const sum = weights.reduce((s, w) => s + w, 0);
     let target = r * sum;
     for (let i = 0; i < ids.length; i++) {
@@ -214,7 +219,7 @@ function pickOption(proposal, r, ballotId) {
 }
 
 function pickInt(ballotId, salt, min, max) {
-  const r = prand(ballotId, "pickInt", String(salt));
+  const r = prand(ballotId, 'pickInt', String(salt));
   return Math.floor(r * (max - min + 1)) + min;
 }
 
@@ -225,10 +230,10 @@ function pickInt(ballotId, salt, min, max) {
  *             resultsByGroup: Object }}
  */
 function rollup(proposal, votes, votersByUserId, ballot) {
-  const isScale = proposal.voteType === "scale";
-  const isRanked = proposal.voteType === "ranked";
-  const isLikert = proposal.voteType === "likert";
-  const isWeighted = proposal.voteType === "weighted";
+  const isScale = proposal.voteType === 'scale';
+  const isRanked = proposal.voteType === 'ranked';
+  const isLikert = proposal.voteType === 'likert';
+  const isWeighted = proposal.voteType === 'weighted';
   const isDiscrete = !isScale && !isRanked && !isLikert && !isWeighted;
 
   const optionRow = (opt) => ({
@@ -238,8 +243,8 @@ function rollup(proposal, votes, votersByUserId, ballot) {
     votingPower: 0,
   });
   const abstainRow = () => ({
-    id: "abstain",
-    label: "Abstain",
+    id: 'abstain',
+    label: 'Abstain',
     count: 0,
     votingPower: 0,
   });
@@ -263,7 +268,7 @@ function rollup(proposal, votes, votersByUserId, ballot) {
     const voter = votersByUserId.get(v.userId);
     if (!voter) continue;
     const power = voter.votingPower ?? 1;
-    const group = voter.voterGroup || "stake";
+    const group = voter.voterGroup || 'stake';
 
     if (!byGroup.has(group)) {
       byGroup.set(group, { results: makeTally(), totalVotes: 0 });
@@ -287,11 +292,17 @@ function rollup(proposal, votes, votersByUserId, ballot) {
       // For scale/ranked, totalVotes counts voters (not per-target votes).
       // Abstain still goes to the abstain row.
       const first = Array.isArray(v.vote) ? v.vote[0] : v.vote;
-      if (first === "abstain") {
-        const ar = overall.find((r) => r.id === "abstain");
-        const gar = g.results.find((r) => r.id === "abstain");
-        if (ar) { ar.count += 1; ar.votingPower += power; }
-        if (gar) { gar.count += 1; gar.votingPower += power; }
+      if (first === 'abstain') {
+        const ar = overall.find((r) => r.id === 'abstain');
+        const gar = g.results.find((r) => r.id === 'abstain');
+        if (ar) {
+          ar.count += 1;
+          ar.votingPower += power;
+        }
+        if (gar) {
+          gar.count += 1;
+          gar.votingPower += power;
+        }
       }
       totalOverall += 1;
       g.totalVotes += 1;
@@ -364,7 +375,7 @@ function rollup(proposal, votes, votersByUserId, ballot) {
  * @param {"closed"|"live"|"upcoming"} state
  */
 async function seedProposal(ballot, proposal, voters, state) {
-  if (state === "upcoming") return { votes: 0, result: null };
+  if (state === 'upcoming') return { votes: 0, result: null };
 
   // Per-ballot turnout — varies so Active/Total ratios look different
   // across the demo set. Closed ballots end up roughly 60-95%; live
@@ -381,12 +392,9 @@ async function seedProposal(ballot, proposal, voters, state) {
   const now = new Date();
   // Spread submittedAt across a plausible window so the UI can render
   // "recent activity" timelines. Closed ballots get times in the past.
-  const windowEnd =
-    state === "closed"
-      ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      : now;
+  const windowEnd = state === 'closed' ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) : now;
   const windowStart =
-    state === "closed"
+    state === 'closed'
       ? new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)
       : new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
 
@@ -396,7 +404,8 @@ async function seedProposal(ballot, proposal, voters, state) {
   // voters engage with any given proposal — the remainder is
   // skipped/abstained-by-omission. Deterministic per
   // (proposal, voter) so re-runs converge.
-  const proposalEngagement = 0.75 + prand(ballot._id.toString(), proposal._id.toString(), "engagement") * 0.15;
+  const proposalEngagement =
+    0.75 + prand(ballot._id.toString(), proposal._id.toString(), 'engagement') * 0.15;
   for (const voter of voters) {
     // `forceParticipate` lets a fixture voter bypass the random
     // turnout draw — used for the frontend voter-history test subject
@@ -407,15 +416,15 @@ async function seedProposal(ballot, proposal, voters, state) {
     if (!forced && !participates(ballot._id.toString(), voter.userId, turnout)) {
       continue;
     }
-    const e = prand(ballot._id.toString(), voter.userId, proposal._id.toString(), "engage");
+    const e = prand(ballot._id.toString(), voter.userId, proposal._id.toString(), 'engage');
     if (!forced && e > proposalEngagement) continue;
-    const r = prand(ballot._id.toString(), voter.userId, proposal._id.toString(), "pick");
+    const r = prand(ballot._id.toString(), voter.userId, proposal._id.toString(), 'pick');
     const vote = pickOption(proposal, r, ballot._id.toString());
     if (!vote) continue;
 
-    const tOffset = prand(ballot._id.toString(), voter.userId, proposal._id.toString(), "t");
+    const tOffset = prand(ballot._id.toString(), voter.userId, proposal._id.toString(), 't');
     const submittedAt = new Date(
-      windowStart.getTime() + tOffset * (windowEnd.getTime() - windowStart.getTime())
+      windowStart.getTime() + tOffset * (windowEnd.getTime() - windowStart.getTime()),
     );
 
     await Vote.updateOne(
@@ -428,16 +437,17 @@ async function seedProposal(ballot, proposal, voters, state) {
           submittedAt,
         },
       },
-      { upsert: true }
+      { upsert: true },
     );
     cast.push({ userId: voter.userId, vote });
   }
 
   const votersByUserId = new Map(voters.map((v) => [v.userId, v]));
   const tally = rollup(proposal, cast, votersByUserId, ballot);
-  const [ballotParticipation, proposalParticipation] = await Promise.all([
+  const [ballotParticipation, proposalParticipation, participatingAbstainers] = await Promise.all([
     computeBallotParticipation(ballot._id),
     computeProposalParticipation(proposal._id, ballot._id),
+    computeParticipatingAbstainers(proposal._id, ballot._id),
   ]);
 
   // Reconcile per-group totalVotes with distinct voter counts. The
@@ -446,7 +456,7 @@ async function seedProposal(ballot, proposal, voters, state) {
   // is the canonical distinct-voter count; same fix as the cron.
   for (const groupKey of Object.keys(tally.resultsByGroup)) {
     const distinct = proposalParticipation.voterCount?.[groupKey];
-    if (typeof distinct === "number") {
+    if (typeof distinct === 'number') {
       tally.resultsByGroup[groupKey].totalVotes = distinct;
     }
   }
@@ -454,20 +464,17 @@ async function seedProposal(ballot, proposal, voters, state) {
   const resultDoc = {
     proposalId: proposal._id,
     ballotId: ballot._id,
-    ballotSource: ballot.source || "legacy",
+    ballotSource: ballot.source || 'legacy',
     results: tally.results,
     resultsByGroup: tally.resultsByGroup,
     ballotParticipation,
     proposalParticipation,
-    source: state === "closed" ? "final" : "provisional",
-    finalizedAt: state === "closed" ? now : null,
+    participatingAbstainers,
+    source: state === 'closed' ? 'final' : 'provisional',
+    finalizedAt: state === 'closed' ? now : null,
   };
 
-  await Result.updateOne(
-    { proposalId: proposal._id },
-    { $set: resultDoc },
-    { upsert: true }
-  );
+  await Result.updateOne({ proposalId: proposal._id }, { $set: resultDoc }, { upsert: true });
 
   return { votes: cast.length, result: resultDoc };
 }
@@ -478,7 +485,7 @@ async function seedProposal(ballot, proposal, voters, state) {
  * @returns {Promise<{ totalVotes: number, proposalsSeeded: number }>}
  */
 export async function seedBallotVotes({ ballot, proposals, voters, state }) {
-  if (state === "upcoming" || !Array.isArray(proposals) || proposals.length === 0) {
+  if (state === 'upcoming' || !Array.isArray(proposals) || proposals.length === 0) {
     return { totalVotes: 0, proposalsSeeded: 0 };
   }
   let totalVotes = 0;

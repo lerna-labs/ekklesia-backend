@@ -26,18 +26,18 @@
 //   node __scripts/resetHydraBallot.js --all-hydra --delete --confirm
 //   node __scripts/resetHydraBallot.js --all --delete --confirm
 
-import process from "process";
-import mongoose from "mongoose";
-import { bootstrap, teardown, parseArgs } from "./scaffold/common/env.js";
-import { Ballot } from "../schema/Ballot.js";
-import { Proposal } from "../schema/Proposal.js";
-import { Vote } from "../schema/Vote.js";
-import { VotePackage } from "../schema/VotePackage.js";
-import { UserCache } from "../schema/UserCache.js";
+import process from 'process';
+import mongoose from 'mongoose';
+import { bootstrap, teardown, parseArgs } from './scaffold/common/env.js';
+import { Ballot } from '../schema/Ballot.js';
+import { Proposal } from '../schema/Proposal.js';
+import { Vote } from '../schema/Vote.js';
+import { VotePackage } from '../schema/VotePackage.js';
+import { UserCache } from '../schema/UserCache.js';
 
 const { flags } = parseArgs();
 const deleteBallot = Boolean(flags.delete);
-const bulkHydra = Boolean(flags["all-hydra"]);
+const bulkHydra = Boolean(flags['all-hydra']);
 const bulkAll = Boolean(flags.all);
 const bulk = bulkHydra || bulkAll;
 
@@ -55,27 +55,25 @@ if (flags.ballotId) {
 } else if (flags.title) {
   filter = { title: flags.title };
 } else if (bulkHydra) {
-  filter = { source: "hydra" };
+  filter = { source: 'hydra' };
 } else if (bulkAll) {
   filter = {};
 } else {
-  console.error(
-    "Pass --ballotId <oid> / --title '<title>' / --all-hydra / --all"
-  );
+  console.error("Pass --ballotId <oid> / --title '<title>' / --all-hydra / --all");
   await teardown();
   process.exit(1);
 }
 
 if (bulk && !flags.confirm) {
   console.error(
-    "--all-hydra and --all are destructive across every matching ballot. " +
-      "Re-run with --confirm to proceed."
+    '--all-hydra and --all are destructive across every matching ballot. ' +
+      'Re-run with --confirm to proceed.',
   );
   await teardown();
   process.exit(1);
 }
 
-const ballots = await Ballot.find(filter).select("_id title source").lean();
+const ballots = await Ballot.find(filter).select('_id title source').lean();
 if (ballots.length === 0) {
   console.log(`[reset] no ballots matched ${JSON.stringify(filter)}`);
   await teardown();
@@ -86,7 +84,9 @@ const ids = ballots.map((b) => b._id);
 console.log(`[reset] matched ${ballots.length} ballot(s):`);
 for (const b of ballots.slice(0, 10)) console.log(`  - ${b.title} (${b._id}, source=${b.source})`);
 if (ballots.length > 10) console.log(`  … and ${ballots.length - 10} more`);
-console.log(`[reset] mode  : ${deleteBallot ? "DELETE (doc + proposals)" : "CLEAR (keep doc, reset Hydra fields)"}`);
+console.log(
+  `[reset] mode  : ${deleteBallot ? 'DELETE (doc + proposals)' : 'CLEAR (keep doc, reset Hydra fields)'}`,
+);
 
 // Vote state — always wiped, regardless of --clear vs --delete
 const pkgs = await VotePackage.deleteMany({ ballotId: { $in: ids } });
@@ -95,10 +95,7 @@ console.log(`[reset] VotePackage removed: ${pkgs.deletedCount}`);
 const votes = await Vote.deleteMany({ ballotId: { $in: ids } });
 console.log(`[reset] Vote removed       : ${votes.deletedCount}`);
 
-const caches = await UserCache.updateMany(
-  { ballotId: { $in: ids } },
-  { $set: { nonce: null } }
-);
+const caches = await UserCache.updateMany({ ballotId: { $in: ids } }, { $set: { nonce: null } });
 console.log(`[reset] UserCache nonces reset: ${caches.modifiedCount}`);
 
 if (deleteBallot) {
@@ -122,7 +119,7 @@ if (deleteBallot) {
         timelockSlot: null,
         commitUtxos: [],
       },
-    }
+    },
   );
   console.log(`[reset] Ballot docs cleared: ${clr.modifiedCount}`);
 }

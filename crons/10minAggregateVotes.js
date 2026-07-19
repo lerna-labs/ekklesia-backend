@@ -1,22 +1,23 @@
-import { Vote } from "../schema/Vote.js";
-import { UserCache } from "../schema/UserCache.js";
-import { Proposal } from "../schema/Proposal.js";
-import { Ballot } from "../schema/Ballot.js";
-import { Result } from "../schema/Result.js";
+import { Vote } from '../schema/Vote.js';
+import { UserCache } from '../schema/UserCache.js';
+import { Proposal } from '../schema/Proposal.js';
+import { Ballot } from '../schema/Ballot.js';
+import { Result } from '../schema/Result.js';
 import {
   computeBallotParticipation,
   computeProposalParticipation,
-} from "../helper/results/ballotParticipation.js";
+  computeParticipatingAbstainers,
+} from '../helper/results/ballotParticipation.js';
+import { computeScaleStats, bucketScaleSamplesByGroup } from '../helper/results/scaleStats.js';
+import { computeRankedDistribution } from '../helper/results/rankedDistribution.js';
+import { computeLikertStats, bucketLikertVotesByGroup } from '../helper/results/likertStats.js';
 import {
-  computeScaleStats,
-  bucketScaleSamplesByGroup,
-} from "../helper/results/scaleStats.js";
-import { computeRankedDistribution } from "../helper/results/rankedDistribution.js";
-import { computeLikertStats, bucketLikertVotesByGroup } from "../helper/results/likertStats.js";
-import { computeWeightedStats, bucketWeightedVotesByGroup } from "../helper/results/weightedStats.js";
-import { forBallot, HydraClientError } from "../helper/hydraClient.js";
-import { buildVotersByUserId } from "../helper/hydraEvidence.js";
-import { deriveProposalTally } from "../helper/results/hydraTally.js";
+  computeWeightedStats,
+  bucketWeightedVotesByGroup,
+} from '../helper/results/weightedStats.js';
+import { forBallot, HydraClientError } from '../helper/hydraClient.js';
+import { buildVotersByUserId } from '../helper/hydraEvidence.js';
+import { deriveProposalTally } from '../helper/results/hydraTally.js';
 
 // Runs every ~10 minutes (see crons/10min.js wiring). Produces provisional
 // tallies for every proposal that has recent activity.
@@ -39,10 +40,11 @@ export async function aggregateVotes() {
 
   const proposalIds = await Vote.find({
     submittedAt: { $gte: twelveMinutesAgo, $lt: now },
-  }).distinct("proposalId");
+    excludedAt: null,
+  }).distinct('proposalId');
 
   if (proposalIds.length === 0) {
-    console.log("No proposals to process");
+    console.log('No proposals to process');
     return;
   }
 
@@ -90,12 +92,12 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
   const ballotCache = opts.ballotCache || new Map();
   const recent = opts.requireRecentActivity;
 
-  console.log("Processing proposal:", proposalId.toString());
+  console.log('Processing proposal:', proposalId.toString());
 
   const proposal = await Proposal.findById(proposalId);
   if (!proposal) {
     console.error(`Proposal not found: ${proposalId}`);
-    return "skipped";
+    return 'skipped';
   }
 
   const ballotKey = proposal.ballotId.toString();
@@ -105,74 +107,68 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
   const ballot = ballotCache.get(ballotKey);
   if (!ballot) {
     console.warn(`Ballot missing for proposal ${proposalId} — skipping`);
-    return "skipped";
+    return 'skipped';
   }
 
-  if (ballot.source === "hydra" && !ballot.provisionalResultsEnabled) {
-    console.log(
-      `Skipping Hydra proposal ${proposalId}: provisional results disabled`
-    );
-    return "skipped";
+  if (ballot.source === 'hydra' && !ballot.provisionalResultsEnabled) {
+    console.log(`Skipping Hydra proposal ${proposalId}: provisional results disabled`);
+    return 'skipped';
   }
 
   const existing = await Result.findOne({ proposalId }).lean();
-  if (existing?.source === "final" || existing?.source === "certified") {
-    console.log(
-      `Skipping proposal ${proposalId}: already ${existing.source}`
-    );
-    return "skipped";
+  if (existing?.source === 'final' || existing?.source === 'certified') {
+    console.log(`Skipping proposal ${proposalId}: already ${existing.source}`);
+    return 'skipped';
   }
 
   if (recent) {
     const recentVotesCount = await Vote.countDocuments({
       proposalId,
       submittedAt: { $gte: recent.since, $lt: recent.before },
+      excludedAt: null,
     });
     if (recentVotesCount === 0) {
       console.log(`Skipping proposal ${proposalId}: no recent votes`);
-      return "skipped";
+      return 'skipped';
     }
   }
 
   const voteAggregation = await Vote.aggregate([
-    { $match: { proposalId } },
+    { $match: { proposalId, excludedAt: null } },
     {
       $lookup: {
-        from: "usercaches",
-        let: { userId: "$userId", ballotId: proposal.ballotId },
+        from: 'usercaches',
+        let: { userId: '$userId', ballotId: proposal.ballotId },
         pipeline: [
           {
             $match: {
               $expr: {
-                $and: [
-                  { $eq: ["$userId", "$$userId"] },
-                  { $eq: ["$ballotId", "$$ballotId"] },
-                ],
+                $and: [{ $eq: ['$userId', '$$userId'] }, { $eq: ['$ballotId', '$$ballotId'] }],
               },
             },
           },
         ],
-        as: "voterData",
+        as: 'voterData',
       },
     },
     {
       $addFields: {
         votingPower: {
-          $ifNull: [{ $arrayElemAt: ["$voterData.votingPower", 0] }, 1],
+          $ifNull: [{ $arrayElemAt: ['$voterData.votingPower', 0] }, 1],
         },
       },
     },
     {
       $unwind: {
-        path: "$submittedVote",
+        path: '$submittedVote',
         preserveNullAndEmptyArrays: false,
       },
     },
     {
       $group: {
-        _id: "$submittedVote",
+        _id: '$submittedVote',
         count: { $sum: 1 },
-        votingPower: { $sum: "$votingPower" },
+        votingPower: { $sum: '$votingPower' },
       },
     },
     { $project: { _id: 1, count: 1, votingPower: 1 } },
@@ -189,52 +185,49 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
   });
 
   if (proposal.requireAnswer !== true) {
-    const abstain = voteAggregation.find((r) => String(r._id) === "abstain");
+    const abstain = voteAggregation.find((r) => String(r._id) === 'abstain');
     resultsWithLabels.push({
-      id: "abstain",
-      label: "Abstain",
+      id: 'abstain',
+      label: 'Abstain',
       count: abstain ? abstain.count : 0,
       votingPower: abstain ? abstain.votingPower : 0,
     });
   }
 
   const byGroupAggregation = await Vote.aggregate([
-    { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
+    { $match: { proposalId, submittedVote: { $exists: true, $ne: null }, excludedAt: null } },
     {
       $lookup: {
-        from: "usercaches",
-        let: { userId: "$userId", ballotId: proposal.ballotId },
+        from: 'usercaches',
+        let: { userId: '$userId', ballotId: proposal.ballotId },
         pipeline: [
           {
             $match: {
               $expr: {
-                $and: [
-                  { $eq: ["$userId", "$$userId"] },
-                  { $eq: ["$ballotId", "$$ballotId"] },
-                ],
+                $and: [{ $eq: ['$userId', '$$userId'] }, { $eq: ['$ballotId', '$$ballotId'] }],
               },
             },
           },
         ],
-        as: "voterData",
+        as: 'voterData',
       },
     },
     {
       $addFields: {
         votingPower: {
-          $ifNull: [{ $arrayElemAt: ["$voterData.votingPower", 0] }, 1],
+          $ifNull: [{ $arrayElemAt: ['$voterData.votingPower', 0] }, 1],
         },
         voterGroup: {
-          $ifNull: [{ $arrayElemAt: ["$voterData.voterGroup", 0] }, "default"],
+          $ifNull: [{ $arrayElemAt: ['$voterData.voterGroup', 0] }, 'default'],
         },
       },
     },
-    { $unwind: { path: "$submittedVote", preserveNullAndEmptyArrays: false } },
+    { $unwind: { path: '$submittedVote', preserveNullAndEmptyArrays: false } },
     {
       $group: {
-        _id: { voterGroup: "$voterGroup", voteValue: "$submittedVote" },
+        _id: { voterGroup: '$voterGroup', voteValue: '$submittedVote' },
         count: { $sum: 1 },
-        votingPower: { $sum: "$votingPower" },
+        votingPower: { $sum: '$votingPower' },
       },
     },
   ]);
@@ -248,9 +241,9 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
     const option = proposal.voteOptions.find((o) => o.id == row._id.voteValue);
     const label = option
       ? option.label
-      : row._id.voteValue === "abstain"
-      ? "Abstain"
-      : String(row._id.voteValue);
+      : row._id.voteValue === 'abstain'
+        ? 'Abstain'
+        : String(row._id.voteValue);
     resultsByGroup[groupKey].results.push({
       id: row._id.voteValue,
       label,
@@ -261,14 +254,14 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
   }
   if (proposal.requireAnswer !== true) {
     for (const groupKey of Object.keys(resultsByGroup)) {
-      const hasAbstain = resultsByGroup[groupKey].results.some((r) => r.id === "abstain");
+      const hasAbstain = resultsByGroup[groupKey].results.some((r) => r.id === 'abstain');
       if (!hasAbstain) {
         const abstainRow = byGroupAggregation.find(
-          (r) => r._id.voterGroup === groupKey && r._id.voteValue === "abstain"
+          (r) => r._id.voterGroup === groupKey && r._id.voteValue === 'abstain',
         );
         resultsByGroup[groupKey].results.push({
-          id: "abstain",
-          label: "Abstain",
+          id: 'abstain',
+          label: 'Abstain',
           count: abstainRow ? abstainRow.count : 0,
           votingPower: abstainRow ? abstainRow.votingPower : 0,
         });
@@ -283,23 +276,24 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
   // existing aggregations above don't expose enough structure for
   // the helpers (which want per-voter rows, not pre-grouped tallies).
   if (
-    proposal.voteType === "scale" ||
-    proposal.voteType === "ranked" ||
-    proposal.voteType === "likert" ||
-    proposal.voteType === "weighted"
+    proposal.voteType === 'scale' ||
+    proposal.voteType === 'ranked' ||
+    proposal.voteType === 'likert' ||
+    proposal.voteType === 'weighted'
   ) {
     const rawVotes = await Vote.find({
       proposalId,
       submittedAt: { $ne: null },
+      excludedAt: null,
     })
-      .select("userId vote submittedVote")
+      .select('userId vote submittedVote')
       .lean();
     const voterIds = rawVotes.map((v) => v.userId);
     const voterRows = await UserCache.find({
       ballotId: ballot._id,
       userId: { $in: voterIds },
     })
-      .select("userId voterGroup votingPower")
+      .select('userId voterGroup votingPower')
       .lean();
     const votersByUserId = new Map(voterRows.map((v) => [v.userId, v]));
     const votesForHelpers = rawVotes.map((v) => ({
@@ -307,7 +301,7 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
       vote: Array.isArray(v.submittedVote) ? v.submittedVote : v.vote,
     }));
 
-    if (proposal.voteType === "scale") {
+    if (proposal.voteType === 'scale') {
       const samplesByGroup = bucketScaleSamplesByGroup(votesForHelpers, votersByUserId);
       for (const [group, samples] of samplesByGroup.entries()) {
         if (!resultsByGroup[group]) continue;
@@ -317,7 +311,7 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
           voteWeighted: !!ballot.voteWeighted,
         });
       }
-    } else if (proposal.voteType === "ranked") {
+    } else if (proposal.voteType === 'ranked') {
       const distByGroup = computeRankedDistribution({
         proposal,
         votes: votesForHelpers,
@@ -327,7 +321,7 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
         if (!resultsByGroup[group]) continue;
         resultsByGroup[group].ranked = dist;
       }
-    } else if (proposal.voteType === "likert") {
+    } else if (proposal.voteType === 'likert') {
       const votesByGroup = bucketLikertVotesByGroup(votesForHelpers, votersByUserId);
       for (const [group, groupVotes] of votesByGroup.entries()) {
         if (!resultsByGroup[group]) continue;
@@ -338,7 +332,7 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
           voteWeighted: !!ballot.voteWeighted,
         });
       }
-    } else if (proposal.voteType === "weighted") {
+    } else if (proposal.voteType === 'weighted') {
       const votesByGroup = bucketWeightedVotesByGroup(votesForHelpers, votersByUserId);
       for (const [group, groupVotes] of votesByGroup.entries()) {
         if (!resultsByGroup[group]) continue;
@@ -352,9 +346,10 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
     }
   }
 
-  const [ballotParticipation, proposalParticipation] = await Promise.all([
+  const [ballotParticipation, proposalParticipation, participatingAbstainers] = await Promise.all([
     computeBallotParticipation(ballot._id),
     computeProposalParticipation(proposalId, ballot._id),
+    computeParticipatingAbstainers(proposalId, ballot._id),
   ]);
 
   // Reconcile per-group totalVotes with distinct voter counts. The
@@ -365,16 +360,16 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
   // totalVotes appears for consistency with the field's name.
   for (const groupKey of Object.keys(resultsByGroup)) {
     const distinct = proposalParticipation.voterCount?.[groupKey];
-    if (typeof distinct === "number") {
+    if (typeof distinct === 'number') {
       resultsByGroup[groupKey].totalVotes = distinct;
     }
   }
 
   if (opts.dryRun) {
     console.log(
-      `[provisional dry-run] would update proposal ${proposalId} (${ballot.source}); ${resultsWithLabels.length} option rows, ${Object.keys(resultsByGroup).length} group(s)`
+      `[provisional dry-run] would update proposal ${proposalId} (${ballot.source}); ${resultsWithLabels.length} option rows, ${Object.keys(resultsByGroup).length} group(s)`,
     );
-    return "updated";
+    return 'updated';
   }
 
   await Result.updateOne(
@@ -385,18 +380,17 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
         resultsByGroup,
         ballotParticipation,
         proposalParticipation,
-        source: "provisional",
+        participatingAbstainers,
+        source: 'provisional',
         ballotSource: ballot.source,
         ballotId: ballot._id,
       },
     },
-    { upsert: true }
+    { upsert: true },
   );
 
-  console.log(
-    `[provisional] results for proposal ${proposalId} (${ballot.source}) updated`
-  );
-  return "updated";
+  console.log(`[provisional] results for proposal ${proposalId} (${ballot.source}) updated`);
+  return 'updated';
 }
 
 /**
@@ -424,8 +418,13 @@ export async function writeFinalResult(ballotId, hydraData = {}) {
     const client = await forBallot(ballotId);
     auditFull = await client.auditFull();
   } catch (err) {
-    const tag = err instanceof HydraClientError ? `${err.status || ""} ${err.code || ""}`.trim() : err.message;
-    console.warn(`[final] /audit/full fetch failed (${tag}) — provenance will be stamped, tallies deferred to /results/recover`);
+    const tag =
+      err instanceof HydraClientError
+        ? `${err.status || ''} ${err.code || ''}`.trim()
+        : err.message;
+    console.warn(
+      `[final] /audit/full fetch failed (${tag}) — provenance will be stamped, tallies deferred to /results/recover`,
+    );
   }
 
   const votersByUserId = auditFull
@@ -447,7 +446,7 @@ export async function writeFinalResult(ballotId, hydraData = {}) {
         });
       } catch (err) {
         console.warn(
-          `[final] deriveProposalTally failed for proposal ${proposal._id}: ${err.message}`
+          `[final] deriveProposalTally failed for proposal ${proposal._id}: ${err.message}`,
         );
       }
     }
@@ -458,15 +457,14 @@ export async function writeFinalResult(ballotId, hydraData = {}) {
       {
         $set: {
           results: derived?.results || provisional?.results || [],
-          resultsByGroup:
-            derived?.resultsByGroup || provisional?.resultsByGroup || null,
+          resultsByGroup: derived?.resultsByGroup || provisional?.resultsByGroup || null,
           ballotParticipation:
             derived?.ballotParticipation || provisional?.ballotParticipation || null,
           proposalParticipation:
-            derived?.proposalParticipation ||
-            provisional?.proposalParticipation ||
-            null,
-          source: "final",
+            derived?.proposalParticipation || provisional?.proposalParticipation || null,
+          participatingAbstainers:
+            derived?.participatingAbstainers || provisional?.participatingAbstainers || null,
+          source: 'final',
           ballotSource: ballot.source,
           ballotId: ballot._id,
           finalizedAt,
@@ -489,13 +487,13 @@ export async function writeFinalResult(ballotId, hydraData = {}) {
           hydraEvidenceMerkleRoot: hydraData?.evidenceMerkleRoot || null,
           hydraResultsCid: hydraData?.resultsCid || null,
           hydraTotalVoters:
-            typeof hydraData?.totalVoters === "number" ? hydraData.totalVoters : null,
+            typeof hydraData?.totalVoters === 'number' ? hydraData.totalVoters : null,
           hydraExcludedVoters: Array.isArray(hydraData?.excludedVoters)
             ? hydraData.excludedVoters
             : [],
         },
       },
-      { upsert: true }
+      { upsert: true },
     );
     console.log(`[final] results for proposal ${proposal._id} stamped`);
   }

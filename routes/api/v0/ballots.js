@@ -1,21 +1,24 @@
 // express router
-import { Router } from "express";
+import { Router } from 'express';
 const router = Router();
 
 // schema import
-import { Ballot } from "../../../schema/Ballot.js";
-import { Proposal } from "../../../schema/Proposal.js";
-import { Vote } from "../../../schema/Vote.js";
+import { Ballot } from '../../../schema/Ballot.js';
+import { Proposal } from '../../../schema/Proposal.js';
+import { Vote } from '../../../schema/Vote.js';
 
 // helper
-import { verifyToken } from "../../../helper/verifyToken.js";
-import validator from "validator";
-import mongoose from "mongoose";
-import { getBallot } from "../../../helper/middleWare.js";
-import { checkVotingPower } from "../../../helper/voterValidation.js";
-import { calculateSimpleMedian, calculateWeightedMedian } from "../../../helper/calculateMedians.js";
-import { escapeRegex } from "../../../helper/escapeRegex.js";
-import { aggregationLimiter } from "../../../helper/rateLimiters.js";
+import { verifyToken } from '../../../helper/verifyToken.js';
+import validator from 'validator';
+import mongoose from 'mongoose';
+import { getBallot } from '../../../helper/middleWare.js';
+import { checkVotingPower } from '../../../helper/voterValidation.js';
+import {
+  calculateSimpleMedian,
+  calculateWeightedMedian,
+} from '../../../helper/calculateMedians.js';
+import { escapeRegex } from '../../../helper/escapeRegex.js';
+import { aggregationLimiter } from '../../../helper/rateLimiters.js';
 
 /**
  * @route GET /api/v0/ballots
@@ -41,7 +44,7 @@ import { aggregationLimiter } from "../../../helper/rateLimiters.js";
  *   - limit parameter is invalid (not between 1 and 100)
  * @returns {Object} 500 - Server error while fetching ballots
  */
-router.get("/", async (req, res) => {
+router.get('/', async (req, res) => {
   const { voterType, status, search, page = 1, limit = 10 } = req.query;
   let matchStage = {};
 
@@ -49,20 +52,20 @@ router.get("/", async (req, res) => {
   if (search) {
     if (!validator.isLength(search, { min: 1, max: 100 })) {
       return res.status(400).json({
-        status: "error",
-        message: "Search term must be between 1 and 100 characters",
+        status: 'error',
+        message: 'Search term must be between 1 and 100 characters',
       });
     }
 
     // Check for potentially dangerous characters
     if (
-      validator.contains(search, "$") ||
-      validator.contains(search, "{") ||
-      validator.contains(search, "}")
+      validator.contains(search, '$') ||
+      validator.contains(search, '{') ||
+      validator.contains(search, '}')
     ) {
       return res.status(400).json({
-        status: "error",
-        message: "Search contains invalid characters",
+        status: 'error',
+        message: 'Search contains invalid characters',
       });
     }
 
@@ -72,7 +75,7 @@ router.get("/", async (req, res) => {
     // SyntaxError on unbalanced metacharacters (`(`, `[`, etc.) and
     // reflects the failing pattern in the 500 message.
     const searchPattern = escapeRegex(search);
-    matchStage.$or = [{ title: { $regex: searchPattern, $options: "i" } }];
+    matchStage.$or = [{ title: { $regex: searchPattern, $options: 'i' } }];
 
     // Check if search might be a valid MongoDB ObjectID (24 hex characters)
     if (validator.isMongoId(search)) {
@@ -81,7 +84,7 @@ router.get("/", async (req, res) => {
         const objectId = new mongoose.Types.ObjectId(search);
         matchStage.$or.push({ _id: objectId });
       } catch (err) {
-        console.log("Invalid ObjectId format:", err.message);
+        console.log('Invalid ObjectId format:', err.message);
       }
     }
   }
@@ -89,20 +92,16 @@ router.get("/", async (req, res) => {
   // validate voterType
   if (voterType && !validator.isAlphanumeric(voterType)) {
     return res.status(400).json({
-      status: "error",
-      message: "Invalid voterType format",
+      status: 'error',
+      message: 'Invalid voterType format',
     });
   }
 
   // Validate status parameter
-  if (
-    status &&
-    !["live", "closed", "upcoming"].includes(status.toLowerCase())
-  ) {
+  if (status && !['live', 'closed', 'upcoming'].includes(status.toLowerCase())) {
     return res.status(400).json({
-      status: "error",
-      message:
-        "Invalid status parameter, must be 'live', 'closed', or 'upcoming'",
+      status: 'error',
+      message: "Invalid status parameter, must be 'live', 'closed', or 'upcoming'",
     });
   }
 
@@ -112,16 +111,15 @@ router.get("/", async (req, res) => {
 
   if (isNaN(pageNum) || pageNum < 1) {
     return res.status(400).json({
-      status: "error",
-      message: "Invalid page parameter, must be a positive integer",
+      status: 'error',
+      message: 'Invalid page parameter, must be a positive integer',
     });
   }
 
   if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
     return res.status(400).json({
-      status: "error",
-      message:
-        "Invalid limit parameter, must be a positive integer between 1 and 100",
+      status: 'error',
+      message: 'Invalid limit parameter, must be a positive integer between 1 and 100',
     });
   }
 
@@ -130,11 +128,11 @@ router.get("/", async (req, res) => {
     // Validate the voterType parameter
     if (!validator.isAlphanumeric(voterType)) {
       return res.status(400).json({
-        status: "error",
-        message: "Invalid voterType format",
+        status: 'error',
+        message: 'Invalid voterType format',
       });
     }
-    matchStage.voterType = { $regex: `^${escapeRegex(voterType)}$`, $options: "i" };
+    matchStage.voterType = { $regex: `^${escapeRegex(voterType)}$`, $options: 'i' };
   }
 
   try {
@@ -147,7 +145,7 @@ router.get("/", async (req, res) => {
     ];
 
     // Count total documents matching the filter (for pagination metadata)
-    const countPipeline = [...filterPipeline, { $count: "total" }];
+    const countPipeline = [...filterPipeline, { $count: 'total' }];
     const totalResults = await Ballot.aggregate(countPipeline);
     const total = totalResults.length > 0 ? totalResults[0].total : 0;
 
@@ -161,10 +159,10 @@ router.get("/", async (req, res) => {
       // Lookup proposals for each ballot
       {
         $lookup: {
-          from: "proposals",
-          localField: "_id",
-          foreignField: "ballotId",
-          as: "proposals",
+          from: 'proposals',
+          localField: '_id',
+          foreignField: 'ballotId',
+          as: 'proposals',
         },
       },
       // Add singleProposal field if ballot has exactly one proposal - this allows for faster navigation on the frontend
@@ -172,8 +170,8 @@ router.get("/", async (req, res) => {
         $addFields: {
           singleProposal: {
             $cond: {
-              if: { $eq: [{ $size: "$proposals" }, 1] },
-              then: { $arrayElemAt: ["$proposals._id", 0] },
+              if: { $eq: [{ $size: '$proposals' }, 1] },
+              then: { $arrayElemAt: ['$proposals._id', 0] },
               else: null,
             },
           },
@@ -229,10 +227,10 @@ router.get("/", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error fetching ballots:", error);
+    console.error('Error fetching ballots:', error);
     return res.status(500).json({
-      status: "error",
-      message: "Server error while fetching ballots",
+      status: 'error',
+      message: 'Server error while fetching ballots',
     });
   }
 });
@@ -245,19 +243,19 @@ router.get("/", async (req, res) => {
  * @returns {Array<string>} 200 - Array of unique voter type strings (e.g., ["stake", "drep", "pool"])
  * @returns {Object} 500 - Server error while fetching voter types
  */
-router.get("/voterTypes", async (req, res) => {
+router.get('/voterTypes', async (req, res) => {
   try {
     // Fetch all ballots and extract unique voterTypes
-    const ballots = await Ballot.find().select("voterType");
+    const ballots = await Ballot.find().select('voterType');
     const voterTypes = [...new Set(ballots.map((ballot) => ballot.voterType))];
 
     // Return the list of unique voterTypes
     return res.status(200).json(voterTypes);
   } catch (error) {
-    console.error("Error fetching voter types:", error);
+    console.error('Error fetching voter types:', error);
     return res.status(500).json({
-      status: "error",
-      message: "Server error while fetching voter types",
+      status: 'error',
+      message: 'Server error while fetching voter types',
     });
   }
 });
@@ -278,7 +276,7 @@ router.get("/voterTypes", async (req, res) => {
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  * @returns {Object} 500 - Server error (handled by getBallot middleware)
  */
-router.get("/:ballotId", getBallot, async (req, res) => {
+router.get('/:ballotId', getBallot, async (req, res) => {
   const ballot = req.ballot.toObject();
 
   // check if voter token is present
@@ -286,11 +284,10 @@ router.get("/:ballotId", getBallot, async (req, res) => {
   // import voter validation from ballot. Use loadValidationScript so
   // dev edits to config/*.js are picked up without restarting the
   // server (production caches forever).
-  const { loadValidationScript } = await import(
-    "../../../helper/loadValidationScript.js"
+  const { loadValidationScript } = await import('../../../helper/loadValidationScript.js');
+  const { validateVoter, allowedVoterCount, getTotalWeight } = await loadValidationScript(
+    ballot.voterValidationScript,
   );
-  const { validateVoter, allowedVoterCount, getTotalWeight } =
-    await loadValidationScript(ballot.voterValidationScript);
   if (voterToken.userId) {
     // check if voter is valid voter
     ballot.voterValidated = await validateVoter(voterToken.userId, ballot._id);
@@ -309,11 +306,10 @@ router.get("/:ballotId", getBallot, async (req, res) => {
   // New shape lives under explicit per-group keys; the legacy scalar
   // fields are kept populated as degenerate sums for one release
   // cycle so the frontend can migrate without a hard break.
-  const { readBallotPower, scalarTotals } = await import(
-    "../../../helper/votingPower/snapshotReader.js"
-  );
+  const { readBallotPower, scalarTotals } =
+    await import('../../../helper/votingPower/snapshotReader.js');
   const power = await readBallotPower(ballot);
-  ballot.votingPowerByGroup = power.totalVotingPower;       // per-group object
+  ballot.votingPowerByGroup = power.totalVotingPower; // per-group object
   ballot.eligibleVoterCountByGroup = power.eligibleVoterCount;
   ballot.activeVotingPowerByGroup = power.activeVotingPower;
   ballot.activeVoterCountByGroup = power.activeVoterCount;
@@ -357,7 +353,7 @@ router.get("/:ballotId", getBallot, async (req, res) => {
  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
  * @returns {Object} 500 - Server error
  */
-router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, res) => {
+router.get('/:ballotId/proposals/', aggregationLimiter, getBallot, async (req, res) => {
   const ballot = req.ballot.toObject();
   const voterToken = verifyToken(req);
   const userId = voterToken.userId || false;
@@ -368,7 +364,7 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
     limit = 10,
     search,
     sort,
-    direction = "desc",
+    direction = 'desc',
     hasVoted,
     tags, // New parameter for filtering by tags
     categories, // New parameter for filtering by categories
@@ -379,52 +375,50 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
   // Validate pagination parameters
   if (isNaN(pageNum) || pageNum < 1) {
     return res.status(400).json({
-      status: "error",
-      message: "Invalid page parameter, must be a positive integer",
+      status: 'error',
+      message: 'Invalid page parameter, must be a positive integer',
     });
   }
 
   if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
     return res.status(400).json({
-      status: "error",
-      message:
-        "Invalid limit parameter, must be a positive integer between 1 and 100",
+      status: 'error',
+      message: 'Invalid limit parameter, must be a positive integer between 1 and 100',
     });
   }
 
   // Validate hasVoted parameter
-  if (hasVoted !== undefined && !["true", "false"].includes(hasVoted)) {
+  if (hasVoted !== undefined && !['true', 'false'].includes(hasVoted)) {
     return res.status(400).json({
-      status: "error",
+      status: 'error',
       message: "hasVoted must be 'true' or 'false'",
     });
   }
 
   // Determine sort direction value (1 for ascending, -1 for descending)
-  const sortDirection = direction.toLowerCase() === "asc" ? 1 : -1;
+  const sortDirection = direction.toLowerCase() === 'asc' ? 1 : -1;
 
   // Determine sort field and validate
   let sortField = { _id: 1 }; // Default sort by ID, newest first
 
   if (sort) {
     // Validate sort parameter
-    if (!["title", "commentCount", "voteCount"].includes(sort)) {
+    if (!['title', 'commentCount', 'voteCount'].includes(sort)) {
       return res.status(400).json({
-        status: "error",
-        message:
-          "Invalid sort field, must be 'title', 'commentCount', or 'voteCount'",
+        status: 'error',
+        message: "Invalid sort field, must be 'title', 'commentCount', or 'voteCount'",
       });
     }
 
     // Set sort field based on parameter with _id as secondary sort field
     switch (sort) {
-      case "title":
+      case 'title':
         sortField = { title: sortDirection, _id: 1 };
         break;
-      case "commentCount":
+      case 'commentCount':
         sortField = { commentCount: sortDirection, _id: 1 };
         break;
-      case "voteCount":
+      case 'voteCount':
         sortField = { voteCount: sortDirection, _id: 1 };
         break;
     }
@@ -440,15 +434,15 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
   if (search) {
     if (!validator.isLength(search, { min: 1, max: 100 })) {
       return res.status(400).json({
-        status: "error",
-        message: "Search term must be between 1 and 100 characters",
+        status: 'error',
+        message: 'Search term must be between 1 and 100 characters',
       });
     }
 
     // Escape regex metacharacters and pass the pattern as a string
     // so `new RegExp(...)` is never called with user-supplied bytes.
     const searchPattern = escapeRegex(search);
-    matchStage.$or = [{ title: { $regex: searchPattern, $options: "i" } }];
+    matchStage.$or = [{ title: { $regex: searchPattern, $options: 'i' } }];
 
     // Check if search might be a valid MongoDB ObjectID
     if (validator.isMongoId(search)) {
@@ -456,7 +450,7 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
         const objectId = new mongoose.Types.ObjectId(search);
         matchStage.$or.push({ _id: objectId });
       } catch (err) {
-        console.log("Invalid ObjectId format:", err.message);
+        console.log('Invalid ObjectId format:', err.message);
       }
     }
 
@@ -476,9 +470,7 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
   // of per-ballot Ballot.facets[]. Frontend should migrate to the
   // v1 facet query: /api/v1/proposals/ballot/:ballotId?filter[<key>]=<csv>
   if (tags || categories) {
-    console.warn(
-      "[v0 ballots] tags/categories query params ignored; use v1 facet filter instead"
-    );
+    console.warn('[v0 ballots] tags/categories query params ignored; use v1 facet filter instead');
   }
 
   // Build base aggregation pipeline with common stages
@@ -489,40 +481,40 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
     // Lookup comments from the Comment collection
     {
       $lookup: {
-        from: "comments",
-        localField: "_id",
-        foreignField: "proposalId",
-        as: "comments",
+        from: 'comments',
+        localField: '_id',
+        foreignField: 'proposalId',
+        as: 'comments',
       },
     },
     // Add a field that counts the comments
     {
       $addFields: {
-        commentCount: { $size: "$comments" },
+        commentCount: { $size: '$comments' },
       },
     },
     // First, lookup results to have access to it
     {
       $lookup: {
-        from: "results",
-        localField: "_id",
-        foreignField: "proposalId",
-        as: "results",
+        from: 'results',
+        localField: '_id',
+        foreignField: 'proposalId',
+        as: 'results',
       },
     },
     // Then add the result field from results array
     {
       $addFields: {
-        result: { $arrayElemAt: ["$results", 0] },
+        result: { $arrayElemAt: ['$results', 0] },
       },
     },
     // add the updatedAt field from result if exists, otherwise set it to null
     {
       $addFields: {
-        "updatedAt": {
+        updatedAt: {
           $cond: {
-            if: { $gt: [{ $size: "$results" }, 0] },
-            then: { $arrayElemAt: ["$results.updatedAt", 0] },
+            if: { $gt: [{ $size: '$results' }, 0] },
+            then: { $arrayElemAt: ['$results.updatedAt', 0] },
             else: null,
           },
         },
@@ -531,19 +523,19 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
     // Now lookup votes from the Vote collection
     {
       $lookup: {
-        from: "votes",
-        localField: "_id",
-        foreignField: "proposalId",
-        as: "allVotes",
+        from: 'votes',
+        localField: '_id',
+        foreignField: 'proposalId',
+        as: 'allVotes',
       },
     },
     // Add this lookup stage after the votes lookup and before the addFields stage
     {
       $lookup: {
-        from: "usercaches",
-        localField: "ballotId",
-        foreignField: "ballotId",
-        as: "userCaches",
+        from: 'usercaches',
+        localField: 'ballotId',
+        foreignField: 'ballotId',
+        as: 'userCaches',
       },
     },
     // Calculate voteCount after we have the result data
@@ -551,11 +543,11 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
       $addFields: {
         validVotes: {
           $filter: {
-            input: "$allVotes",
-            as: "vote",
-            cond: { $ne: ["$$vote.submittedAt", null] },
+            input: '$allVotes',
+            as: 'vote',
+            cond: { $ne: ['$$vote.submittedAt', null] },
             // Treat missing or null submittedAt as "not valid"
-            cond: { $ne: [{ $ifNull: ["$$vote.submittedAt", null] }, null] },
+            cond: { $ne: [{ $ifNull: ['$$vote.submittedAt', null] }, null] },
           },
         },
         // Calculate total voting power of unique voters who voted
@@ -563,25 +555,25 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
           $sum: {
             $map: {
               input: {
-                // Get unique voters first  
+                // Get unique voters first
                 $setUnion: [
                   {
                     $map: {
                       input: {
                         $filter: {
-                          input: "$allVotes",
-                          as: "vote",
-                          cond: { $ne: ["$$vote.submittedAt", null] },
-                          cond: { $ne: [{ $ifNull: ["$$vote.submittedAt", null] }, null] },
-                        }
+                          input: '$allVotes',
+                          as: 'vote',
+                          cond: { $ne: ['$$vote.submittedAt', null] },
+                          cond: { $ne: [{ $ifNull: ['$$vote.submittedAt', null] }, null] },
+                        },
                       },
-                      as: "vote",
-                      in: "$$vote.userId"
-                    }
-                  }
-                ]
+                      as: 'vote',
+                      in: '$$vote.userId',
+                    },
+                  },
+                ],
               },
-              as: "uniqueVoterId",
+              as: 'uniqueVoterId',
               in: {
                 // Get voting power for this voter from userCache
                 $let: {
@@ -590,25 +582,25 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
                       $arrayElemAt: [
                         {
                           $filter: {
-                            input: "$userCaches",
-                            as: "cache",
+                            input: '$userCaches',
+                            as: 'cache',
                             cond: {
                               $and: [
-                                { $eq: ["$$cache.userId", "$$uniqueVoterId"] },
-                                { $eq: ["$$cache.ballotId", "$ballotId"] }
-                              ]
-                            }
-                          }
+                                { $eq: ['$$cache.userId', '$$uniqueVoterId'] },
+                                { $eq: ['$$cache.ballotId', '$ballotId'] },
+                              ],
+                            },
+                          },
                         },
-                        0
-                      ]
-                    }
+                        0,
+                      ],
+                    },
                   },
-                  in: { $ifNull: ["$$userCache.votingPower", 1] }
-                }
-              }
-            }
-          }
+                  in: { $ifNull: ['$$userCache.votingPower', 1] },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -623,9 +615,9 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
           $arrayElemAt: [
             {
               $filter: {
-                input: "$allVotes",
-                as: "vote",
-                cond: { $eq: ["$$vote.userId", userId] },
+                input: '$allVotes',
+                as: 'vote',
+                cond: { $eq: ['$$vote.userId', userId] },
               },
             },
             0,
@@ -636,12 +628,12 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
             {
               $size: {
                 $filter: {
-                  input: "$validVotes",
-                  as: "vote",
+                  input: '$validVotes',
+                  as: 'vote',
                   cond: {
                     $and: [
-                      { $eq: ["$$vote.userId", userId] },
-                      { $ne: ["$$vote.submittedAt", null] },
+                      { $eq: ['$$vote.userId', userId] },
+                      { $ne: ['$$vote.submittedAt', null] },
                     ],
                   },
                 },
@@ -656,12 +648,12 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
     // Apply hasVoted filter if provided (only for logged-in users)
     if (hasVoted !== undefined) {
       aggregationPipeline.push({
-        $match: { hasVoted: hasVoted === "true" },
+        $match: { hasVoted: hasVoted === 'true' },
       });
     }
   } else if (hasVoted !== undefined) {
     // If no voter is logged in and hasVoted filter is requested, return empty list
-    if (hasVoted === "true") {
+    if (hasVoted === 'true') {
       return res.status(200).json({
         data: [],
         pagination: {
@@ -671,7 +663,7 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
           totalPages: 0,
         },
         sort: {
-          field: sort || "_id",
+          field: sort || '_id',
           direction: direction.toLowerCase(),
         },
         filters: {
@@ -704,12 +696,12 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
           $setUnion: [
             {
               $map: {
-                input: "$validVotes",
-                as: "vote",
-                in: "$$vote.userId"
-              }
-            }
-          ]
+                input: '$validVotes',
+                as: 'vote',
+                in: '$$vote.userId',
+              },
+            },
+          ],
         },
       },
       votingPower: 1,
@@ -718,30 +710,30 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
       // Include vote data for scale voteType proposals to calculate medians
       validVotes: {
         $cond: {
-          if: { $eq: ["$voteType", "scale"] },
+          if: { $eq: ['$voteType', 'scale'] },
           then: {
             $map: {
-              input: "$validVotes",
-              as: "vote",
+              input: '$validVotes',
+              as: 'vote',
               in: {
-                submittedVote: "$$vote.submittedVote",
-                userId: "$$vote.userId"
-              }
-            }
+                submittedVote: '$$vote.submittedVote',
+                userId: '$$vote.userId',
+              },
+            },
           },
-          else: "$$REMOVE"
-        }
+          else: '$$REMOVE',
+        },
       },
       userCaches: {
         $cond: {
-          if: { $eq: ["$voteType", "scale"] },
-          then: "$userCaches",
-          else: "$$REMOVE"
-        }
+          if: { $eq: ['$voteType', 'scale'] },
+          then: '$userCaches',
+          else: '$$REMOVE',
+        },
       },
       // Only include user-specific fields when a user is logged in
       ...(userId && {
-        voterVote: "$userVote.vote",
+        voterVote: { $ifNull: ['$userVote.submittedVote', '$userVote.vote'] },
         hasVoted: 1,
       }),
     },
@@ -750,7 +742,7 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
   try {
     // Create a copy of the pipeline for counting total documents
     const countPipeline = [...aggregationPipeline];
-    countPipeline.push({ $count: "total" });
+    countPipeline.push({ $count: 'total' });
 
     // Get total count
     const totalResults = await Proposal.aggregate(countPipeline);
@@ -763,7 +755,7 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
     aggregationPipeline.push(
       { $sort: sortField }, // Sort based on the provided field and direction
       { $skip: skip },
-      { $limit: limitNum }
+      { $limit: limitNum },
     );
 
     // Fetch the proposals from the database
@@ -771,7 +763,11 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
 
     // Calculate medians for scale voteType proposals
     for (const proposal of proposals) {
-      if (proposal.voteType === "scale" && proposal.voteOptions && proposal.voteOptions.length > 0) {
+      if (
+        proposal.voteType === 'scale' &&
+        proposal.voteOptions &&
+        proposal.voteOptions.length > 0
+      ) {
         const lowerBound = proposal.voteOptions[0].id;
         const upperBound = proposal.voteOptions[proposal.voteOptions.length - 1].id;
 
@@ -784,7 +780,7 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
         proposal.result.median = calculateSimpleMedian(
           proposal.validVotes || [],
           lowerBound,
-          upperBound
+          upperBound,
         );
 
         // Calculate weighted median based on voting power
@@ -792,23 +788,28 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
           proposal.validVotes || [],
           proposal.userCaches || [],
           lowerBound,
-          upperBound
+          upperBound,
         );
 
         // clean up results to not expose all single votes, only keep abstain
         if (proposal.result.results) {
-          proposal.result.results = proposal.result.results.filter(result => result.id === "abstain");
+          proposal.result.results = proposal.result.results.filter(
+            (result) => result.id === 'abstain',
+          );
           // Add a field for valid votes which are not abstain with count and votingpower
           // get votingpower for all votes which are not abstained from voter cache
-          const votingPowerNoAbstain = proposal.validVotes.filter(vote => vote.submittedVote[0] !== "abstain").map(vote => vote.userId).map(uid => proposal.userCaches.find(cache => cache.userId === uid)?.votingPower).reduce((sum, power) => sum + power, 0);
+          const votingPowerNoAbstain = proposal.validVotes
+            .filter((vote) => vote.submittedVote[0] !== 'abstain')
+            .map((vote) => vote.userId)
+            .map((uid) => proposal.userCaches.find((cache) => cache.userId === uid)?.votingPower)
+            .reduce((sum, power) => sum + power, 0);
           proposal.result.results.push({
-            id: "votes",
-            label: "Votes",
-            count: proposal.validVotes.filter(vote => vote.submittedVote[0] !== "abstain").length,
-            votingPower: votingPowerNoAbstain
+            id: 'votes',
+            label: 'Votes',
+            count: proposal.validVotes.filter((vote) => vote.submittedVote[0] !== 'abstain').length,
+            votingPower: votingPowerNoAbstain,
           });
         }
-
 
         // Clean up temporary fields used for calculation
         delete proposal.validVotes;
@@ -826,41 +827,43 @@ router.get("/:ballotId/proposals/", aggregationLimiter, getBallot, async (req, r
         totalPages,
       },
       sort: {
-        field: sort || "_id",
+        field: sort || '_id',
         direction: direction.toLowerCase(),
       },
       filters: {
         hasVoted: hasVoted,
-        tags: tags ? tags.split(',').map(tag => tag.trim()) : undefined,
-        categories: categories ? categories.split(',').map(category => category.trim()) : undefined
+        tags: tags ? tags.split(',').map((tag) => tag.trim()) : undefined,
+        categories: categories
+          ? categories.split(',').map((category) => category.trim())
+          : undefined,
       },
     });
   } catch (error) {
-    console.error("Error fetching proposals:", error);
+    console.error('Error fetching proposals:', error);
     return res.status(500).json({
-      status: "error",
-      message: "Server error while fetching proposals",
+      status: 'error',
+      message: 'Server error while fetching proposals',
     });
   }
 });
 
 /**
-  * @route GET /api/v0/ballots/:ballotId/categories
-  * @description Get all unique categories from proposals in a specific ballot
-  * @access Public
-  *
-  * @param {string} req.params.ballotId - The ID of the ballot to get categories for
-  *
-  * @returns {Array} 200 - List of unique categories from proposals in the ballot
-  * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
-  * @returns {Object} 500 - Server error
-  */
+ * @route GET /api/v0/ballots/:ballotId/categories
+ * @description Get all unique categories from proposals in a specific ballot
+ * @access Public
+ *
+ * @param {string} req.params.ballotId - The ID of the ballot to get categories for
+ *
+ * @returns {Array} 200 - List of unique categories from proposals in the ballot
+ * @returns {Object} 404 - Error if ballot not found (handled by getBallot middleware)
+ * @returns {Object} 500 - Server error
+ */
 // Returns enum options declared on the ballot's "category" facet (if
 // present). Replaces the legacy proposal-derived enumeration —
 // per-proposal categories were dropped in favor of Ballot.facets[].
-router.get("/:ballotId/categories", getBallot, async (req, res) => {
+router.get('/:ballotId/categories', getBallot, async (req, res) => {
   const ballot = req.ballot.toObject();
-  const categoryFacet = (ballot.facets || []).find((f) => f.key === "category");
+  const categoryFacet = (ballot.facets || []).find((f) => f.key === 'category');
   return res.status(200).json(categoryFacet?.options || []);
 });
 
@@ -879,9 +882,9 @@ router.get("/:ballotId/categories", getBallot, async (req, res) => {
 // present). Same migration as /categories above. If a ballot was
 // historically used with only free-form tags, define a "tag" enum
 // facet at import time to surface them here.
-router.get("/:ballotId/tags", getBallot, async (req, res) => {
+router.get('/:ballotId/tags', getBallot, async (req, res) => {
   const ballot = req.ballot.toObject();
-  const tagFacet = (ballot.facets || []).find((f) => f.key === "tag");
+  const tagFacet = (ballot.facets || []).find((f) => f.key === 'tag');
   return res.status(200).json(tagFacet?.options || []);
 });
 

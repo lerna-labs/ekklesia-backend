@@ -1,4 +1,4 @@
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 // IMPORTANT: in express-rate-limit v8 the helper signature is
 // `ipKeyGenerator(ip: string, ipv6Subnet?: number)`. It returns the
@@ -34,8 +34,8 @@ export const nonceRequestLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 5,
   message: {
-    status: "error",
-    message: "Too many nonce requests. Please try again later.",
+    status: 'error',
+    message: 'Too many nonce requests. Please try again later.',
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -49,8 +49,8 @@ export const sessionVerificationLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 10,
   message: {
-    status: "error",
-    message: "Too many authentication attempts. Please try again later.",
+    status: 'error',
+    message: 'Too many authentication attempts. Please try again later.',
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -63,8 +63,8 @@ export const voteWriteLimiter = rateLimit({
   max: 30,
   keyGenerator: userOrIpKey,
   message: {
-    status: "error",
-    message: "Too many vote operations. Slow down.",
+    status: 'error',
+    message: 'Too many vote operations. Slow down.',
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -79,8 +79,8 @@ export const ballotImportLimiter = rateLimit({
   max: Number(process.env.BALLOT_IMPORT_MAX) || 30,
   keyGenerator: importerOrIpKey,
   message: {
-    status: "error",
-    message: "Ballot import rate limit exceeded.",
+    status: 'error',
+    message: 'Ballot import rate limit exceeded.',
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -91,14 +91,11 @@ export const ballotImportLimiter = rateLimit({
 // 120 requests per minute.
 export const publicApiLimiter = rateLimit({
   windowMs: Number(process.env.PUBLIC_API_WINDOW_MS) || 60 * 1000,
-  max: (req) =>
-    req.apiKey?.rateLimit?.max ||
-    Number(process.env.PUBLIC_API_MAX) ||
-    120,
+  max: (req) => req.apiKey?.rateLimit?.max || Number(process.env.PUBLIC_API_MAX) || 120,
   keyGenerator: apiKeyOrIpKey,
   message: {
-    status: "error",
-    message: "Public API rate limit exceeded for this key.",
+    status: 'error',
+    message: 'Public API rate limit exceeded for this key.',
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -115,8 +112,8 @@ export const publicGetLimiter = rateLimit({
   max: Number(process.env.PUBLIC_GET_MAX) || 120,
   keyGenerator: userOrIpKey,
   message: {
-    status: "error",
-    message: "Rate limit exceeded",
+    status: 'error',
+    message: 'Rate limit exceeded',
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -130,8 +127,8 @@ export const aggregationLimiter = rateLimit({
   max: Number(process.env.AGGREGATION_MAX) || 30,
   keyGenerator: userOrIpKey,
   message: {
-    status: "error",
-    message: "Rate limit exceeded (aggregation)",
+    status: 'error',
+    message: 'Rate limit exceeded (aggregation)',
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -146,8 +143,8 @@ export const getSessionLimiter = rateLimit({
   windowMs: Number(process.env.GET_SESSION_WINDOW_MS) || 60 * 1000,
   max: Number(process.env.GET_SESSION_MAX) || 60,
   message: {
-    status: "error",
-    message: "Too many session reads. Slow down.",
+    status: 'error',
+    message: 'Too many session reads. Slow down.',
   },
   standardHeaders: true,
   legacyHeaders: false,

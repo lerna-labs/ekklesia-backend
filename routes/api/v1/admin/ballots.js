@@ -10,28 +10,54 @@
 //   POST /api/v1/admin/ballots/:id/settle    — finalize + count + close
 //   GET  /api/v1/admin/ballots/:id/head-info — Hydra head info passthrough
 
-import { Router } from "express";
-import { Ballot } from "../../../../schema/Ballot.js";
-import { isAdmin } from "../../../../helper/adminAuth.js";
-import { adminOrScope } from "../../../../helper/compositeAuth.js";
-import { ballotImportLimiter } from "../../../../helper/rateLimiters.js";
-import { validateCompiledBallot } from "../../../../helper/compiledBallot/validator.js";
+import { Router } from 'express';
+import { Ballot } from '../../../../schema/Ballot.js';
+import { isAdmin } from '../../../../helper/adminAuth.js';
+import { adminOrScope } from '../../../../helper/compositeAuth.js';
+import { ballotImportLimiter } from '../../../../helper/rateLimiters.js';
+import { validateCompiledBallot } from '../../../../helper/compiledBallot/validator.js';
 import {
   writeCompiledBallot,
   CompiledBallotWriteError,
-} from "../../../../helper/compiledBallot/writer.js";
-import {
-  forBallot,
-  forEndpoint,
-  HydraClientError,
-} from "../../../../helper/hydraClient.js";
-import { writeFinalResult } from "../../../../crons/10minAggregateVotes.js";
-import { certifyBallot, CertifyError } from "../../../../helper/results/certify.js";
-import { VoterPowerSnapshot } from "../../../../schema/VoterPowerSnapshot.js";
-import { ImportedBallotPayload } from "../../../../schema/ImportedBallotPayload.js";
-import crypto from "node:crypto";
+} from '../../../../helper/compiledBallot/writer.js';
+import { forBallot, forEndpoint, HydraClientError } from '../../../../helper/hydraClient.js';
+import { writeFinalResult } from '../../../../crons/10minAggregateVotes.js';
+import { certifyBallot, CertifyError } from '../../../../helper/results/certify.js';
+import { VoterPowerSnapshot } from '../../../../schema/VoterPowerSnapshot.js';
+import { ImportedBallotPayload } from '../../../../schema/ImportedBallotPayload.js';
+import { resolveBallot } from '../../../../helper/idResolver.js';
+import crypto from 'node:crypto';
 
 const router = Router();
+
+// All admin lifecycle handlers below address ballots through `:id`.
+// Resolve once per request (`router.param`), accept either the
+// canonical Mongo `_id` or the upstream `proposalSource.externalBallotId`
+// the proposals module pushed at import time, then rewrite
+// `req.params.id` to the canonical value so every downstream
+// `Ballot.findById(req.params.id)` / `forBallot(req.params.id)` call
+// addresses the real row without any handler-body churn.
+router.param('id', async (req, res, next, id) => {
+  try {
+    const result = await resolveBallot(id);
+    if (!result) {
+      return res.status(404).json({ status: 'error', message: 'Ballot not found' });
+    }
+    if (result.ambiguous) {
+      return res.status(409).json({
+        status: 'error',
+        code: 'ID_COLLISION',
+        message: 'External ballot id matches multiple ballots; use the canonical _id',
+        candidates: result.ambiguous,
+      });
+    }
+    req.params.id = String(result.doc._id);
+    req.ballotResolvedFrom = result.source; // 'internal' | 'external'
+    return next();
+  } catch (err) {
+    return res.status(500).json({ status: 'error', message: 'Server error' });
+  }
+});
 
 // POST /import — accepts a CompiledBallot (v1) from either a proposals
 // module (API key with `write:ballot-import`) or an admin (JWT). Must
@@ -42,47 +68,44 @@ const router = Router();
 // Returns: { ballotId, created, proposalsImported, schemaVersion }
 // 409 if the target ballot is already live/closed.
 router.post(
-  "/import",
+  '/import',
   ballotImportLimiter,
-  adminOrScope("write:ballot-import"),
+  adminOrScope('write:ballot-import'),
   async (req, res) => {
     const payload = req.body;
     const validation = validateCompiledBallot(payload);
     if (!validation.ok) {
       return res.status(400).json({
-        status: "error",
-        code: "VALIDATION_FAILED",
-        message: "Compiled ballot payload failed validation",
+        status: 'error',
+        code: 'VALIDATION_FAILED',
+        message: 'Compiled ballot payload failed validation',
         errors: validation.errors,
       });
     }
 
     const authCtx = {
-      method: req.auth.kind === "apiKey" ? "push" : "upload",
-      importedBy:
-        req.auth.kind === "apiKey" ? req.auth.prefix : req.auth.userId,
+      method: req.auth.kind === 'apiKey' ? 'push' : 'upload',
+      importedBy: req.auth.kind === 'apiKey' ? req.auth.prefix : req.auth.userId,
     };
 
     try {
       const result = await writeCompiledBallot(payload, authCtx);
       return res.status(result.created ? 201 : 200).json({
-        status: "success",
+        status: 'success',
         ...result,
       });
     } catch (err) {
       if (err instanceof CompiledBallotWriteError) {
         return res.status(err.status).json({
-          status: "error",
+          status: 'error',
           code: err.code,
           message: err.message,
         });
       }
-      console.error("[ballots/import] error:", err);
-      return res
-        .status(500)
-        .json({ status: "error", code: "INTERNAL", message: "Server error" });
+      console.error('[ballots/import] error:', err);
+      return res.status(500).json({ status: 'error', code: 'INTERNAL', message: 'Server error' });
     }
-  }
+  },
 );
 
 router.use(isAdmin);
@@ -97,23 +120,23 @@ function handleHydraError(err, res) {
     // from a generic upstream failure.
     if (err.status === 409) {
       return res.status(409).json({
-        status: "error",
-        code: err.code || "CONFLICT",
+        status: 'error',
+        code: err.code || 'CONFLICT',
         message:
           err.message ||
-          "Hydra rejected the request as a conflict — do not retry without operator review.",
+          'Hydra rejected the request as a conflict — do not retry without operator review.',
         upstream: err.data ?? null,
       });
     }
     return res.status(err.status && err.status < 600 ? 502 : 502).json({
-      status: "error",
+      status: 'error',
       code: err.code || null,
       message: err.message,
       upstream: err.data ?? null,
     });
   }
-  console.error("admin lifecycle error:", err);
-  return res.status(500).json({ status: "error", message: err.message || "Server error" });
+  console.error('admin lifecycle error:', err);
+  return res.status(500).json({ status: 'error', message: err.message || 'Server error' });
 }
 
 // POST /:id/prepare
@@ -124,16 +147,17 @@ function handleHydraError(err, res) {
 //   // Any additional fields pass through to Hydra /prepare
 //   ...payload
 // }
-router.post("/:id/prepare", async (req, res) => {
+router.post('/:id/prepare', async (req, res) => {
   try {
     const ballot = await Ballot.findById(req.params.id);
-    if (!ballot) return res.status(404).json({ status: "error", message: "Ballot not found" });
+    if (!ballot) return res.status(404).json({ status: 'error', message: 'Ballot not found' });
 
-    const endpoint = req.body.endpoint || ballot.hydraEndpoint || process.env.HYDRA_DEFAULT_ENDPOINT;
+    const endpoint =
+      req.body.endpoint || ballot.hydraEndpoint || process.env.HYDRA_DEFAULT_ENDPOINT;
     if (!endpoint) {
       return res.status(400).json({
-        status: "error",
-        message: "No hydra endpoint provided or configured (HYDRA_DEFAULT_ENDPOINT)",
+        status: 'error',
+        message: 'No hydra endpoint provided or configured (HYDRA_DEFAULT_ENDPOINT)',
       });
     }
 
@@ -141,7 +165,7 @@ router.post("/:id/prepare", async (req, res) => {
     const { endpoint: _skip, ...hydraBody } = req.body;
     const data = await client.prepare(hydraBody);
 
-    ballot.source = "hydra";
+    ballot.source = 'hydra';
     ballot.hydraEndpoint = endpoint;
     // Hydra /prepare returns: { txHash, policyId, fingerprint,
     //   definitionAssetName, instanceAssetName, ballotIpfsCid,
@@ -165,7 +189,7 @@ router.post("/:id/prepare", async (req, res) => {
     await ballot.save();
 
     return res.json({
-      status: "success",
+      status: 'success',
       ballot: {
         id: ballot._id.toString(),
         source: ballot.source,
@@ -188,7 +212,7 @@ router.post("/:id/prepare", async (req, res) => {
  */
 async function autoFillFromBallot(ballotId, body) {
   const ballot = await Ballot.findById(ballotId).lean();
-  if (!ballot) return { error: { status: 404, message: "Ballot not found" } };
+  if (!ballot) return { error: { status: 404, message: 'Ballot not found' } };
 
   const out = { ...body };
   if (!out.ballotId) out.ballotId = ballotId;
@@ -213,20 +237,23 @@ async function autoFillFromBallot(ballotId, body) {
 function lifecycleRoute(method, required = []) {
   return async (req, res) => {
     const filled = await autoFillFromBallot(req.params.id, req.body || {});
-    if (filled.error) return res.status(filled.error.status).json({ status: "error", message: filled.error.message });
+    if (filled.error)
+      return res
+        .status(filled.error.status)
+        .json({ status: 'error', message: filled.error.message });
     const missing = required.filter(
-      (k) => filled.body[k] === undefined || filled.body[k] === null || filled.body[k] === ""
+      (k) => filled.body[k] === undefined || filled.body[k] === null || filled.body[k] === '',
     );
     if (missing.length) {
       return res.status(400).json({
-        status: "error",
-        message: `Missing required field(s) for /${method}: ${missing.join(", ")}`,
+        status: 'error',
+        message: `Missing required field(s) for /${method}: ${missing.join(', ')}`,
       });
     }
     try {
       const client = await forBallot(req.params.id);
       const data = await client[method](filled.body);
-      return res.json({ status: "success", hydra: data });
+      return res.json({ status: 'success', hydra: data });
     } catch (err) {
       return handleHydraError(err, res);
     }
@@ -266,24 +293,25 @@ async function syncHeadStateToBallot(ballotId, client, { status } = {}) {
 // (written at /prepare). Admin only needs to override if running with custom
 // state. After /start succeeds, query head-info and stamp hydraHeadId +
 // hydraHeadStatus on the Ballot doc, and flip user-facing status → "live".
-router.post("/:id/start", async (req, res) => {
+router.post('/:id/start', async (req, res) => {
   const filled = await autoFillFromBallot(req.params.id, req.body || {});
-  if (filled.error) return res.status(filled.error.status).json({ status: "error", message: filled.error.message });
-  const required = ["utxos", "ballotPolicy", "ballotToken"];
+  if (filled.error)
+    return res.status(filled.error.status).json({ status: 'error', message: filled.error.message });
+  const required = ['utxos', 'ballotPolicy', 'ballotToken'];
   const missing = required.filter(
-    (k) => filled.body[k] === undefined || filled.body[k] === null || filled.body[k] === ""
+    (k) => filled.body[k] === undefined || filled.body[k] === null || filled.body[k] === '',
   );
   if (missing.length) {
     return res.status(400).json({
-      status: "error",
-      message: `Missing required field(s) for /start: ${missing.join(", ")}`,
+      status: 'error',
+      message: `Missing required field(s) for /start: ${missing.join(', ')}`,
     });
   }
   try {
     const client = await forBallot(req.params.id);
     const data = await client.start(filled.body);
-    const synced = await syncHeadStateToBallot(req.params.id, client, { status: "live" });
-    return res.json({ status: "success", hydra: data, ballot: synced });
+    const synced = await syncHeadStateToBallot(req.params.id, client, { status: 'live' });
+    return res.json({ status: 'success', hydra: data, ballot: synced });
   } catch (err) {
     return handleHydraError(err, res);
   }
@@ -295,9 +323,9 @@ router.post("/:id/start", async (req, res) => {
 // Note: this is a standalone finalize (e.g. for mid-vote inspection).
 // The canonical close path is the stepped /settle/* sequence below,
 // which internally burns → finalizes → closes in the correct order.
-router.post("/:id/finalize", async (req, res) => {
+router.post('/:id/finalize', async (req, res) => {
   const ballot = await Ballot.findById(req.params.id).lean();
-  if (!ballot) return res.status(404).json({ status: "error", message: "Ballot not found" });
+  if (!ballot) return res.status(404).json({ status: 'error', message: 'Ballot not found' });
   try {
     const client = await forBallot(req.params.id);
     const data = await client.finalize();
@@ -305,7 +333,7 @@ router.post("/:id/finalize", async (req, res) => {
       console.warn(`[admin/finalize] writeFinalResult failed: ${err.message}`);
     });
     const synced = await syncHeadStateToBallot(req.params.id, client);
-    return res.json({ status: "success", hydra: data, ballot: synced });
+    return res.json({ status: 'success', hydra: data, ballot: synced });
   } catch (err) {
     return handleHydraError(err, res);
   }
@@ -321,13 +349,13 @@ router.post("/:id/finalize", async (req, res) => {
 // /settle/burn — no body. Response: { burned, failed, remaining, total,
 // message }. Caller must loop on this endpoint until `remaining === 0`
 // before proceeding to /settle/finalize.
-router.post("/:id/settle/burn", async (req, res) => {
+router.post('/:id/settle/burn', async (req, res) => {
   const ballot = await Ballot.findById(req.params.id).lean();
-  if (!ballot) return res.status(404).json({ status: "error", message: "Ballot not found" });
+  if (!ballot) return res.status(404).json({ status: 'error', message: 'Ballot not found' });
   try {
     const client = await forBallot(req.params.id);
     const data = await client.settleBurn();
-    return res.json({ status: "success", hydra: data });
+    return res.json({ status: 'success', hydra: data });
   } catch (err) {
     return handleHydraError(err, res);
   }
@@ -337,29 +365,29 @@ router.post("/:id/settle/burn", async (req, res) => {
 // `resultsHash` + `evidenceMerkleRoot` are anchored on-chain, and the (601)
 // datum carries the committed result. Flip the ballot to "closed" here so
 // downstream consumers don't block on the subsequent L1 cleanup in /settle/close.
-router.post("/:id/settle/finalize", async (req, res) => {
+router.post('/:id/settle/finalize', async (req, res) => {
   const ballot = await Ballot.findById(req.params.id).lean();
-  if (!ballot) return res.status(404).json({ status: "error", message: "Ballot not found" });
+  if (!ballot) return res.status(404).json({ status: 'error', message: 'Ballot not found' });
   try {
     const client = await forBallot(req.params.id);
     const data = await client.settleFinalize();
     await writeFinalResult(req.params.id, data).catch((err) => {
       console.warn(`[admin/settle/finalize] writeFinalResult failed: ${err.message}`);
     });
-    const synced = await syncHeadStateToBallot(req.params.id, client, { status: "closed" });
-    return res.json({ status: "success", hydra: data, ballot: synced });
+    const synced = await syncHeadStateToBallot(req.params.id, client, { status: 'closed' });
+    return res.json({ status: 'success', hydra: data, ballot: synced });
   } catch (err) {
     return handleHydraError(err, res);
   }
 });
 
-router.post("/:id/settle/close", async (req, res) => {
+router.post('/:id/settle/close', async (req, res) => {
   const closeToken = (req.body || {}).closeToken;
   if (!closeToken) {
-    return res.status(400).json({ status: "error", message: "Missing required field: closeToken" });
+    return res.status(400).json({ status: 'error', message: 'Missing required field: closeToken' });
   }
   const ballot = await Ballot.findById(req.params.id).lean();
-  if (!ballot) return res.status(404).json({ status: "error", message: "Ballot not found" });
+  if (!ballot) return res.status(404).json({ status: 'error', message: 'Ballot not found' });
   try {
     const client = await forBallot(req.params.id);
     const data = await client.settleClose({ closeToken });
@@ -367,7 +395,7 @@ router.post("/:id/settle/close", async (req, res) => {
     // refresh the head-state mirror (hydraHeadId + hydraHeadStatus) so the Ballot
     // doc reflects FINAL on the Hydra side.
     const synced = await syncHeadStateToBallot(req.params.id, client);
-    return res.json({ status: "success", hydra: data, ballot: synced });
+    return res.json({ status: 'success', hydra: data, ballot: synced });
   } catch (err) {
     return handleHydraError(err, res);
   }
@@ -383,9 +411,9 @@ router.post("/:id/settle/close", async (req, res) => {
 //
 // 404 when Hydra has no persisted finalize response (no finalize has run in
 // the current staging directory).
-router.post("/:id/results/recover", async (req, res) => {
+router.post('/:id/results/recover', async (req, res) => {
   const ballot = await Ballot.findById(req.params.id).lean();
-  if (!ballot) return res.status(404).json({ status: "error", message: "Ballot not found" });
+  if (!ballot) return res.status(404).json({ status: 'error', message: 'Ballot not found' });
   try {
     const client = await forBallot(req.params.id);
     const data = await client.getResults();
@@ -395,15 +423,15 @@ router.post("/:id/results/recover", async (req, res) => {
     // Same status-flip as /settle/finalize — the ballot is authoritatively
     // closed once the finalize envelope is in hand, regardless of whether
     // /settle/close ever completed.
-    const synced = await syncHeadStateToBallot(req.params.id, client, { status: "closed" });
-    return res.json({ status: "success", hydra: data, ballot: synced });
+    const synced = await syncHeadStateToBallot(req.params.id, client, { status: 'closed' });
+    return res.json({ status: 'success', hydra: data, ballot: synced });
   } catch (err) {
     if (err instanceof HydraClientError && err.status === 404) {
       return res.status(404).json({
-        status: "error",
-        code: err.code || "NOT_FOUND",
+        status: 'error',
+        code: err.code || 'NOT_FOUND',
         message:
-          "No finalize response persisted on Hydra — /settle/finalize must run before recovery.",
+          'No finalize response persisted on Hydra — /settle/finalize must run before recovery.',
       });
     }
     return handleHydraError(err, res);
@@ -412,44 +440,44 @@ router.post("/:id/results/recover", async (req, res) => {
 
 // /count — burn all voter tokens. No body. Good for inspection between
 // rounds; /settle/burn is the recommended stepped variant.
-router.post("/:id/count", async (req, res) => {
+router.post('/:id/count', async (req, res) => {
   const ballot = await Ballot.findById(req.params.id).lean();
-  if (!ballot) return res.status(404).json({ status: "error", message: "Ballot not found" });
+  if (!ballot) return res.status(404).json({ status: 'error', message: 'Ballot not found' });
   try {
     const client = await forBallot(req.params.id);
     const data = await client.count();
-    return res.json({ status: "success", hydra: data });
+    return res.json({ status: 'success', hydra: data });
   } catch (err) {
     return handleHydraError(err, res);
   }
 });
 
 // Queue + cache observability / maintenance
-router.get("/:id/queue/status", async (req, res) => {
+router.get('/:id/queue/status', async (req, res) => {
   try {
     const client = await forBallot(req.params.id);
     const data = await client.queueStatus();
-    return res.json({ status: "success", hydra: data });
+    return res.json({ status: 'success', hydra: data });
   } catch (err) {
     return handleHydraError(err, res);
   }
 });
 
-router.post("/:id/queue/drain", async (req, res) => {
+router.post('/:id/queue/drain', async (req, res) => {
   try {
     const client = await forBallot(req.params.id);
     const data = await client.queueDrain(req.body || {});
-    return res.json({ status: "success", hydra: data });
+    return res.json({ status: 'success', hydra: data });
   } catch (err) {
     return handleHydraError(err, res);
   }
 });
 
-router.get("/:id/head-info", async (req, res) => {
+router.get('/:id/head-info', async (req, res) => {
   try {
     const client = await forBallot(req.params.id);
     const data = await client.headInfo();
-    return res.json({ status: "success", hydra: data });
+    return res.json({ status: 'success', hydra: data });
   } catch (err) {
     return handleHydraError(err, res);
   }
@@ -472,40 +500,43 @@ router.get("/:id/head-info", async (req, res) => {
 // Atomic replace: deletes all existing VoterPowerSnapshot rows for the
 // ballot before inserting the uploaded set. Validation errors return
 // 400 with a per-row error list.
-router.post("/:id/voting-power", async (req, res) => {
+router.post('/:id/voting-power', async (req, res) => {
   const ballot = await Ballot.findById(req.params.id);
   if (!ballot) {
     return res.status(404).json({
-      status: "error",
-      code: "BALLOT_NOT_FOUND",
-      message: "Ballot not found",
+      status: 'error',
+      code: 'BALLOT_NOT_FOUND',
+      message: 'Ballot not found',
     });
   }
 
   const { voters, epoch, snapshotMethod } = req.body || {};
   if (!Array.isArray(voters) || voters.length === 0) {
     return res.status(400).json({
-      status: "error",
-      code: "BAD_INPUT",
-      message: "voters[] required (non-empty)",
+      status: 'error',
+      code: 'BAD_INPUT',
+      message: 'voters[] required (non-empty)',
     });
   }
 
   const errors = [];
   const seen = new Set();
   voters.forEach((v, i) => {
-    if (!v || typeof v !== "object") {
-      errors.push({ path: `voters[${i}]`, message: "must be an object" });
+    if (!v || typeof v !== 'object') {
+      errors.push({ path: `voters[${i}]`, message: 'must be an object' });
       return;
     }
-    if (typeof v.userId !== "string" || v.userId.length === 0) {
-      errors.push({ path: `voters[${i}].userId`, message: "required string" });
+    if (typeof v.userId !== 'string' || v.userId.length === 0) {
+      errors.push({ path: `voters[${i}].userId`, message: 'required string' });
     }
-    if (typeof v.voterGroup !== "string" || v.voterGroup.length === 0) {
-      errors.push({ path: `voters[${i}].voterGroup`, message: "required string" });
+    if (typeof v.voterGroup !== 'string' || v.voterGroup.length === 0) {
+      errors.push({ path: `voters[${i}].voterGroup`, message: 'required string' });
     }
-    if (typeof v.votingPower !== "number" || !Number.isFinite(v.votingPower) || v.votingPower < 0) {
-      errors.push({ path: `voters[${i}].votingPower`, message: "must be a non-negative finite number (lovelace)" });
+    if (typeof v.votingPower !== 'number' || !Number.isFinite(v.votingPower) || v.votingPower < 0) {
+      errors.push({
+        path: `voters[${i}].votingPower`,
+        message: 'must be a non-negative finite number (lovelace)',
+      });
     }
     if (v.userId && seen.has(v.userId)) {
       errors.push({ path: `voters[${i}].userId`, message: `duplicate userId "${v.userId}"` });
@@ -514,20 +545,17 @@ router.post("/:id/voting-power", async (req, res) => {
   });
   if (errors.length > 0) {
     return res.status(400).json({
-      status: "error",
-      code: "VALIDATION_FAILED",
-      message: "voting-power upload payload failed validation",
+      status: 'error',
+      code: 'VALIDATION_FAILED',
+      message: 'voting-power upload payload failed validation',
       errors,
     });
   }
 
   const now = new Date();
-  const adminId = req.auth?.userId || "admin";
+  const adminId = req.auth?.userId || 'admin';
 
-  const checksum = crypto
-    .createHash("sha256")
-    .update(JSON.stringify(req.body))
-    .digest("hex");
+  const checksum = crypto.createHash('sha256').update(JSON.stringify(req.body)).digest('hex');
 
   // Atomic replace. No Mongo transaction (dev/standalone friendliness;
   // matches compiledBallot writer). Failure between delete and
@@ -540,14 +568,14 @@ router.post("/:id/voting-power", async (req, res) => {
       userId: v.userId,
       voterGroup: v.voterGroup,
       votingPower: v.votingPower,
-      source: "uploaded",
+      source: 'uploaded',
       computedAt: now,
       computedBy: `admin:${adminId}`,
     }));
     await VoterPowerSnapshot.insertMany(docs, { ordered: true });
 
     ballot.votingPowerSource = {
-      type: "uploaded",
+      type: 'uploaded',
       scriptName: ballot.votingPowerSource?.scriptName || ballot.voterValidationScript || null,
       uploadedAt: now,
       uploadedBy: adminId,
@@ -560,11 +588,11 @@ router.post("/:id/voting-power", async (req, res) => {
     // "upload" since it's the same shape (admin JWT push).
     await ImportedBallotPayload.create({
       ballotId: ballot._id,
-      schemaVersion: "voting-power-1",
-      importMethod: "upload",
+      schemaVersion: 'voting-power-1',
+      importMethod: 'upload',
       importedBy: adminId,
       source: {
-        moduleId: "voting-power",
+        moduleId: 'voting-power',
         externalBallotId: ballot._id.toString(),
         version: epoch ? `epoch:${epoch}` : null,
       },
@@ -573,17 +601,17 @@ router.post("/:id/voting-power", async (req, res) => {
     });
 
     return res.status(201).json({
-      status: "success",
+      status: 'success',
       ballotId: ballot._id.toString(),
       votersWritten: docs.length,
       uploadedAt: now,
     });
   } catch (err) {
-    console.error("[admin/voting-power] upload failed:", err);
+    console.error('[admin/voting-power] upload failed:', err);
     return res.status(500).json({
-      status: "error",
-      code: "INTERNAL",
-      message: err.message || "Server error",
+      status: 'error',
+      code: 'INTERNAL',
+      message: err.message || 'Server error',
     });
   }
 });
@@ -613,38 +641,41 @@ router.post("/:id/voting-power", async (req, res) => {
 // Versioning: append-only, monotonic per ballot. Restatements land
 // as version N+1. Identical payload bytes short-circuit to the
 // existing version (idempotent by blake2b_256 of canonical JSON).
-router.post("/:id/certify", async (req, res) => {
+router.post('/:id/certify', async (req, res) => {
   try {
     // `req.user.userId` is set by the isAdmin middleware; fall back to
     // "admin" when the JWT shape is unexpected so the audit row still
     // captures who-ish submitted (avoids null-violating required field).
-    const submittedBy = req.user?.userId || req.user?.sub || "admin";
+    const submittedBy = req.user?.userId || req.user?.sub || 'admin';
     const outcome = await certifyBallot({
       ballotId: req.params.id,
       submittedBy,
-      source: "api",
+      source: 'api',
       chainTxHash: null,
       payload: req.body || {},
     });
-    return res.json({ status: "success", ...outcome });
+    return res.json({ status: 'success', ...outcome });
   } catch (err) {
     if (err instanceof CertifyError) {
       const status =
-        err.code === "BALLOT_NOT_FOUND" ? 404
-        : err.code === "SNAPSHOT_COVERAGE_INCOMPLETE" ? 409
-        : err.code === "AUDIT_FETCH_FAILED" ? 502
-        : 400;
+        err.code === 'BALLOT_NOT_FOUND'
+          ? 404
+          : err.code === 'SNAPSHOT_COVERAGE_INCOMPLETE'
+            ? 409
+            : err.code === 'AUDIT_FETCH_FAILED'
+              ? 502
+              : 400;
       return res.status(status).json({
-        status: "error",
+        status: 'error',
         code: err.code,
         message: err.message,
         details: err.details,
       });
     }
-    console.error("[admin/certify] failed:", err);
+    console.error('[admin/certify] failed:', err);
     return res.status(500).json({
-      status: "error",
-      message: err.message || "Server error",
+      status: 'error',
+      message: err.message || 'Server error',
     });
   }
 });

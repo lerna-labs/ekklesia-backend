@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -30,7 +30,7 @@ const voterPowerSnapshotSchema = new Schema(
   {
     ballotId: {
       type: Schema.Types.ObjectId,
-      ref: "Ballot",
+      ref: 'Ballot',
       required: true,
     },
     userId: {
@@ -39,7 +39,7 @@ const voterPowerSnapshotSchema = new Schema(
     },
     voterGroup: {
       type: String,
-      enum: ["drep", "pool", "stake"],
+      enum: ['drep', 'pool', 'stake'],
       required: true,
     },
     votingPower: {
@@ -49,7 +49,7 @@ const voterPowerSnapshotSchema = new Schema(
     },
     source: {
       type: String,
-      enum: ["script", "snapshot", "uploaded"],
+      enum: ['script', 'snapshot', 'uploaded'],
       required: true,
     },
     computedAt: {
@@ -64,7 +64,7 @@ const voterPowerSnapshotSchema = new Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 // One row per (ballot, voter). Re-runs of the cron upsert; the admin
@@ -73,8 +73,5 @@ voterPowerSnapshotSchema.index({ ballotId: 1, userId: 1 }, { unique: true });
 // Group rollups read by (ballotId, voterGroup).
 voterPowerSnapshotSchema.index({ ballotId: 1, voterGroup: 1 });
 
-const VoterPowerSnapshot = mongoose.model(
-  "VoterPowerSnapshot",
-  voterPowerSnapshotSchema
-);
+const VoterPowerSnapshot = mongoose.model('VoterPowerSnapshot', voterPowerSnapshotSchema);
 export { VoterPowerSnapshot };

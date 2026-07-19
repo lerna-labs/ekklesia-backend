@@ -7,8 +7,8 @@
 //
 // Add new sources by dropping a sibling file in this folder and registering it below.
 
-import * as legacyAdapter from "./legacyAdapter.js";
-import * as hydraAdapter from "./hydraAdapter.js";
+import * as legacyAdapter from './legacyAdapter.js';
+import * as hydraAdapter from './hydraAdapter.js';
 
 export const adapters = [legacyAdapter, hydraAdapter];
 
@@ -44,7 +44,7 @@ export async function listUnified({
   // Good enough while Hydra adapter is a stub; optimize in Phase 2 if needed.
   const take = page * limit;
   const perSource = await Promise.all(
-    active.map((adapter) => adapter.list({ filter, sort, skip: 0, limit: take }))
+    active.map((adapter) => adapter.list({ filter, sort, skip: 0, limit: take })),
   );
 
   const merged = perSource.flatMap((r) => r.items);
@@ -66,10 +66,22 @@ export async function listUnified({
   };
 }
 
+/**
+ * Resolve across adapters by canonical `_id` or upstream
+ * `proposalSource.externalBallotId`. Each adapter scopes by its own
+ * source so cross-adapter external-id reuse is not a collision.
+ *
+ * Return shapes:
+ *   null                         — no match in any adapter
+ *   { __ambiguous: [_id, ...] }  — one adapter detected ambiguity
+ *                                  (consumer surfaces as 409)
+ *   <unified ballot doc>         — single canonical match
+ */
 export async function getUnified(id) {
   for (const adapter of adapters) {
     const doc = await adapter.get(id);
-    if (doc) return doc;
+    if (!doc) continue;
+    return doc; // either the unified doc, or { __ambiguous } marker
   }
   return null;
 }

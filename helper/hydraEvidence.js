@@ -50,7 +50,7 @@
  */
 export function voteFromAnswer(answer) {
   if (!answer) return null;
-  if (answer.abstain === true) return ["abstain"];
+  if (answer.abstain === true) return ['abstain'];
   if (!Array.isArray(answer.selection)) return null;
   // For the helpers, the array content passes through unchanged:
   // number[] stays number[]; SelectionEntry[] stays SelectionEntry[].
@@ -109,11 +109,11 @@ export function voterIdsIn(auditFull) {
  * @returns {string}
  */
 export function voterGroupFromHrp(credentialHrp) {
-  const hrp = String(credentialHrp || "").toLowerCase();
-  if (hrp === "drep") return "drep";
-  if (hrp === "pool" || hrp === "calidus") return "pool";
-  if (hrp === "stake" || hrp === "stake_test") return "stake";
-  return "default";
+  const hrp = String(credentialHrp || '').toLowerCase();
+  if (hrp === 'drep') return 'drep';
+  if (hrp === 'pool' || hrp === 'calidus') return 'pool';
+  if (hrp === 'stake' || hrp === 'stake_test') return 'stake';
+  return 'default';
 }
 
 /**
@@ -135,7 +135,7 @@ export async function buildVotersByUserId(auditFull, ballotId, UserCacheModel) {
   const ids = voters.map((v) => v?.voterId).filter(Boolean);
   const cached = ids.length
     ? await UserCacheModel.find({ ballotId, userId: { $in: ids } })
-        .select("userId voterGroup votingPower")
+        .select('userId voterGroup votingPower')
         .lean()
     : [];
   const byId = new Map();
@@ -146,7 +146,7 @@ export async function buildVotersByUserId(auditFull, ballotId, UserCacheModel) {
     out.set(v.voterId, {
       userId: v.voterId,
       voterGroup: hit?.voterGroup || voterGroupFromHrp(v.credentialHrp),
-      votingPower: typeof hit?.votingPower === "number" ? hit.votingPower : 1,
+      votingPower: typeof hit?.votingPower === 'number' ? hit.votingPower : 1,
     });
   }
   return out;

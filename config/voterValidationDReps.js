@@ -2,8 +2,8 @@ import {
   checkVoterValidation,
   saveVoterValidation,
   saveVotingPower,
-} from "../helper/voterValidation.js";
-import { Ballot } from "../schema/Ballot.js";
+} from '../helper/voterValidation.js';
+import { Ballot } from '../schema/Ballot.js';
 const API_URL = process.env.API_URL;
 const API_TOKEN = process.env.API_TOKEN;
 const validationCacheTime = 8; // hours
@@ -27,17 +27,14 @@ export async function validateVoter(userId, ballotId) {
   const existingValidation = await checkVoterValidation(userId, ballotId);
 
   // check if the validation is older than 8 hours
-  if (
-    existingValidation?.updatedAt >
-    Date.now() - 1000 * 60 * 60 * validationCacheTime
-  ) {
+  if (existingValidation?.updatedAt > Date.now() - 1000 * 60 * 60 * validationCacheTime) {
     return existingValidation.validated;
   } else {
-    console.log("No existing validation found", userId);
+    console.log('No existing validation found', userId);
   }
 
-  if (ballot.status !== "live") {
-    console.log("Ballot is not live, skipping validation");
+  if (ballot.status !== 'live') {
+    console.log('Ballot is not live, skipping validation');
     if (!existingValidation) {
       validated = false;
       return validated;
@@ -47,11 +44,11 @@ export async function validateVoter(userId, ballotId) {
   }
 
   try {
-    console.log("Fetching voter data from API...", userId);
-    const voterData = await fetch(API_URL + "/drep_info", {
-      method: "POST",
+    console.log('Fetching voter data from API...', userId);
+    const voterData = await fetch(API_URL + '/drep_info', {
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
         authorization: `Bearer ${API_TOKEN}`,
       },
       body: JSON.stringify({
@@ -60,17 +57,17 @@ export async function validateVoter(userId, ballotId) {
     });
 
     if (!voterData.ok) {
-      console.error("Error fetching voter data: ", voterData.statusText);
-      throw new Error("Failed to fetch voter data");
+      console.error('Error fetching voter data: ', voterData.statusText);
+      throw new Error('Failed to fetch voter data');
     }
     const voterInfo = await voterData.json();
 
     // check if result is empty
     if (voterInfo.length === 0) {
-      console.log("Voter not found in API: ", userId);
+      console.log('Voter not found in API: ', userId);
       validated = false;
-      await saveVoterValidation(userId, ballotId, validated, "drep");
-      await saveVotingPower(userId, ballotId, 0, "drep");
+      await saveVoterValidation(userId, ballotId, validated, 'drep');
+      await saveVotingPower(userId, ballotId, 0, 'drep');
       return validated;
     }
 
@@ -78,23 +75,23 @@ export async function validateVoter(userId, ballotId) {
     // Older versions returned a boolean `registered` — accept both for
     // resilience across Koios upgrades.
     const isRegistered =
-      voterInfo[0].drep_status === "registered" || voterInfo[0].registered === true;
+      voterInfo[0].drep_status === 'registered' || voterInfo[0].registered === true;
     if (isRegistered) {
-      console.log("Voter is registered DRep:", userId);
+      console.log('Voter is registered DRep:', userId);
       validated = true;
-      await saveVoterValidation(userId, ballotId, validated, "drep");
-      await saveVotingPower(userId, ballotId, voterInfo[0].amount, "drep");
+      await saveVoterValidation(userId, ballotId, validated, 'drep');
+      await saveVotingPower(userId, ballotId, voterInfo[0].amount, 'drep');
       return validated;
     } else {
-      console.log("Voter is not a registered DRep:", userId, "status=", voterInfo[0].drep_status);
+      console.log('Voter is not a registered DRep:', userId, 'status=', voterInfo[0].drep_status);
       validated = false;
-      await saveVoterValidation(userId, ballotId, validated, "drep");
-      await saveVotingPower(userId, ballotId, 0, "drep");
+      await saveVoterValidation(userId, ballotId, validated, 'drep');
+      await saveVotingPower(userId, ballotId, 0, 'drep');
       return validated;
     }
   } catch (error) {
-    console.error("Error fetching voter data: ", error);
-    throw new Error("Failed to fetch voter data");
+    console.error('Error fetching voter data: ', error);
+    throw new Error('Failed to fetch voter data');
   }
 }
 
@@ -110,34 +107,33 @@ export async function allowedVoterCount() {
   if (
     allowedVoterCountCache &&
     allowedVoterCountTimestamp &&
-    Date.now() - allowedVoterCountTimestamp <
-    1000 * 60 * 60 * validationCacheTime
+    Date.now() - allowedVoterCountTimestamp < 1000 * 60 * 60 * validationCacheTime
   ) {
     // console.log("Using cached allowed voter count");
     return allowedVoterCountCache;
   }
 
   try {
-    console.log("Fetching allowed voter count from API...");
-    const response = await fetch(API_URL + "/drep_list?registered=eq.true", {
-      method: "GET",
+    console.log('Fetching allowed voter count from API...');
+    const response = await fetch(API_URL + '/drep_list?registered=eq.true', {
+      method: 'GET',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
         authorization: `Bearer ${API_TOKEN}`,
-        prefer: "count=exact",
+        prefer: 'count=exact',
       },
     });
     // get the total count from the response headers
-    const totalCount = response.headers.get("content-range").split("/")[1];
+    const totalCount = response.headers.get('content-range').split('/')[1];
     if (!totalCount) {
-      throw new Error("Failed to fetch total count from headers");
+      throw new Error('Failed to fetch total count from headers');
     }
     allowedVoterCountCache = totalCount;
     allowedVoterCountTimestamp = Date.now();
-    console.log("Allowed voter count: ", allowedVoterCountCache);
+    console.log('Allowed voter count: ', allowedVoterCountCache);
   } catch (error) {
-    console.error("Error fetching allowed voter count: ", error);
-    throw new Error("Failed to fetch allowed voter count");
+    console.error('Error fetching allowed voter count: ', error);
+    throw new Error('Failed to fetch allowed voter count');
   }
   return allowedVoterCountCache;
 }
@@ -159,11 +155,11 @@ export async function getTotalWeight() {
   }
 
   try {
-    console.log("Fetching total weight from API...");
-    const response = await fetch(API_URL + "/drep_epoch_summary?limit=1", {
-      method: "GET",
+    console.log('Fetching total weight from API...');
+    const response = await fetch(API_URL + '/drep_epoch_summary?limit=1', {
+      method: 'GET',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
         authorization: `Bearer ${API_TOKEN}`,
       },
     });
@@ -172,18 +168,16 @@ export async function getTotalWeight() {
 
     totalWeightCache = totals[0]?.amount || 0;
     totalWeightTimestamp = Date.now();
-    console.log("Total weight: ", totalWeightCache);
+    console.log('Total weight: ', totalWeightCache);
     return totalWeightCache;
   } catch (error) {
-    console.error("Error fetching total weight: ", error);
-    throw new Error("Failed to fetch total weight");
+    console.error('Error fetching total weight: ', error);
+    throw new Error('Failed to fetch total weight');
   }
 }
-
-
 
 // Per-voter power for snapshot/cron. Defaults to UserCache rows.
 // Override here if this script can enumerate the chain better than
 // the local UserCache (e.g. fetch all DReps from Koios, all pools,
 // etc.) and produce per-voter rows directly.
-export { computeFromUserCache as computePerVoterPower } from "../helper/votingPower/computeFromUserCache.js";
+export { computeFromUserCache as computePerVoterPower } from '../helper/votingPower/computeFromUserCache.js';

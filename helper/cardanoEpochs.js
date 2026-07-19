@@ -13,37 +13,37 @@
  * fresh every call.
  */
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const REPO_ROOT = resolve(__dirname, "..");
-const CACHE_DIR = resolve(REPO_ROOT, ".cache");
+const REPO_ROOT = resolve(__dirname, '..');
+const CACHE_DIR = resolve(REPO_ROOT, '.cache');
 
 function apiBase() {
   const v = process.env.API_URL;
-  if (!v) throw new Error("API_URL is not set");
-  return v.replace(/\/+$/, "");
+  if (!v) throw new Error('API_URL is not set');
+  return v.replace(/\/+$/, '');
 }
 
 function apiToken() {
   const v = process.env.API_TOKEN;
-  if (!v) throw new Error("API_TOKEN is not set");
+  if (!v) throw new Error('API_TOKEN is not set');
   return v;
 }
 
 function cachePathForHost(host) {
-  const safe = host.replace(/[^a-z0-9.-]/gi, "_");
+  const safe = host.replace(/[^a-z0-9.-]/gi, '_');
   return resolve(CACHE_DIR, `cardano-genesis-${safe}.json`);
 }
 
 let _genesisMemo = null;
 
 function parseGenesisRow(row) {
-  if (!row || typeof row !== "object") {
-    throw new Error("Koios /genesis: row missing or not an object");
+  if (!row || typeof row !== 'object') {
+    throw new Error('Koios /genesis: row missing or not an object');
   }
   const epochLength = Number(row.epochlength);
   const slotLength = Number(row.slotlength);
@@ -66,7 +66,7 @@ async function fetchGenesisFromKoios() {
   const res = await fetch(`${apiBase()}/genesis`, {
     headers: {
       Authorization: `Bearer ${apiToken()}`,
-      accept: "application/json",
+      accept: 'application/json',
     },
   });
   if (!res.ok) {
@@ -74,7 +74,7 @@ async function fetchGenesisFromKoios() {
   }
   const json = await res.json();
   if (!Array.isArray(json) || json.length === 0) {
-    throw new Error("Koios /genesis: expected non-empty array");
+    throw new Error('Koios /genesis: expected non-empty array');
   }
   return parseGenesisRow(json[0]);
 }
@@ -82,7 +82,7 @@ async function fetchGenesisFromKoios() {
 function readDiskCache(cachePath) {
   if (!existsSync(cachePath)) return null;
   try {
-    const raw = JSON.parse(readFileSync(cachePath, "utf8"));
+    const raw = JSON.parse(readFileSync(cachePath, 'utf8'));
     parseGenesisRow({
       epochlength: raw.epochLength,
       slotlength: raw.slotLength,
@@ -138,7 +138,7 @@ export async function fetchTip() {
   const res = await fetch(`${apiBase()}/tip`, {
     headers: {
       Authorization: `Bearer ${apiToken()}`,
-      accept: "application/json",
+      accept: 'application/json',
     },
   });
   if (!res.ok) {
@@ -146,7 +146,7 @@ export async function fetchTip() {
   }
   const json = await res.json();
   if (!Array.isArray(json) || json.length === 0) {
-    throw new Error("Koios /tip: expected non-empty array");
+    throw new Error('Koios /tip: expected non-empty array');
   }
   const t = json[0];
   const epochNo = Number(t.epoch_no);
@@ -188,7 +188,7 @@ export async function epochForDate(target) {
   let targetUnix;
   if (target instanceof Date) {
     targetUnix = Math.floor(target.getTime() / 1000);
-  } else if (typeof target === "string") {
+  } else if (typeof target === 'string') {
     targetUnix = Math.floor(new Date(target).getTime() / 1000);
   } else {
     targetUnix = Number(target);

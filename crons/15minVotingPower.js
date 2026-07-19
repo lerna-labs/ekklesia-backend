@@ -15,22 +15,22 @@
 //
 // Idempotent. Re-runs converge to the script's current output.
 
-import { Ballot } from "../schema/Ballot.js";
-import { VoterPowerSnapshot } from "../schema/VoterPowerSnapshot.js";
-import { loadValidationScript } from "../helper/loadValidationScript.js";
+import { Ballot } from '../schema/Ballot.js';
+import { VoterPowerSnapshot } from '../schema/VoterPowerSnapshot.js';
+import { loadValidationScript } from '../helper/loadValidationScript.js';
 
-const COMPUTED_BY = "cron:15minVotingPower";
+const COMPUTED_BY = 'cron:15minVotingPower';
 
 export async function snapshotVotingPower() {
   const ballots = await Ballot.find({
-    "votingPowerSource.type": "snapshot",
-    status: { $in: ["upcoming", "live"] },
+    'votingPowerSource.type': 'snapshot',
+    status: { $in: ['upcoming', 'live'] },
   })
-    .select("_id title votingPowerSource voterValidationScript")
+    .select('_id title votingPowerSource voterValidationScript')
     .lean();
 
   if (ballots.length === 0) {
-    console.log("[15minVotingPower] no snapshot-mode open ballots");
+    console.log('[15minVotingPower] no snapshot-mode open ballots');
     return { ballotsProcessed: 0, totalRowsWritten: 0 };
   }
 
@@ -38,8 +38,7 @@ export async function snapshotVotingPower() {
   let ballotsProcessed = 0;
 
   for (const ballot of ballots) {
-    const scriptName =
-      ballot.votingPowerSource?.scriptName || ballot.voterValidationScript;
+    const scriptName = ballot.votingPowerSource?.scriptName || ballot.voterValidationScript;
     if (!scriptName) {
       console.warn(`[15minVotingPower] ${ballot._id} has no scriptName, skipping`);
       continue;
@@ -49,14 +48,12 @@ export async function snapshotVotingPower() {
     try {
       mod = await loadValidationScript(scriptName);
     } catch (err) {
-      console.warn(
-        `[15minVotingPower] ${ballot._id} failed to load ${scriptName}: ${err.message}`
-      );
+      console.warn(`[15minVotingPower] ${ballot._id} failed to load ${scriptName}: ${err.message}`);
       continue;
     }
-    if (typeof mod.computePerVoterPower !== "function") {
+    if (typeof mod.computePerVoterPower !== 'function') {
       console.warn(
-        `[15minVotingPower] ${ballot._id} script ${scriptName} doesn't export computePerVoterPower, skipping`
+        `[15minVotingPower] ${ballot._id} script ${scriptName} doesn't export computePerVoterPower, skipping`,
       );
       continue;
     }
@@ -65,9 +62,7 @@ export async function snapshotVotingPower() {
     try {
       rows = await mod.computePerVoterPower(ballot._id);
     } catch (err) {
-      console.warn(
-        `[15minVotingPower] ${ballot._id} computePerVoterPower failed: ${err.message}`
-      );
+      console.warn(`[15minVotingPower] ${ballot._id} computePerVoterPower failed: ${err.message}`);
       continue;
     }
     if (!Array.isArray(rows)) continue;
@@ -81,14 +76,14 @@ export async function snapshotVotingPower() {
         { ballotId: ballot._id, userId: r.userId },
         {
           $set: {
-            voterGroup: r.voterGroup || "stake",
+            voterGroup: r.voterGroup || 'stake',
             votingPower: Number(r.votingPower) || 0,
-            source: "snapshot",
+            source: 'snapshot',
             computedAt: now,
             computedBy: COMPUTED_BY,
           },
         },
-        { upsert: true }
+        { upsert: true },
       );
     }
 
@@ -99,13 +94,13 @@ export async function snapshotVotingPower() {
     const stale = await VoterPowerSnapshot.deleteMany({
       ballotId: ballot._id,
       userId: { $nin: Array.from(userIds) },
-      source: { $ne: "uploaded" },
+      source: { $ne: 'uploaded' },
     });
 
     totalRowsWritten += rows.length;
     ballotsProcessed++;
     console.log(
-      `[15minVotingPower] ${ballot._id} ${ballot.title} — ${rows.length} rows written, ${stale.deletedCount || 0} stale removed`
+      `[15minVotingPower] ${ballot._id} ${ballot.title} — ${rows.length} rows written, ${stale.deletedCount || 0} stale removed`,
     );
   }
 

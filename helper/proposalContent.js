@@ -19,15 +19,15 @@
 // interpret this blob — it just includes `contentHash` in what
 // `ekklesia.merkleRoot` covers.
 
-import blake from "blakejs";
-import { Ballot } from "../schema/Ballot.js";
-import { Proposal } from "../schema/Proposal.js";
-import { canonicalBytes } from "./canonicalJson.js";
+import blake from 'blakejs';
+import { Ballot } from '../schema/Ballot.js';
+import { Proposal } from '../schema/Proposal.js';
+import { canonicalBytes } from './canonicalJson.js';
 
-const SCHEMA_VERSION = "1";
+const SCHEMA_VERSION = '1';
 
 function blake2b256Hex(bytes) {
-  return Buffer.from(blake.blake2b(bytes, null, 32)).toString("hex");
+  return Buffer.from(blake.blake2b(bytes, null, 32)).toString('hex');
 }
 
 /**
@@ -38,11 +38,11 @@ function blake2b256Hex(bytes) {
 function voteRulesFor(proposal) {
   const rules = { requireAnswer: proposal.requireAnswer === true };
   switch (proposal.voteType) {
-    case "choice":
+    case 'choice':
       rules.minSelections = 1;
       rules.maxSelections = 1;
       break;
-    case "multi-choice":
+    case 'multi-choice':
       rules.minSelections = Number.isFinite(Number(proposal.minSelections))
         ? Number(proposal.minSelections)
         : 1;
@@ -50,21 +50,21 @@ function voteRulesFor(proposal) {
         ? Number(proposal.maxSelections)
         : (proposal.voteOptions || []).length;
       break;
-    case "budget":
+    case 'budget':
       rules.minSelections = 1;
       rules.maxSelections = (proposal.voteOptions || []).length;
       rules.voterBudget = Number(proposal.voterBudget) || 0;
       break;
-    case "weighted":
+    case 'weighted':
       rules.budget = Number(proposal.voterBudget) || 0;
       break;
-    case "ranked":
-      rules.rankCount = (proposal.voteOptions || []).filter((o) => o.id !== "abstain").length;
+    case 'ranked':
+      rules.rankCount = (proposal.voteOptions || []).filter((o) => o.id !== 'abstain').length;
       break;
-    case "scale":
+    case 'scale':
       rules.step = Number(proposal.voteIncrement) || 1;
       break;
-    case "likert": {
+    case 'likert': {
       const range = proposal.ratingRange || { min: 1, max: 5, step: 1 };
       rules.ratingRange = {
         min: Number(range.min),
@@ -92,7 +92,7 @@ function normalizeOption(opt, voteType) {
     id: opt.id,
     label: opt.label,
   };
-  if (voteType === "budget" && opt.cost != null) {
+  if (voteType === 'budget' && opt.cost != null) {
     out.cost = Number(opt.cost);
   }
   if (opt.description != null) out.description = opt.description;
@@ -114,10 +114,10 @@ export function buildProposalContentBlob(proposal, ballot) {
     schemaVersion: SCHEMA_VERSION,
     proposalId: proposal._id.toString(),
     title: proposal.title,
-    summary: proposal.summary || "",
-    rationale: proposal.rationale || "",
+    summary: proposal.summary || '',
+    rationale: proposal.rationale || '',
     authors: Array.isArray(proposal.authors)
-      ? proposal.authors.map((a) => (typeof a === "string" ? a : a?.name)).filter(Boolean)
+      ? proposal.authors.map((a) => (typeof a === 'string' ? a : a?.name)).filter(Boolean)
       : [],
     version: proposal.version || null,
     method: proposal.voteType,
@@ -163,7 +163,7 @@ export function canonicalContentBytes(proposal, ballot) {
  */
 export async function stampProposalContentHash(proposalIdOrDoc) {
   const proposal =
-    typeof proposalIdOrDoc === "object" && proposalIdOrDoc._id
+    typeof proposalIdOrDoc === 'object' && proposalIdOrDoc._id
       ? proposalIdOrDoc
       : await Proposal.findById(proposalIdOrDoc).lean();
   if (!proposal) return null;

@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -36,17 +36,17 @@ const voteSchema = new Schema(
     userId: {
       type: String,
       required: true,
-      ref: "Voter",
+      ref: 'Voter',
     },
     ballotId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: "Ballot",
+      ref: 'Ballot',
     },
     proposalId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: "Proposal",
+      ref: 'Proposal',
     },
     vote: {
       type: Array,
@@ -92,21 +92,49 @@ const voteSchema = new Schema(
     status: {
       type: String,
       enum: [
-        "legacy",
-        "draft",
-        "awaiting-signatures",
-        "awaiting-submission",
-        "broker-submitted",
-        "hydra-confirmed",
-        "failed",
+        'legacy',
+        'draft',
+        'awaiting-signatures',
+        'awaiting-submission',
+        'broker-submitted',
+        'hydra-confirmed',
+        'failed',
       ],
-      default: "legacy",
+      default: 'legacy',
+    },
+    // Operator-driven soft exclusion. When `excludedAt` is non-null,
+    // every results-derivation path (provisional cron, participation
+    // helpers, v0 proposals fallback aggregations) filters this row
+    // out via `{ excludedAt: null }`. Voter-facing reads (their own
+    // submitted vote, vote-edit endpoints) deliberately ignore the
+    // flag — the voter's own record is preserved.
+    //
+    // Used to clean up after operator mistakes such as a misconfigured
+    // `voterValidationScript` that admitted ineligible voters. The
+    // Hydra audit record is NOT mutated; final-tally + authority-
+    // certification paths re-derive from Hydra evidence and the
+    // authority's snapshot respectively, so the same voter is dropped
+    // there via the certification flow rather than this flag.
+    //
+    // Flip via `__scripts/excludeVote.js` (no admin endpoint — this is
+    // a manual-correction tool, not a hot path).
+    excludedAt: {
+      type: Date,
+      default: null,
+    },
+    excludedReason: {
+      type: String,
+      default: null,
+    },
+    excludedBy: {
+      type: String,
+      default: null,
     },
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
     versionKey: false, // Remove __v field from documents
-  }
+  },
 );
 
 // Indexes for faster queries
@@ -116,5 +144,5 @@ voteSchema.index({ ballotId: 1 });
 voteSchema.index({ proposalId: 1, userId: 1 }, { unique: true });
 voteSchema.index({ ballotId: 1, status: 1 });
 
-const Vote = mongoose.model("Vote", voteSchema);
+const Vote = mongoose.model('Vote', voteSchema);
 export { Vote };
