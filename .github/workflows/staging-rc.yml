@@ -1,0 +1,152 @@
+name: Staging release candidate
+
+# On every push to staging, package the deployable source as a rolling "preprod"
+# prerelease Release whose asset the preprod server pulls. The RC version is a
+# Changesets snapshot (X.Y.Z-rc-<timestamp>) computed from the pending
+# changesets; nothing is committed to staging and the changeset files stay
+# intact for the real release on main.
+#
+# Also keeps a single open staging -> main promotion PR alive.
+on:
+  push:
+    branches: [staging]
+
+concurrency:
+  group: staging-rc-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  packages: read
+  pull-requests: write
+
+jobs:
+  gate:
+    # Skip the RC build entirely when staging already matches the released main
+    # (nothing unreleased to preview -- e.g. right after a release backport).
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.g.outputs.build }}
+    steps:
+      - id: g
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          main_tree=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq '.commit.tree.sha')
+          head_tree=$(gh api "repos/$GITHUB_REPOSITORY/commits/staging" --jq '.commit.tree.sha')
+          if [ "$main_tree" = "$head_tree" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "staging matches the released main; nothing unreleased to preview."
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  rc-artifact:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Compute snapshot RC version
+        id: rc
+        run: |
+          pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | head -1)
+          if [ -n "$pending" ]; then
+            npx changeset version --snapshot rc
+            echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(node -p "require('./package.json').version")-staging" >> "$GITHUB_OUTPUT"
+            echo "No pending changesets; packaging a plain staging preview."
+          fi
+
+      - name: Package source tarball
+        id: pkg
+        run: |
+          # Stable asset name so the preprod server always pulls the same URL:
+          # releases/download/preprod/ekklesia-backend-preprod.tgz
+          # Ship only tracked runtime source (git ls-files reads the working
+          # tree, so the snapshot-bumped package.json is included) minus the
+          # helper test suite. Untracked files -- .env secrets, the local
+          # backup/data dumps, editor scratch -- are excluded by construction.
+          asset="ekklesia-backend-preprod.tgz"
+          git ls-files -z -- \
+            server.js package.json package-lock.json .npmrc \
+            README.md LICENSE.md \
+            routes helper schema crons config assets backup \
+            development.config.cjs mainnet.config.cjs preprod.config.cjs \
+            ':(exclude)helper/__tests__/**' \
+            | tar --null -T - -czf "$asset"
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Discard snapshot bump
+        # Nothing is committed to staging; the changeset files must stay intact
+        # for the real release on main.
+        run: git checkout -- .
+
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.RELEASE_MANAGER_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_MANAGER_APP_PRIVATE_KEY }}
+
+      - name: Publish rolling preprod prerelease
+        # The rolling release is tagged `preprod`, NOT `staging` -- a tag named
+        # `staging` would collide with the staging branch and break ref
+        # resolution for promotion/backport PRs targeting the branch.
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh release delete preprod --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create preprod --repo "$GITHUB_REPOSITORY" \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "Preprod preview (${{ steps.rc.outputs.version }})" \
+            --notes "Rolling preprod build of staging. Version ${{ steps.rc.outputs.version }}. Download the asset and extract it into the deploy directory alongside the frontend build in public/." \
+            "${{ steps.pkg.outputs.asset }}"
+
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.RELEASE_MANAGER_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_MANAGER_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Open or refresh the staging -> main promotion PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # Compare content trees, not commit counts (merge-commit asymmetry
+          # would otherwise open empty PRs). Identical trees mean nothing to promote.
+          base_tree=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq '.commit.tree.sha')
+          head_tree=$(gh api "repos/$GITHUB_REPOSITORY/commits/staging" --jq '.commit.tree.sha')
+          if [ "$base_tree" = "$head_tree" ]; then
+            echo "staging and main have identical trees; nothing to promote."
+            exit 0
+          fi
+          # Body lists the pending changesets so the accumulator shows what is queued.
+          node .github/scripts/promotion-body.mjs main > pr-body.md
+          num=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head staging --state open --json number --jq '.[0].number // empty')
+          if [ -n "$num" ]; then
+            jq -Rs '{body: .}' pr-body.md | gh api -X PATCH "repos/$GITHUB_REPOSITORY/pulls/$num" --input - >/dev/null
+            echo "Refreshed promotion PR #$num body."
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head staging \
+              --title "Promote staging to main" --body-file pr-body.md --label promotion
+          fi
