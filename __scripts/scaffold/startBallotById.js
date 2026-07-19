@@ -30,12 +30,12 @@
 //   node __scripts/scaffold/startBallotById.js --ballotId <id>
 //   node __scripts/scaffold/startBallotById.js --ballotId <id> --dry-run
 
-import process from "process";
-import { bootstrap, teardown, parseArgs } from "./common/env.js";
-import { forBallot, HydraClientError } from "../../helper/hydraClient.js";
-import { Ballot } from "../../schema/Ballot.js";
+import process from 'process';
+import { bootstrap, teardown, parseArgs } from './common/env.js';
+import { forBallot, HydraClientError } from '../../helper/hydraClient.js';
+import { Ballot } from '../../schema/Ballot.js';
 
-const REQUIRED = ["utxos", "ballotPolicy", "ballotToken"];
+const REQUIRED = ['utxos', 'ballotPolicy', 'ballotToken'];
 
 /**
  * Auto-fill the /start body from the stamped Ballot doc — mirrors
@@ -100,27 +100,27 @@ async function runStart(flags) {
   if (!ballot.hydraEndpoint) {
     console.error(
       `[startBallotById] ballot ${ballot._id} has no hydraEndpoint — run ` +
-        `/prepare first (prepareBallotById.js).`
+        `/prepare first (prepareBallotById.js).`,
     );
     return 1;
   }
 
   const body = bodyFromBallot(ballot);
   const missing = REQUIRED.filter(
-    (k) => body[k] === undefined || body[k] === null || body[k] === ""
+    (k) => body[k] === undefined || body[k] === null || body[k] === '',
   );
   if (missing.length) {
     console.error(
       `[startBallotById] missing required field(s) for /start: ` +
-        `${missing.join(", ")}. These are stamped by /prepare — was the ` +
-        `prepare tx confirmed and the ballot doc refreshed?`
+        `${missing.join(', ')}. These are stamped by /prepare — was the ` +
+        `prepare tx confirmed and the ballot doc refreshed?`,
     );
     return 1;
   }
 
-  const isDryRun = flags["dry-run"] || flags.dryRun;
+  const isDryRun = flags['dry-run'] || flags.dryRun;
   if (isDryRun) {
-    console.log("[startBallotById] --dry-run: built body, NOT calling /start");
+    console.log('[startBallotById] --dry-run: built body, NOT calling /start');
     console.log(`  endpoint       = ${ballot.hydraEndpoint}`);
     console.log(`  ballotId       = ${body.ballotId}`);
     console.log(`  ballotPolicy   = ${body.ballotPolicy}`);
@@ -131,9 +131,7 @@ async function runStart(flags) {
     return 0;
   }
 
-  console.log(
-    `[startBallotById] calling ${ballot.hydraEndpoint}/start (ballotId=${ballot._id}) …`
-  );
+  console.log(`[startBallotById] calling ${ballot.hydraEndpoint}/start (ballotId=${ballot._id}) …`);
   const client = await forBallot(ballot._id);
   const data = await client.start(body);
 
@@ -141,55 +139,53 @@ async function runStart(flags) {
   // Surface that loudly — otherwise the head stays Idle and /vote 503s.
   if (data && data.ballotCached === false) {
     console.error(
-      "\n[startBallotById] ⚠️  /start returned ballotCached:false — Hydra " +
-        "accepted the call but did NOT actually open the head (most likely " +
-        "the deposit window has expired since /prepare). The head will stay " +
-        "Idle; any /vote will fail with NO_BALLOT_CACHED. Re-open the head " +
-        "before retrying.\n"
+      '\n[startBallotById] ⚠️  /start returned ballotCached:false — Hydra ' +
+        'accepted the call but did NOT actually open the head (most likely ' +
+        'the deposit window has expired since /prepare). The head will stay ' +
+        'Idle; any /vote will fail with NO_BALLOT_CACHED. Re-open the head ' +
+        'before retrying.\n',
     );
   }
 
   const synced = await syncHeadStateToBallot(ballot._id, client, {
-    status: "live",
+    status: 'live',
   });
 
   console.log(`[startBallotById] /start completed`);
-  console.log(`  ballotCached     = ${data?.ballotCached ?? "(not in response)"}`);
-  console.log(`  hydraHeadId      = ${synced.hydraHeadId || "(none)"}`);
-  console.log(`  hydraHeadStatus  = ${synced.hydraHeadStatus || "(unknown)"}`);
-  console.log(`  ballot.status    = ${synced.status || "(unchanged)"}`);
-  console.log("");
-  console.log("# Hydra raw response:");
+  console.log(`  ballotCached     = ${data?.ballotCached ?? '(not in response)'}`);
+  console.log(`  hydraHeadId      = ${synced.hydraHeadId || '(none)'}`);
+  console.log(`  hydraHeadStatus  = ${synced.hydraHeadStatus || '(unknown)'}`);
+  console.log(`  ballot.status    = ${synced.status || '(unchanged)'}`);
+  console.log('');
+  console.log('# Hydra raw response:');
   console.log(JSON.stringify(data, null, 2));
   return 0;
 }
 
 const { flags } = parseArgs();
 if (!flags.ballotId) {
-  console.error("[startBallotById] --ballotId is required");
+  console.error('[startBallotById] --ballotId is required');
   process.exit(1);
 }
 
-let exitCode = 0;
+let exitCode;
 try {
   exitCode = (await main(flags)) || 0;
 } catch (err) {
   if (err instanceof HydraClientError) {
     console.error(
       `[startBallotById] Hydra /start failed: ${err.message}` +
-        (err.data ? `\n  upstream: ${JSON.stringify(err.data)}` : "")
+        (err.data ? `\n  upstream: ${JSON.stringify(err.data)}` : ''),
     );
     console.error(
-      "\n  /start is NOT retry-safe. If the commit tx actually landed but\n" +
-        "  Hydra returned an error, retrying with the same UTxO will fail\n" +
+      '\n  /start is NOT retry-safe. If the commit tx actually landed but\n' +
+        '  Hydra returned an error, retrying with the same UTxO will fail\n' +
         "  (UTxO already spent into the head). Check the Hydra service's\n" +
-        "  /ballot list and the admin L1 address on a chain explorer\n" +
-        "  before retrying."
+        '  /ballot list and the admin L1 address on a chain explorer\n' +
+        '  before retrying.',
     );
   } else {
-    console.error(
-      `[startBallotById] unexpected error: ${err.stack || err.message}`
-    );
+    console.error(`[startBallotById] unexpected error: ${err.stack || err.message}`);
   }
   exitCode = 1;
 }

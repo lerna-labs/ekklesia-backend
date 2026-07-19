@@ -14,26 +14,22 @@
 //     is a separate concern handled by crypto.verifySignature on each
 //     incoming witness before it ever reaches this collector.
 
-import { getScriptCriteria } from "@lerna-labs/ekklesia-helpers/crypto";
+import { getScriptCriteria } from '@lerna-labs/ekklesia-helpers/crypto';
 
 export class MultisigError extends Error {
   constructor(message, { code } = {}) {
     super(message);
-    this.name = "MultisigError";
+    this.name = 'MultisigError';
     this.code = code;
   }
 }
 
 function normalizeKey(k) {
-  return (k || "").toLowerCase();
+  return (k || '').toLowerCase();
 }
 
 function keyHashesOf(signatures = []) {
-  return new Set(
-    signatures
-      .map((s) => normalizeKey(s.key || s.keyHash))
-      .filter(Boolean)
-  );
+  return new Set(signatures.map((s) => normalizeKey(s.key || s.keyHash)).filter(Boolean));
 }
 
 /**
@@ -45,11 +41,11 @@ function keyHashesOf(signatures = []) {
  * @returns {{ required: number, eligibleKeys: string[], outstandingKeys: string[], satisfied: boolean }}
  */
 export function status(nativeScript, signatures = []) {
-  if (!nativeScript) throw new MultisigError("nativeScript required", { code: "BAD_INPUT" });
+  if (!nativeScript) throw new MultisigError('nativeScript required', { code: 'BAD_INPUT' });
   if (!Array.isArray(nativeScript.scripts)) {
     throw new MultisigError(
-      "nativeScript must have a nested scripts array (type: all|any|atLeast)",
-      { code: "UNSUPPORTED_SCRIPT" }
+      'nativeScript must have a nested scripts array (type: all|any|atLeast)',
+      { code: 'UNSUPPORTED_SCRIPT' },
     );
   }
 

@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -45,7 +45,7 @@ const sessionSchema = new Schema(
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
     versionKey: false, // Remove __v field from documents
-  }
+  },
 );
 
 // Indexes for faster queries
@@ -53,5 +53,5 @@ sessionSchema.index({ userId: 1 });
 // TTL index to automatically delete sessions older than 1 hour (cleanup old nonces)
 sessionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 3600 });
 
-const Session = mongoose.model("Session", sessionSchema);
+const Session = mongoose.model('Session', sessionSchema);
 export { Session };

@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -36,17 +36,17 @@ const voteSchema = new Schema(
     userId: {
       type: String,
       required: true,
-      ref: "Voter",
+      ref: 'Voter',
     },
     ballotId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: "Ballot",
+      ref: 'Ballot',
     },
     proposalId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: "Proposal",
+      ref: 'Proposal',
     },
     vote: {
       type: Array,
@@ -92,15 +92,15 @@ const voteSchema = new Schema(
     status: {
       type: String,
       enum: [
-        "legacy",
-        "draft",
-        "awaiting-signatures",
-        "awaiting-submission",
-        "broker-submitted",
-        "hydra-confirmed",
-        "failed",
+        'legacy',
+        'draft',
+        'awaiting-signatures',
+        'awaiting-submission',
+        'broker-submitted',
+        'hydra-confirmed',
+        'failed',
       ],
-      default: "legacy",
+      default: 'legacy',
     },
     // Operator-driven soft exclusion. When `excludedAt` is non-null,
     // every results-derivation path (provisional cron, participation
@@ -134,7 +134,7 @@ const voteSchema = new Schema(
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
     versionKey: false, // Remove __v field from documents
-  }
+  },
 );
 
 // Indexes for faster queries
@@ -144,5 +144,5 @@ voteSchema.index({ ballotId: 1 });
 voteSchema.index({ proposalId: 1, userId: 1 }, { unique: true });
 voteSchema.index({ ballotId: 1, status: 1 });
 
-const Vote = mongoose.model("Vote", voteSchema);
+const Vote = mongoose.model('Vote', voteSchema);
 export { Vote };

@@ -1,10 +1,7 @@
-import mongoose from "mongoose";
-import {
-  checkVoterValidation,
-  saveVoterValidation,
-} from "../helper/voterValidation.js";
-import { UserCache } from "../schema/UserCache.js";
-import { computeFromUserCache } from "../helper/votingPower/computeFromUserCache.js";
+import mongoose from 'mongoose';
+import { checkVoterValidation, saveVoterValidation } from '../helper/voterValidation.js';
+import { UserCache } from '../schema/UserCache.js';
+import { computeFromUserCache } from '../helper/votingPower/computeFromUserCache.js';
 
 // Per-voter power for snapshot/cron — always-true ballots have no
 // upstream universe to enumerate, so UserCache is the source of truth.
@@ -40,7 +37,7 @@ export async function validateVoter(userId, ballotId) {
   validated = true;
 
   // Save the validation to the database
-  await saveVoterValidation(userId, ballotId, validated, "default");
+  await saveVoterValidation(userId, ballotId, validated, 'default');
 
   // return the validation status
   return validated;
@@ -75,10 +72,8 @@ export async function getTotalWeight(ballotId) {
   if (!ballotId) return PLACEHOLDER_WEIGHT;
   const [agg] = await UserCache.aggregate([
     { $match: { ballotId: asObjectId(ballotId), validated: true } },
-    { $group: { _id: null, total: { $sum: "$votingPower" } } },
+    { $group: { _id: null, total: { $sum: '$votingPower' } } },
   ]);
   if (agg && agg.total > 0) return agg.total;
   return PLACEHOLDER_WEIGHT;
 }
-
-

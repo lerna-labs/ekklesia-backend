@@ -13,9 +13,9 @@
 // the ballot's question tree is available (TODO: enrich via hydraClient.ballot()
 // or a local ballot-definition cache).
 
-import blake from "blakejs";
-import { canonicalize, canonicalBytes } from "./canonicalJson.js";
-import * as nonceManager from "./nonceManager.js";
+import blake from 'blakejs';
+import { canonicalize, canonicalBytes } from './canonicalJson.js';
+import * as nonceManager from './nonceManager.js';
 
 /**
  * Evidence/results protocol version. Bumped from `ekklesia/1.0` to
@@ -28,18 +28,18 @@ import * as nonceManager from "./nonceManager.js";
  * here re-mints a historical bundle. Replay tooling selects its verification
  * path by the bundle's own declared version.
  */
-export const PROTOCOL_VERSION = "ekklesia/2.0";
+export const PROTOCOL_VERSION = 'ekklesia/2.0';
 
 export class BrokerError extends Error {
   constructor(message, { code } = {}) {
     super(message);
-    this.name = "BrokerError";
+    this.name = 'BrokerError';
     this.code = code;
   }
 }
 
 function blake2b256Hex(bytes) {
-  return Buffer.from(blake.blake2b(bytes, null, 32)).toString("hex");
+  return Buffer.from(blake.blake2b(bytes, null, 32)).toString('hex');
 }
 
 /**
@@ -62,8 +62,8 @@ function blake2b256Hex(bytes) {
  * today) reproduces these exact bytes.
  */
 export function buildSigningPayload({ ballotId, nonce, votes }) {
-  if (!ballotId || typeof nonce !== "number" || !Array.isArray(votes)) {
-    throw new BrokerError("ballotId, nonce, and votes[] are required", { code: "BAD_INPUT" });
+  if (!ballotId || typeof nonce !== 'number' || !Array.isArray(votes)) {
+    throw new BrokerError('ballotId, nonce, and votes[] are required', { code: 'BAD_INPUT' });
   }
   return JSON.parse(canonicalize({ ballotId, nonce, votes }));
 }
@@ -80,13 +80,13 @@ export function buildEvidence({
   votes,
   surveyTxId,
   responderRole,
-  merkleProof = { root: "", steps: [] },
+  merkleProof = { root: '', steps: [] },
 }) {
   const signedPayload = buildSigningPayload({ ballotId, nonce, votes });
   return {
     specVersion: PROTOCOL_VERSION,
     surveyTxId: surveyTxId || ballotId,
-    responderRole: responderRole || "Voter",
+    responderRole: responderRole || 'Voter',
     // Reuse the canonical votes from the signing payload so `answers` and the
     // signed payload are the exact same bytes (and what we submit to Hydra).
     answers: signedPayload.votes,
@@ -163,10 +163,10 @@ export async function buildDraft({
   reuseNonce,
 }) {
   if (!ballotId || !voterId || !credentialHrp) {
-    throw new BrokerError("ballotId, voterId, credentialHrp required", { code: "BAD_INPUT" });
+    throw new BrokerError('ballotId, voterId, credentialHrp required', { code: 'BAD_INPUT' });
   }
   const nonce =
-    typeof reuseNonce === "number"
+    typeof reuseNonce === 'number'
       ? reuseNonce
       : await nonceManager.reserveNext({ userId: voterId, ballotId });
   const evidence = buildEvidence({
@@ -193,7 +193,7 @@ export async function buildDraft({
   // cardano-signer --data-hex takes the hex of the bytes to sign. We sign
   // the UTF-8 bytes of the merkleRoot hex string, so signingPayloadHex
   // is the hex of those ASCII bytes.
-  const signingPayloadHex = Buffer.from(merkleRoot, "utf8").toString("hex");
+  const signingPayloadHex = Buffer.from(merkleRoot, 'utf8').toString('hex');
 
   return {
     nonce,

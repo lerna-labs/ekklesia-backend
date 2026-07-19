@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -44,7 +44,7 @@ const proposalSchema = new Schema(
     ballotId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: "Ballot",
+      ref: 'Ballot',
     },
     ipfsHash: {
       type: String,
@@ -62,7 +62,7 @@ const proposalSchema = new Schema(
     summary: {
       type: String,
       required: false,
-      default: "",
+      default: '',
       maxlength: 2000,
     },
     // Long-form argument for the proposal — typically the section a
@@ -71,7 +71,7 @@ const proposalSchema = new Schema(
     rationale: {
       type: String,
       required: false,
-      default: "",
+      default: '',
       maxlength: 10000,
     },
     // Proposer / submitter names. Each entry is a free-form display
@@ -85,7 +85,7 @@ const proposalSchema = new Schema(
         },
       ],
       default: [],
-      validate: [(arr) => arr.length <= 20, "authors: max 20 entries"],
+      validate: [(arr) => arr.length <= 20, 'authors: max 20 entries'],
     },
     // Source-system version tag (e.g. "v2.3", "draft"). Useful for
     // showing "updated since import" badges when a snapshot drifts.
@@ -113,7 +113,7 @@ const proposalSchema = new Schema(
       // budget (knapsack: Σ cost ≤ voterBudget, maps to Hydra multi-choice),
       // weighted (point allocation: Σ value = voterBudget, maps to Hydra
       // weighted), ranked, scale, likert.
-      default: "choice",
+      default: 'choice',
     },
     voteIncrement: {
       type: Number,
@@ -128,7 +128,7 @@ const proposalSchema = new Schema(
     ratingRange: {
       type: new Schema(
         { min: Number, max: Number, step: { type: Number, default: 1 } },
-        { _id: false }
+        { _id: false },
       ),
       default: null,
     },
@@ -172,13 +172,13 @@ const proposalSchema = new Schema(
             imageUrl: { type: String, maxlength: 500 },
             metadata: { type: Schema.Types.Mixed },
           },
-          { _id: false }
+          { _id: false },
         ),
       ],
       required: true,
       default: [
-        { id: 1, cost: 1, label: "Yes" },
-        { id: 2, cost: 1, label: "No" },
+        { id: 1, cost: 1, label: 'Yes' },
+        { id: 2, cost: 1, label: 'No' },
       ],
     },
     // When true, voters MUST submit a selection — { abstain: true } is
@@ -244,7 +244,7 @@ const proposalSchema = new Schema(
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
     versionKey: false, // Remove __v field from documents
-  }
+  },
 );
 
 // Indexes for faster queries
@@ -256,13 +256,13 @@ proposalSchema.index({ title: 1 });
 // the scoped path (/ballot/:bid/.../:pid) so the resolver doesn't
 // have to scan all proposals when a parent ballot is in scope.
 proposalSchema.index(
-  { "externalProposal.id": 1 },
-  { sparse: true, name: "externalProposalId_lookup" }
+  { 'externalProposal.id': 1 },
+  { sparse: true, name: 'externalProposalId_lookup' },
 );
 proposalSchema.index(
-  { ballotId: 1, "externalProposal.id": 1 },
-  { sparse: true, name: "ballot_externalProposalId_lookup" }
+  { ballotId: 1, 'externalProposal.id': 1 },
+  { sparse: true, name: 'ballot_externalProposalId_lookup' },
 );
 
-const Proposal = mongoose.model("Proposal", proposalSchema);
+const Proposal = mongoose.model('Proposal', proposalSchema);
 export { Proposal };

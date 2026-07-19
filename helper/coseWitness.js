@@ -21,9 +21,9 @@
 // Integrators sending full witnesses continue to work — `normalizeWitness`
 // only derives fields that are missing.
 
-import cbor from "cbor";
-import blake from "blakejs";
-import { PublicKey, Ed25519Signature } from "@emurgo/cardano-serialization-lib-nodejs";
+import cbor from 'cbor';
+import blake from 'blakejs';
+import { PublicKey, Ed25519Signature } from '@emurgo/cardano-serialization-lib-nodejs';
 
 const cborDecode = cbor.decode || cbor.default?.decode;
 const cborEncode = cbor.encode || cbor.default?.encode;
@@ -31,7 +31,7 @@ const cborEncode = cbor.encode || cbor.default?.encode;
 export class CoseWitnessError extends Error {
   constructor(message, { code } = {}) {
     super(message);
-    this.name = "CoseWitnessError";
+    this.name = 'CoseWitnessError';
     this.code = code;
   }
 }
@@ -41,9 +41,9 @@ export class CoseWitnessError extends Error {
  * `sig { keyHash }` entries of native scripts.
  */
 export function keyHashFromPublicKeyHex(publicKeyHex) {
-  if (!publicKeyHex) throw new CoseWitnessError("publicKeyHex required", { code: "BAD_INPUT" });
-  const bytes = Buffer.from(publicKeyHex, "hex");
-  return Buffer.from(blake.blake2b(bytes, null, 28)).toString("hex");
+  if (!publicKeyHex) throw new CoseWitnessError('publicKeyHex required', { code: 'BAD_INPUT' });
+  const bytes = Buffer.from(publicKeyHex, 'hex');
+  return Buffer.from(blake.blake2b(bytes, null, 28)).toString('hex');
 }
 
 /**
@@ -51,23 +51,23 @@ export function keyHashFromPublicKeyHex(publicKeyHex) {
  * COSE key is a CBOR map; the `-2` entry is the uncompressed pub-key bytes.
  */
 export function publicKeyFromCoseKey(coseKeyHex) {
-  if (!coseKeyHex) throw new CoseWitnessError("coseKeyHex required", { code: "BAD_INPUT" });
+  if (!coseKeyHex) throw new CoseWitnessError('coseKeyHex required', { code: 'BAD_INPUT' });
   let map;
   try {
-    map = cborDecode(Buffer.from(coseKeyHex, "hex"));
+    map = cborDecode(Buffer.from(coseKeyHex, 'hex'));
   } catch (err) {
     throw new CoseWitnessError(`coseKeyHex is not valid CBOR: ${err.message}`, {
-      code: "BAD_COSE_KEY",
+      code: 'BAD_COSE_KEY',
     });
   }
   // cbor.decode returns a Map for CBOR maps
   const pk = map instanceof Map ? map.get(-2) : map?.[-2];
   if (!pk) {
-    throw new CoseWitnessError("COSE key is missing the -2 (pub-key) field", {
-      code: "BAD_COSE_KEY",
+    throw new CoseWitnessError('COSE key is missing the -2 (pub-key) field', {
+      code: 'BAD_COSE_KEY',
     });
   }
-  return Buffer.from(pk).toString("hex");
+  return Buffer.from(pk).toString('hex');
 }
 
 /**
@@ -78,22 +78,22 @@ export function publicKeyFromCoseKey(coseKeyHex) {
  * Map or a plain object depending on the key types).
  */
 export function decodeCoseSign1(coseSign1Hex) {
-  if (!coseSign1Hex) throw new CoseWitnessError("coseSign1Hex required", { code: "BAD_INPUT" });
+  if (!coseSign1Hex) throw new CoseWitnessError('coseSign1Hex required', { code: 'BAD_INPUT' });
   let arr;
   try {
-    arr = cborDecode(Buffer.from(coseSign1Hex, "hex"));
+    arr = cborDecode(Buffer.from(coseSign1Hex, 'hex'));
   } catch (err) {
     throw new CoseWitnessError(`coseSign1Hex is not valid CBOR: ${err.message}`, {
-      code: "BAD_COSE_SIGN1",
+      code: 'BAD_COSE_SIGN1',
     });
   }
   if (!Array.isArray(arr) || arr.length < 4) {
-    throw new CoseWitnessError("COSE_Sign1 is not a 4-element array", {
-      code: "BAD_COSE_SIGN1",
+    throw new CoseWitnessError('COSE_Sign1 is not a 4-element array', {
+      code: 'BAD_COSE_SIGN1',
     });
   }
   let unprotected = arr[1];
-  if (!(unprotected instanceof Map) && unprotected && typeof unprotected === "object") {
+  if (!(unprotected instanceof Map) && unprotected && typeof unprotected === 'object') {
     unprotected = new Map(Object.entries(unprotected));
   }
   if (!(unprotected instanceof Map)) unprotected = new Map();
@@ -111,11 +111,11 @@ export function decodeCoseSign1(coseSign1Hex) {
 export function signatureFromCoseSign1(coseSign1Hex) {
   const { signature } = decodeCoseSign1(coseSign1Hex);
   if (!signature) {
-    throw new CoseWitnessError("COSE_Sign1 signature element is empty", {
-      code: "BAD_COSE_SIGN1",
+    throw new CoseWitnessError('COSE_Sign1 signature element is empty', {
+      code: 'BAD_COSE_SIGN1',
     });
   }
-  return Buffer.from(signature).toString("hex");
+  return Buffer.from(signature).toString('hex');
 }
 
 /**
@@ -141,27 +141,27 @@ export function payloadFromCoseSign1(coseSign1Hex) {
  */
 export function coseSignatureValid(witness) {
   if (!witness?.coseSign1Hex) {
-    throw new CoseWitnessError("witness.coseSign1Hex required", { code: "BAD_INPUT" });
+    throw new CoseWitnessError('witness.coseSign1Hex required', { code: 'BAD_INPUT' });
   }
   const publicKeyHex =
     witness.publicKey || (witness.coseKeyHex ? publicKeyFromCoseKey(witness.coseKeyHex) : null);
   if (!publicKeyHex) {
-    throw new CoseWitnessError("witness.publicKey or coseKeyHex required", { code: "BAD_INPUT" });
+    throw new CoseWitnessError('witness.publicKey or coseKeyHex required', { code: 'BAD_INPUT' });
   }
   const { protectedHeader, payload, signature } = decodeCoseSign1(witness.coseSign1Hex);
   if (!signature) {
-    throw new CoseWitnessError("COSE_Sign1 signature element is empty", { code: "BAD_COSE_SIGN1" });
+    throw new CoseWitnessError('COSE_Sign1 signature element is empty', { code: 'BAD_COSE_SIGN1' });
   }
-  const sigStructure = ["Signature1", protectedHeader, Buffer.alloc(0), payload];
+  const sigStructure = ['Signature1', protectedHeader, Buffer.alloc(0), payload];
   const signedBytes = cborEncode(sigStructure);
   let pub;
   let sig;
   try {
     pub = PublicKey.from_hex(publicKeyHex);
-    sig = Ed25519Signature.from_hex(Buffer.from(signature).toString("hex"));
+    sig = Ed25519Signature.from_hex(Buffer.from(signature).toString('hex'));
   } catch (err) {
     throw new CoseWitnessError(`invalid COSE key/signature encoding: ${err.message}`, {
-      code: "BAD_COSE_SIGN1",
+      code: 'BAD_COSE_SIGN1',
     });
   }
   return pub.verify(Uint8Array.from(signedBytes), sig);
@@ -187,15 +187,13 @@ export function coseSignatureValid(witness) {
  * @returns {{ ok: boolean, reason: string|null }}
  */
 export function verifyWitnessAgainstMerkleRoot(witness, merkleRootHex) {
-  if (!merkleRootHex || typeof merkleRootHex !== "string") {
-    throw new CoseWitnessError("merkleRootHex required", { code: "BAD_INPUT" });
+  if (!merkleRootHex || typeof merkleRootHex !== 'string') {
+    throw new CoseWitnessError('merkleRootHex required', { code: 'BAD_INPUT' });
   }
   const decoded = decodeCoseSign1(witness.coseSign1Hex);
-  const expected = Buffer.from(merkleRootHex, "utf8");
-  const hashed = decoded.unprotected.get("hashed") === true;
-  const expectedSigned = hashed
-    ? Buffer.from(blake.blake2b(expected, null, 28))
-    : expected;
+  const expected = Buffer.from(merkleRootHex, 'utf8');
+  const hashed = decoded.unprotected.get('hashed') === true;
+  const expectedSigned = hashed ? Buffer.from(blake.blake2b(expected, null, 28)) : expected;
   if (!decoded.payload.equals(expectedSigned)) {
     return {
       ok: false,
@@ -203,7 +201,7 @@ export function verifyWitnessAgainstMerkleRoot(witness, merkleRootHex) {
     };
   }
   if (!coseSignatureValid(witness)) {
-    return { ok: false, reason: "SIGNATURE_INVALID: Ed25519 signature does not verify" };
+    return { ok: false, reason: 'SIGNATURE_INVALID: Ed25519 signature does not verify' };
   }
   return { ok: true, reason: null };
 }
@@ -217,10 +215,11 @@ export function verifyWitnessAgainstMerkleRoot(witness, merkleRootHex) {
  * @returns {{ coseSign1Hex, coseKeyHex, key, signature, publicKey }}
  */
 export function normalizeWitness(witness) {
-  if (!witness) throw new CoseWitnessError("witness required", { code: "BAD_INPUT" });
+  if (!witness) throw new CoseWitnessError('witness required', { code: 'BAD_INPUT' });
   const { coseSign1Hex, coseKeyHex } = witness;
-  if (!coseSign1Hex) throw new CoseWitnessError("witness.coseSign1Hex required", { code: "BAD_INPUT" });
-  if (!coseKeyHex) throw new CoseWitnessError("witness.coseKeyHex required", { code: "BAD_INPUT" });
+  if (!coseSign1Hex)
+    throw new CoseWitnessError('witness.coseSign1Hex required', { code: 'BAD_INPUT' });
+  if (!coseKeyHex) throw new CoseWitnessError('witness.coseKeyHex required', { code: 'BAD_INPUT' });
 
   const publicKey = witness.publicKey || publicKeyFromCoseKey(coseKeyHex);
   const signature = witness.signature || signatureFromCoseSign1(coseSign1Hex);

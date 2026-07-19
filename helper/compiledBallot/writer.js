@@ -11,28 +11,25 @@
 //     to exist." Simpler, matches the "module owns the transform"
 //     philosophy.
 
-import crypto from "node:crypto";
-import mongoose from "mongoose";
-import { Ballot } from "../../schema/Ballot.js";
-import { Proposal } from "../../schema/Proposal.js";
-import { ImportedBallotPayload } from "../../schema/ImportedBallotPayload.js";
-import { ensureProposalContentHashes } from "../proposalContent.js";
-import { SCHEMA_VERSION } from "./schema.js";
+import crypto from 'node:crypto';
+import mongoose from 'mongoose';
+import { Ballot } from '../../schema/Ballot.js';
+import { Proposal } from '../../schema/Proposal.js';
+import { ImportedBallotPayload } from '../../schema/ImportedBallotPayload.js';
+import { ensureProposalContentHashes } from '../proposalContent.js';
+import { SCHEMA_VERSION } from './schema.js';
 
 export class CompiledBallotWriteError extends Error {
   constructor(message, { code, status = 400 } = {}) {
     super(message);
-    this.name = "CompiledBallotWriteError";
-    this.code = code || "WRITE_FAILED";
+    this.name = 'CompiledBallotWriteError';
+    this.code = code || 'WRITE_FAILED';
     this.status = status;
   }
 }
 
 function checksum(payload) {
-  return crypto
-    .createHash("sha256")
-    .update(JSON.stringify(payload), "utf8")
-    .digest("hex");
+  return crypto.createHash('sha256').update(JSON.stringify(payload), 'utf8').digest('hex');
 }
 
 function buildBallotDoc(payload, authCtx) {
@@ -53,10 +50,10 @@ function buildBallotDoc(payload, authCtx) {
     proposalPeriodStart: new Date(b.proposalPeriodStart),
     proposalPeriodEnd: new Date(b.proposalPeriodEnd),
     resultsCalculationMode:
-      b.resultsCalculationMode === "participation" ? "participation" : "standard",
-    voterValidationScript: b.voterValidationScript || "voterValidationAlwaysTrue.js",
-    rollupScript: b.rollupScript || "rollupBallot.js",
-    startupScript: b.startupScript || "startupBallot.js",
+      b.resultsCalculationMode === 'participation' ? 'participation' : 'standard',
+    voterValidationScript: b.voterValidationScript || 'voterValidationAlwaysTrue.js',
+    rollupScript: b.rollupScript || 'rollupBallot.js',
+    startupScript: b.startupScript || 'startupBallot.js',
     facets: payload.facets || [],
     proposalSource: {
       moduleId: payload.source.moduleId,
@@ -76,7 +73,7 @@ function buildProposalDoc(p, ballotId) {
     ipfsHash: p.ipfsHash ?? null,
     title: p.title,
     data: p.data ?? undefined,
-    voteType: p.voteType ?? "default",
+    voteType: p.voteType ?? 'default',
     voteIncrement: p.voteIncrement ?? 1,
     voterBudget: p.voterBudget ?? 1,
     voteOptions: p.voteOptions,
@@ -85,11 +82,11 @@ function buildProposalDoc(p, ballotId) {
     // fields so display code reads from one canonical place. The
     // raw snapshot is still archived under externalProposal for
     // audit / drift detection.
-    summary: p.externalProposal?.snapshot?.summary ?? "",
-    rationale: p.externalProposal?.snapshot?.rationale ?? "",
+    summary: p.externalProposal?.snapshot?.summary ?? '',
+    rationale: p.externalProposal?.snapshot?.rationale ?? '',
     authors: Array.isArray(p.externalProposal?.snapshot?.authors)
       ? p.externalProposal.snapshot.authors.map((name) =>
-          typeof name === "string" ? { name } : name
+          typeof name === 'string' ? { name } : name,
         )
       : [],
     version: p.externalProposal?.snapshot?.version ?? null,
@@ -112,26 +109,25 @@ function buildProposalDoc(p, ballotId) {
  */
 export async function writeCompiledBallot(payload, authCtx) {
   if (!payload?.source?.moduleId || !payload?.source?.externalBallotId) {
-    throw new CompiledBallotWriteError(
-      "source.moduleId and source.externalBallotId required",
-      { code: "BAD_INPUT" }
-    );
+    throw new CompiledBallotWriteError('source.moduleId and source.externalBallotId required', {
+      code: 'BAD_INPUT',
+    });
   }
   if (!authCtx?.method || !authCtx?.importedBy) {
-    throw new CompiledBallotWriteError("authCtx required", { code: "BAD_INPUT", status: 500 });
+    throw new CompiledBallotWriteError('authCtx required', { code: 'BAD_INPUT', status: 500 });
   }
 
   const filter = {
-    "proposalSource.moduleId": payload.source.moduleId,
-    "proposalSource.externalBallotId": payload.source.externalBallotId,
+    'proposalSource.moduleId': payload.source.moduleId,
+    'proposalSource.externalBallotId': payload.source.externalBallotId,
   };
 
   // Freeze check first — no transaction needed for the read.
-  const existing = await Ballot.findOne(filter).select("_id status").lean();
-  if (existing && ["live", "closed"].includes(existing.status)) {
+  const existing = await Ballot.findOne(filter).select('_id status').lean();
+  if (existing && ['live', 'closed'].includes(existing.status)) {
     throw new CompiledBallotWriteError(
       `Ballot is ${existing.status}; imports are frozen once voting begins`,
-      { code: "BALLOT_FROZEN", status: 409 }
+      { code: 'BALLOT_FROZEN', status: 409 },
     );
   }
 
@@ -140,7 +136,7 @@ export async function writeCompiledBallot(payload, authCtx) {
   // dev (standalone mongo) runs without atomic guarantees. The worst
   // case here is an interrupted import leaving an old Proposal set
   // alongside the new Ballot — recoverable by re-pushing.
-  const useTxn = process.env.MONGO_USE_TRANSACTIONS === "true";
+  const useTxn = process.env.MONGO_USE_TRANSACTIONS === 'true';
   let ballotId;
   let created = false;
   const run = async (session) => {
@@ -148,7 +144,7 @@ export async function writeCompiledBallot(payload, authCtx) {
     const upserted = await Ballot.findOneAndUpdate(
       filter,
       { $set: ballotDoc },
-      { new: true, upsert: true, ...opts }
+      { new: true, upsert: true, ...opts },
     );
     ballotId = upserted._id;
     created = existing == null;
@@ -176,7 +172,7 @@ export async function writeCompiledBallot(payload, authCtx) {
           payload,
         },
       ],
-      opts
+      opts,
     );
   };
 

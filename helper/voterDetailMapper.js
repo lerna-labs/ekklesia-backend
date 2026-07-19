@@ -19,18 +19,15 @@
 export function projectVoteEntries(submittedVote, proposal) {
   if (!Array.isArray(submittedVote)) return [];
   const voteType = proposal?.voteType;
-  const voteOptions = Array.isArray(proposal?.voteOptions)
-    ? proposal.voteOptions
-    : [];
+  const voteOptions = Array.isArray(proposal?.voteOptions) ? proposal.voteOptions : [];
 
-  const findOption = (id) =>
-    voteOptions.find((o) => o?.id?.toString() === String(id));
+  const findOption = (id) => voteOptions.find((o) => o?.id?.toString() === String(id));
 
   return submittedVote
     .map((entry) => {
-      if (entry === "abstain") return "Abstain";
+      if (entry === 'abstain') return 'Abstain';
 
-      if (entry && typeof entry === "object" && entry.option != null) {
+      if (entry && typeof entry === 'object' && entry.option != null) {
         const opt = findOption(entry.option);
         return {
           option: entry.option,
@@ -39,7 +36,7 @@ export function projectVoteEntries(submittedVote, proposal) {
         };
       }
 
-      if (voteType === "scale") return entry;
+      if (voteType === 'scale') return entry;
 
       const opt = findOption(entry);
       return opt ? opt.label : null;

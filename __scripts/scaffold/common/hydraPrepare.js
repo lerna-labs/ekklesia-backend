@@ -8,8 +8,8 @@
 // See ~/ekklesia/hydra/src/types.ts (BallotDefinition, BallotQuestion,
 // EkklesiaBallotExtension) — the source of truth for this shape.
 
-import { Proposal } from "../../../schema/Proposal.js";
-import { epochForDate } from "../../../helper/cardanoEpochs.js";
+import { Proposal } from '../../../schema/Proposal.js';
+import { epochForDate } from '../../../helper/cardanoEpochs.js';
 
 /**
  * Stable namespace string derived from the ballot title.
@@ -23,8 +23,8 @@ import { epochForDate } from "../../../helper/cardanoEpochs.js";
 export function namespaceForTitle(title) {
   const slug = title
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ".")
-    .replace(/^\.|\.$/g, "");
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.|\.$/g, '');
   return `vote.ekklesia.${slug}`;
 }
 
@@ -38,7 +38,7 @@ function proposalToQuestion(proposal) {
     // Hydra's BallotQuestion `description` field is the short voter-
     // facing blurb — map from Proposal.summary now that the legacy
     // top-level description field has been dropped.
-    description: proposal.summary || "",
+    description: proposal.summary || '',
     // requireAnswer (Hydra field, default false = abstain allowed).
     // Backend and Hydra use the same field name and polarity now —
     // pass through verbatim. Abstaining voters submit
@@ -58,7 +58,7 @@ function proposalToQuestion(proposal) {
   };
 
   switch (proposal.voteType) {
-    case "choice": {
+    case 'choice': {
       // Single-pick. Exactly one option selected per voter. Hydra
       // distinguishes binary (2 options) from single-choice (≥3) at
       // the method level; both accept `selection: [optId]`.
@@ -68,13 +68,13 @@ function proposalToQuestion(proposal) {
       }));
       return {
         ...base,
-        method: options.length === 2 ? "binary" : "single-choice",
+        method: options.length === 2 ? 'binary' : 'single-choice',
         options,
         minSelections: 1,
         maxSelections: 1,
       };
     }
-    case "multi-choice": {
+    case 'multi-choice': {
       // Pick min..max from a list. Uses the proposal's explicit
       // minSelections / maxSelections when set; otherwise defaults to
       // 1 and options.length respectively. Hydra's `multi-choice`
@@ -92,13 +92,13 @@ function proposalToQuestion(proposal) {
         : options.length;
       return {
         ...base,
-        method: "multi-choice",
+        method: 'multi-choice',
         options,
         minSelections: min,
         maxSelections: max,
       };
     }
-    case "budget": {
+    case 'budget': {
       // Knapsack: voter picks a subset whose summed option.cost ≤
       // voterBudget. Maps to Hydra multi-choice — Hydra only enforces
       // [min, max] count bounds. The cost-cap is backend-validated at
@@ -113,13 +113,13 @@ function proposalToQuestion(proposal) {
       }));
       return {
         ...base,
-        method: "multi-choice",
+        method: 'multi-choice',
         options,
         minSelections: 1,
         maxSelections: options.length,
       };
     }
-    case "weighted": {
+    case 'weighted': {
       // Point allocation: voter distributes voterBudget points across
       // options. Σ values must equal voterBudget exactly. Hydra validates
       // shape + sum at /vote time (see HYDRA_VOTE_VALIDATION TRD).
@@ -129,40 +129,38 @@ function proposalToQuestion(proposal) {
       }));
       return {
         ...base,
-        method: "weighted",
+        method: 'weighted',
         options,
         budget: proposal.voterBudget || 100,
       };
     }
-    case "ranked": {
+    case 'ranked': {
       const options = (proposal.voteOptions || []).map((o) => ({
         label: o.label,
         value: Number(o.id),
       }));
       return {
         ...base,
-        method: "ranked",
+        method: 'ranked',
         options,
         rankCount: options.length,
       };
     }
-    case "scale": {
+    case 'scale': {
       const ids = (proposal.voteOptions || []).map((o) => Number(o.id));
       if (ids.length < 2) {
-        throw new Error(
-          `Scale proposal ${proposal._id} needs at least two options for valueRange`
-        );
+        throw new Error(`Scale proposal ${proposal._id} needs at least two options for valueRange`);
       }
       const min = Math.min(...ids);
       const max = Math.max(...ids);
       const step = Number(proposal.voteIncrement) || 1;
       return {
         ...base,
-        method: "range",
+        method: 'range',
         valueRange: { min, max, step },
       };
     }
-    case "likert": {
+    case 'likert': {
       const options = (proposal.voteOptions || []).map((o) => ({
         label: o.label,
         value: Number(o.id),
@@ -175,7 +173,7 @@ function proposalToQuestion(proposal) {
       };
       return {
         ...base,
-        method: "likert",
+        method: 'likert',
         options,
         ratingRange,
       };
@@ -205,11 +203,11 @@ function roleWeightingFor(ballot) {
   // Legacy fallback — infer role + power source from the voterType
   // display string. Keeps hand-curated ballots without voterGroups
   // importable during the migration window.
-  const v = (ballot?.voterType || "").toLowerCase();
-  if (v.includes("drep")) return { drep: "StakeBased" };
-  if (v.includes("pledge")) return { pool: "PledgeBased" };
-  if (v.includes("spo") || v.includes("pool")) return { pool: "StakeBased" };
-  return { stake: "StakeBased" };
+  const v = (ballot?.voterType || '').toLowerCase();
+  if (v.includes('drep')) return { drep: 'StakeBased' };
+  if (v.includes('pledge')) return { pool: 'PledgeBased' };
+  if (v.includes('spo') || v.includes('pool')) return { pool: 'StakeBased' };
+  return { stake: 'StakeBased' };
 }
 
 /**
@@ -223,17 +221,18 @@ function acceptedCredentialsFor(ballot) {
   if (groups.length > 0) {
     const out = new Set();
     for (const g of groups) {
-      if (g?.group === "drep") out.add("drep");
-      else if (g?.group === "pool") { out.add("pool"); out.add("calidus"); }
-      else if (g?.group === "stake") out.add("stake");
+      if (g?.group === 'drep') out.add('drep');
+      else if (g?.group === 'pool') {
+        out.add('pool');
+        out.add('calidus');
+      } else if (g?.group === 'stake') out.add('stake');
     }
     if (out.size > 0) return [...out];
   }
-  const v = (ballot?.voterType || "").toLowerCase();
-  if (v.includes("drep")) return ["drep"];
-  if (v.includes("pool") || v.includes("spo") || v.includes("pledge"))
-    return ["pool", "calidus"];
-  return ["stake"];
+  const v = (ballot?.voterType || '').toLowerCase();
+  if (v.includes('drep')) return ['drep'];
+  if (v.includes('pool') || v.includes('spo') || v.includes('pledge')) return ['pool', 'calidus'];
+  return ['stake'];
 }
 
 /**
@@ -263,7 +262,7 @@ export async function buildPrepareBody(ballot, opts = {}) {
   const endEpoch = await epochForDate(ballot.votePeriodEnd);
 
   const ballotDef = {
-    specVersion: "ekklesia/1.0",
+    specVersion: 'ekklesia/1.0',
     title: ballot.title,
     description: ballot.description,
     questions: proposals.map(proposalToQuestion),
@@ -271,10 +270,10 @@ export async function buildPrepareBody(ballot, opts = {}) {
     endEpoch,
     ekklesia: {
       namespace,
-      votingAuthority: opts.votingAuthority || ballot.voteAuthorityAddress || "",
-      context: "hydra-head",
+      votingAuthority: opts.votingAuthority || ballot.voteAuthorityAddress || '',
+      context: 'hydra-head',
       acceptedCredentials: acceptedCredentialsFor(ballot),
-      merkleRoot: "", // filled by Hydra
+      merkleRoot: '', // filled by Hydra
       votingWindow: {
         open: new Date(ballot.votePeriodStart).toISOString(),
         close: new Date(ballot.votePeriodEnd).toISOString(),

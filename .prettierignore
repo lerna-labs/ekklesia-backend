@@ -1,0 +1,17 @@
+node_modules
+package-lock.json
+# Release automation -- keep in sync with the shared template, do not reformat per-repo.
+.github/
+.changeset/
+# Prettier's markdown printer can mangle literal underscore/asterisk
+# sequences in prose (e.g. env-var wildcards like MONGODB_*) by reading
+# them as emphasis syntax. The shared style this issue asks for is a JS
+# style anyway, so markdown stays hand-formatted.
+*.md
+/public
+/backup/data
+/scripts
+/logs
+/preprod-logs
+/mainnet-logs
+assets/og/*.ttf

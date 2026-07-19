@@ -20,14 +20,14 @@
 //
 // Storage: UserCache (one row per (userId, ballotId)).
 
-import mongoose from "mongoose";
-import { UserCache } from "../schema/UserCache.js";
-import { VotePackage } from "../schema/VotePackage.js";
+import mongoose from 'mongoose';
+import { UserCache } from '../schema/UserCache.js';
+import { VotePackage } from '../schema/VotePackage.js';
 
 export class NonceError extends Error {
   constructor(message, { code } = {}) {
     super(message);
-    this.name = "NonceError";
+    this.name = 'NonceError';
     this.code = code;
   }
 }
@@ -52,7 +52,7 @@ export class NonceError extends Error {
  */
 export async function reserveNext({ userId, ballotId }) {
   if (!userId || !ballotId) {
-    throw new NonceError("userId and ballotId are required", { code: "BAD_INPUT" });
+    throw new NonceError('userId and ballotId are required', { code: 'BAD_INPUT' });
   }
   const floor = await maxConfirmedPackageNonce(userId, ballotId);
   const updated = await UserCache.findOneAndUpdate(
@@ -61,15 +61,12 @@ export async function reserveNext({ userId, ballotId }) {
       {
         $set: {
           nonce: {
-            $max: [
-              { $add: [{ $ifNull: ["$nonce", 0] }, 1] },
-              floor + 1,
-            ],
+            $max: [{ $add: [{ $ifNull: ['$nonce', 0] }, 1] }, floor + 1],
           },
         },
       },
     ],
-    { new: true, upsert: true, setDefaultsOnInsert: true, updatePipeline: true }
+    { new: true, upsert: true, setDefaultsOnInsert: true, updatePipeline: true },
   );
   return updated.nonce;
 }
@@ -82,21 +79,19 @@ export async function reserveNext({ userId, ballotId }) {
  */
 async function maxConfirmedPackageNonce(userId, ballotId) {
   const ballotObjectId =
-    typeof ballotId === "string"
-      ? new mongoose.Types.ObjectId(ballotId)
-      : ballotId;
+    typeof ballotId === 'string' ? new mongoose.Types.ObjectId(ballotId) : ballotId;
   const [row] = await VotePackage.aggregate([
     {
       $match: {
         ballotId: ballotObjectId,
         userId,
-        status: "hydra-confirmed",
-        nonce: { $type: "number" },
+        status: 'hydra-confirmed',
+        nonce: { $type: 'number' },
       },
     },
-    { $group: { _id: null, max: { $max: "$nonce" } } },
+    { $group: { _id: null, max: { $max: '$nonce' } } },
   ]);
-  return typeof row?.max === "number" ? row.max : 0;
+  return typeof row?.max === 'number' ? row.max : 0;
 }
 
 /**
@@ -107,11 +102,11 @@ async function maxConfirmedPackageNonce(userId, ballotId) {
  */
 export async function commit({ userId, ballotId, nonce }) {
   const row = await UserCache.findOne({ userId, ballotId });
-  if (!row) throw new NonceError("UserCache row missing on commit", { code: "NOT_FOUND" });
+  if (!row) throw new NonceError('UserCache row missing on commit', { code: 'NOT_FOUND' });
   if (row.nonce < nonce) {
     throw new NonceError(
       `Stored nonce ${row.nonce} is less than committed ${nonce} — reservation lost?`,
-      { code: "NONCE_LOST" }
+      { code: 'NONCE_LOST' },
     );
   }
   return row.nonce;
@@ -135,10 +130,7 @@ export async function commit({ userId, ballotId, nonce }) {
  */
 export async function release({ userId, ballotId, nonce }) {
   if (nonce == null) return;
-  const result = await UserCache.updateOne(
-    { userId, ballotId, nonce },
-    { $inc: { nonce: -1 } }
-  );
+  const result = await UserCache.updateOne({ userId, ballotId, nonce }, { $inc: { nonce: -1 } });
   return result.modifiedCount > 0;
 }
 

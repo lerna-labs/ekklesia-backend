@@ -6,5 +6,5 @@
 // "(" or "[" stops throwing SyntaxError at compile time.
 
 export function escapeRegex(input) {
-  return String(input ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(input ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

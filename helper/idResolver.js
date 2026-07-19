@@ -28,19 +28,19 @@
 // Callers translate `null` → 404 and `{ ambiguous }` → 409
 // (`code: "ID_COLLISION"`, body `{ candidates: [...] }`).
 
-import mongoose from "mongoose";
-import { Ballot } from "../schema/Ballot.js";
-import { Proposal } from "../schema/Proposal.js";
+import mongoose from 'mongoose';
+import { Ballot } from '../schema/Ballot.js';
+import { Proposal } from '../schema/Proposal.js';
 
 const MAX_INPUT_LENGTH = 128;
 
-const BALLOT_EXTERNAL_KEY = "proposalSource.externalBallotId";
-const PROPOSAL_EXTERNAL_KEY = "externalProposal.id";
+const BALLOT_EXTERNAL_KEY = 'proposalSource.externalBallotId';
+const PROPOSAL_EXTERNAL_KEY = 'externalProposal.id';
 
 function normalizeInput(input) {
   if (input == null) return null;
   // Accept ObjectId-like inputs (toString) as well as plain strings.
-  const s = typeof input === "string" ? input : String(input);
+  const s = typeof input === 'string' ? input : String(input);
   const trimmed = s.trim();
   if (!trimmed || trimmed.length > MAX_INPUT_LENGTH) return null;
   return trimmed;
@@ -85,12 +85,7 @@ export async function resolveProposal(input, opts = {}) {
     if (!parent || parent.ambiguous) return parent;
     scope.ballotId = parent.doc._id;
   }
-  const sub = await _resolveByKey(
-    Proposal,
-    PROPOSAL_EXTERNAL_KEY,
-    input,
-    { ...opts, scope }
-  );
+  const sub = await _resolveByKey(Proposal, PROPOSAL_EXTERNAL_KEY, input, { ...opts, scope });
   return sub;
 }
 
@@ -119,13 +114,13 @@ async function _resolveByKey(Model, externalKey, rawInput, opts = {}) {
   if (docs.length === 1) {
     const doc = docs[0];
     const internal = isOid && String(doc._id) === input;
-    return { doc, source: internal ? "internal" : "external" };
+    return { doc, source: internal ? 'internal' : 'external' };
   }
 
   // 2+ matches — prefer an _id hit if present (canonical wins).
   if (isOid) {
     const internalHit = docs.find((d) => String(d._id) === input);
-    if (internalHit) return { doc: internalHit, source: "internal" };
+    if (internalHit) return { doc: internalHit, source: 'internal' };
   }
   return { ambiguous: docs.map((d) => String(d._id)) };
 }
@@ -164,19 +159,17 @@ export function canonicalSpaPath({ ballot, proposal, resultsView = false } = {})
 export function canonicalApiPath(kind, id, opts = {}) {
   if (!id) return null;
   switch (kind) {
-    case "ballot":
+    case 'ballot':
       return `/api/v1/ballots/${id}`;
-    case "ballot-archive":
+    case 'ballot-archive':
       return `/api/v1/ballots/${id}/archive`;
-    case "ballot-certified":
+    case 'ballot-certified':
       return `/api/v1/ballots/${id}/certified`;
-    case "ballot-question":
-      return opts.qid
-        ? `/api/v1/ballots/${id}/questions/${opts.qid}/content`
-        : null;
-    case "proposal":
+    case 'ballot-question':
+      return opts.qid ? `/api/v1/ballots/${id}/questions/${opts.qid}/content` : null;
+    case 'proposal':
       return `/api/v1/proposals/${id}`;
-    case "proposals-by-ballot":
+    case 'proposals-by-ballot':
       return `/api/v1/proposals/ballot/${id}`;
     default:
       return null;
@@ -190,7 +183,7 @@ export function canonicalApiPath(kind, id, opts = {}) {
  */
 export function setCanonicalLinkHeader(res, canonicalUrl) {
   if (!canonicalUrl) return;
-  res.set("Link", `<${canonicalUrl}>; rel="canonical"`);
+  res.set('Link', `<${canonicalUrl}>; rel="canonical"`);
 }
 
 // Exposed for tests

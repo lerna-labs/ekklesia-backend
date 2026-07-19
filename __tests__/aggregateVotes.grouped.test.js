@@ -4,12 +4,12 @@
  * otherwise builds URI from MONGODB_HOST/PORT/DATABASE (with test DB name). Skips suite when no URI can be resolved.
  */
 
-import path from "path";
-import { fileURLToPath } from "url";
-import dotenv from "dotenv";
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, "..", ".env.development") });
+dotenv.config({ path: path.join(__dirname, '..', '.env.development') });
 
 function getMongoUri() {
   if (process.env.MONGODB_URI_TEST || process.env.MONGODB_URI) {
@@ -17,13 +17,13 @@ function getMongoUri() {
   }
   const database = process.env.MONGODB_DATABASE;
   if (!database) return null;
-  const host = process.env.MONGODB_HOST || "localhost";
-  const port = process.env.MONGODB_PORT || "27017";
+  const host = process.env.MONGODB_HOST || 'localhost';
+  const port = process.env.MONGODB_PORT || '27017';
   const username = process.env.MONGODB_USERNAME;
   const password = process.env.MONGODB_PASSWORD;
-  const authSource = process.env.MONGODB_AUTH_SOURCE || "admin";
+  const authSource = process.env.MONGODB_AUTH_SOURCE || 'admin';
   const dbName = process.env.MONGODB_DATABASE_TEST || `${database}_test`;
-  let uri = "mongodb://";
+  let uri = 'mongodb://';
   if (username && password) {
     uri += `${encodeURIComponent(username)}:${encodeURIComponent(password)}@`;
   }
@@ -32,15 +32,15 @@ function getMongoUri() {
   return uri;
 }
 
-import mongoose from "mongoose";
-import { Ballot } from "../schema/Ballot.js";
-import { Proposal } from "../schema/Proposal.js";
-import { Vote } from "../schema/Vote.js";
-import { UserCache } from "../schema/UserCache.js";
-import { Result } from "../schema/Result.js";
-import { aggregateVotes } from "../crons/10minAggregateVotes.js";
+import mongoose from 'mongoose';
+import { Ballot } from '../schema/Ballot.js';
+import { Proposal } from '../schema/Proposal.js';
+import { Vote } from '../schema/Vote.js';
+import { UserCache } from '../schema/UserCache.js';
+import { Result } from '../schema/Result.js';
+import { aggregateVotes } from '../crons/10minAggregateVotes.js';
 
-const BALLOT_TITLE_PREFIX = "Test grouped aggregation ";
+const BALLOT_TITLE_PREFIX = 'Test grouped aggregation ';
 const mongoUri = getMongoUri();
 
 function makeBallot(title) {
@@ -48,35 +48,35 @@ function makeBallot(title) {
   const later = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   return {
     title,
-    description: "Test ballot for grouped aggregation",
-    voterType: "test",
-    voterDescription: "Test voters",
+    description: 'Test ballot for grouped aggregation',
+    voterType: 'test',
+    voterDescription: 'Test voters',
     voteWeighted: true,
     voteFilters: false,
     votePeriodStart: now,
     votePeriodEnd: later,
     proposalPeriodStart: now,
     proposalPeriodEnd: later,
-    voteAuthorityId: "test-authority",
-    voteAuthorityAddress: "addr_test_authority",
-    status: "live",
+    voteAuthorityId: 'test-authority',
+    voteAuthorityAddress: 'addr_test_authority',
+    status: 'live',
   };
 }
 
 function makeProposal(ballotId, options = {}) {
   const { abstainAllowed = false, voteOptions } = options;
   const defaultOptions = [
-    { id: 1, cost: 1, label: "Yes" },
-    { id: 2, cost: 1, label: "No" },
+    { id: 1, cost: 1, label: 'Yes' },
+    { id: 2, cost: 1, label: 'No' },
   ];
   if (abstainAllowed) {
-    defaultOptions.push({ id: "abstain", label: "Abstain" });
+    defaultOptions.push({ id: 'abstain', label: 'Abstain' });
   }
   return {
     ballotId,
-    title: "Test proposal",
-    description: "Test",
-    voteType: "choice",
+    title: 'Test proposal',
+    description: 'Test',
+    voteType: 'choice',
     voteOptions: voteOptions || defaultOptions,
     // Legacy test helper kept its `abstainAllowed` input; translate to
     // the v2 schema's inverted flag. abstainAllowed=false (the default
@@ -102,12 +102,12 @@ function makeUserCaches(ballotId, list) {
 let mongoReady = false;
 
 const runDescribe = mongoUri ? describe : describe.skip;
-runDescribe("aggregateVotes grouped results", () => {
+runDescribe('aggregateVotes grouped results', () => {
   const runId = Date.now();
 
   beforeAll(async () => {
     if (!mongoUri) return;
-    mongoose.set("strictQuery", true);
+    mongoose.set('strictQuery', true);
     try {
       await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 2000 });
       mongoReady = true;
@@ -115,7 +115,7 @@ runDescribe("aggregateVotes grouped results", () => {
       console.warn(
         `[aggregateVotes.grouped] skipping: MongoDB unreachable at ${mongoUri} (${err.message}). ` +
           `Start a local Mongo (docs repo: 'cd ~/ekklesia/docs && docker compose -f docker-compose.test.yml up -d mongo') ` +
-          `or set MONGODB_URI_TEST to a reachable server.`
+          `or set MONGODB_URI_TEST to a reachable server.`,
       );
     }
   }, 10_000);
@@ -123,7 +123,9 @@ runDescribe("aggregateVotes grouped results", () => {
   afterAll(async () => {
     if (!mongoReady) return;
     try {
-      const ballots = await Ballot.find({ title: new RegExp("^" + BALLOT_TITLE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + runId) }).lean();
+      const ballots = await Ballot.find({
+        title: new RegExp('^' + BALLOT_TITLE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + runId),
+      }).lean();
       const ballotIds = ballots.map((b) => b._id);
       const proposals = await Proposal.find({ ballotId: { $in: ballotIds } }).lean();
       const proposalIds = proposals.map((p) => p._id);
@@ -149,33 +151,33 @@ runDescribe("aggregateVotes grouped results", () => {
       await fn();
     });
 
-  maybeTest("two groups (drep/pool): overall and resultsByGroup", async () => {
+  maybeTest('two groups (drep/pool): overall and resultsByGroup', async () => {
     const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId));
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
 
     const drepVoters = [10, 20, 30, 40, 50].map((power, i) => ({
       userId: `voter-drep-${i + 1}`,
-      voterGroup: "drep",
+      voterGroup: 'drep',
       votingPower: power,
     }));
     const poolVoters = [1, 2, 3, 4, 5].map((power, i) => ({
       userId: `voter-pool-${i + 1}`,
-      voterGroup: "pool",
+      voterGroup: 'pool',
       votingPower: power,
     }));
     await UserCache.insertMany(makeUserCaches(ballot._id, [...drepVoters, ...poolVoters]));
 
     const votes = [
-      { userId: "voter-drep-1", submittedVote: [1], vote: [1] },
-      { userId: "voter-drep-2", submittedVote: [1], vote: [1] },
-      { userId: "voter-drep-3", submittedVote: [1], vote: [1] },
-      { userId: "voter-drep-4", submittedVote: [2], vote: [2] },
-      { userId: "voter-drep-5", submittedVote: [2], vote: [2] },
-      { userId: "voter-pool-1", submittedVote: [1], vote: [1] },
-      { userId: "voter-pool-2", submittedVote: [1], vote: [1] },
-      { userId: "voter-pool-3", submittedVote: [2], vote: [2] },
-      { userId: "voter-pool-4", submittedVote: [2], vote: [2] },
-      { userId: "voter-pool-5", submittedVote: [2], vote: [2] },
+      { userId: 'voter-drep-1', submittedVote: [1], vote: [1] },
+      { userId: 'voter-drep-2', submittedVote: [1], vote: [1] },
+      { userId: 'voter-drep-3', submittedVote: [1], vote: [1] },
+      { userId: 'voter-drep-4', submittedVote: [2], vote: [2] },
+      { userId: 'voter-drep-5', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-1', submittedVote: [1], vote: [1] },
+      { userId: 'voter-pool-2', submittedVote: [1], vote: [1] },
+      { userId: 'voter-pool-3', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-4', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-5', submittedVote: [2], vote: [2] },
     ].map((v) => ({
       ballotId: ballot._id,
       proposalId: proposal._id,
@@ -191,8 +193,8 @@ runDescribe("aggregateVotes grouped results", () => {
     expect(result.results).toBeDefined();
     const yes = result.results.find((r) => r.id === 1);
     const no = result.results.find((r) => r.id === 2);
-    expect(yes).toEqual({ id: 1, label: "Yes", count: 5, votingPower: 63 });
-    expect(no).toEqual({ id: 2, label: "No", count: 5, votingPower: 102 });
+    expect(yes).toEqual({ id: 1, label: 'Yes', count: 5, votingPower: 63 });
+    expect(no).toEqual({ id: 2, label: 'No', count: 5, votingPower: 102 });
 
     expect(result.resultsByGroup).toBeDefined();
     const drep = result.resultsByGroup.drep;
@@ -200,43 +202,63 @@ runDescribe("aggregateVotes grouped results", () => {
     expect(drep).toBeDefined();
     expect(drep.results).toBeDefined();
     expect(drep.totalVotes).toBe(5);
-    expect(drep.results.find((r) => r.id === 1)).toEqual({ id: 1, label: "Yes", count: 3, votingPower: 60 });
-    expect(drep.results.find((r) => r.id === 2)).toEqual({ id: 2, label: "No", count: 2, votingPower: 90 });
+    expect(drep.results.find((r) => r.id === 1)).toEqual({
+      id: 1,
+      label: 'Yes',
+      count: 3,
+      votingPower: 60,
+    });
+    expect(drep.results.find((r) => r.id === 2)).toEqual({
+      id: 2,
+      label: 'No',
+      count: 2,
+      votingPower: 90,
+    });
 
     expect(pool).toBeDefined();
     expect(pool.results).toBeDefined();
     expect(pool.totalVotes).toBe(5);
-    expect(pool.results.find((r) => r.id === 1)).toEqual({ id: 1, label: "Yes", count: 2, votingPower: 3 });
-    expect(pool.results.find((r) => r.id === 2)).toEqual({ id: 2, label: "No", count: 3, votingPower: 12 });
+    expect(pool.results.find((r) => r.id === 1)).toEqual({
+      id: 1,
+      label: 'Yes',
+      count: 2,
+      votingPower: 3,
+    });
+    expect(pool.results.find((r) => r.id === 2)).toEqual({
+      id: 2,
+      label: 'No',
+      count: 3,
+      votingPower: 12,
+    });
   });
 
-  maybeTest("abstain vote: abstain in results and in drep group", async () => {
-    const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + " abstain"));
+  maybeTest('abstain vote: abstain in results and in drep group', async () => {
+    const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + ' abstain'));
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: true }));
 
     const drepVoters = [10, 20, 30, 40, 50].map((power, i) => ({
       userId: `voter-drep-${i + 1}`,
-      voterGroup: "drep",
+      voterGroup: 'drep',
       votingPower: power,
     }));
     const poolVoters = [1, 2, 3, 4, 5].map((power, i) => ({
       userId: `voter-pool-${i + 1}`,
-      voterGroup: "pool",
+      voterGroup: 'pool',
       votingPower: power,
     }));
     await UserCache.insertMany(makeUserCaches(ballot._id, [...drepVoters, ...poolVoters]));
 
     const votes = [
-      { userId: "voter-drep-1", submittedVote: ["abstain"], vote: ["abstain"] },
-      { userId: "voter-drep-2", submittedVote: [1], vote: [1] },
-      { userId: "voter-drep-3", submittedVote: [1], vote: [1] },
-      { userId: "voter-drep-4", submittedVote: [2], vote: [2] },
-      { userId: "voter-drep-5", submittedVote: [2], vote: [2] },
-      { userId: "voter-pool-1", submittedVote: [1], vote: [1] },
-      { userId: "voter-pool-2", submittedVote: [1], vote: [1] },
-      { userId: "voter-pool-3", submittedVote: [2], vote: [2] },
-      { userId: "voter-pool-4", submittedVote: [2], vote: [2] },
-      { userId: "voter-pool-5", submittedVote: [2], vote: [2] },
+      { userId: 'voter-drep-1', submittedVote: ['abstain'], vote: ['abstain'] },
+      { userId: 'voter-drep-2', submittedVote: [1], vote: [1] },
+      { userId: 'voter-drep-3', submittedVote: [1], vote: [1] },
+      { userId: 'voter-drep-4', submittedVote: [2], vote: [2] },
+      { userId: 'voter-drep-5', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-1', submittedVote: [1], vote: [1] },
+      { userId: 'voter-pool-2', submittedVote: [1], vote: [1] },
+      { userId: 'voter-pool-3', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-4', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-5', submittedVote: [2], vote: [2] },
     ].map((v) => ({
       ballotId: ballot._id,
       proposalId: proposal._id,
@@ -249,7 +271,7 @@ runDescribe("aggregateVotes grouped results", () => {
 
     const result = await Result.findOne({ proposalId: proposal._id }).lean();
     expect(result).not.toBeNull();
-    const abstain = result.results.find((r) => r.id === "abstain");
+    const abstain = result.results.find((r) => r.id === 'abstain');
     expect(abstain).toBeDefined();
     expect(abstain.count).toBe(1);
     expect(abstain.votingPower).toBe(10);
@@ -259,13 +281,13 @@ runDescribe("aggregateVotes grouped results", () => {
     // totalVotes counts distinct PARTICIPATING voters (non-abstain).
     // 5 drep voters total, 1 abstained → 4 participate.
     expect(drep.totalVotes).toBe(4);
-    const drepAbstain = drep.results.find((r) => r.id === "abstain");
-    expect(drepAbstain).toEqual({ id: "abstain", label: "Abstain", count: 1, votingPower: 10 });
+    const drepAbstain = drep.results.find((r) => r.id === 'abstain');
+    expect(drepAbstain).toEqual({ id: 'abstain', label: 'Abstain', count: 1, votingPower: 10 });
 
     const pool = result.resultsByGroup.pool;
     expect(pool).toBeDefined();
     expect(pool.totalVotes).toBe(5);
-    const poolAbstain = pool.results.find((r) => r.id === "abstain");
+    const poolAbstain = pool.results.find((r) => r.id === 'abstain');
     expect(poolAbstain).toBeDefined();
     expect(poolAbstain.count).toBe(0);
     expect(poolAbstain.votingPower).toBe(0);
@@ -274,35 +296,37 @@ runDescribe("aggregateVotes grouped results", () => {
     expect(result.proposalParticipation.voterCount).toEqual({ drep: 4, pool: 5 });
   });
 
-  maybeTest("stake group: voter in stake group appears in stake bucket", async () => {
-    const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + " default"));
+  maybeTest('stake group: voter in stake group appears in stake bucket', async () => {
+    const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + ' default'));
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
 
     const drepVoters = [10, 20, 30, 40, 50].map((power, i) => ({
       userId: `voter-drep-${i + 1}`,
-      voterGroup: "drep",
+      voterGroup: 'drep',
       votingPower: power,
     }));
     const poolVoters = [1, 2, 3, 4, 5].map((power, i) => ({
       userId: `voter-pool-${i + 1}`,
-      voterGroup: "pool",
+      voterGroup: 'pool',
       votingPower: power,
     }));
-    const stakeVoter = { userId: "voter-stake-1", voterGroup: "stake", votingPower: 7 };
-    await UserCache.insertMany(makeUserCaches(ballot._id, [...drepVoters, ...poolVoters, stakeVoter]));
+    const stakeVoter = { userId: 'voter-stake-1', voterGroup: 'stake', votingPower: 7 };
+    await UserCache.insertMany(
+      makeUserCaches(ballot._id, [...drepVoters, ...poolVoters, stakeVoter]),
+    );
 
     const votes = [
-      { userId: "voter-drep-1", submittedVote: [1], vote: [1] },
-      { userId: "voter-drep-2", submittedVote: [1], vote: [1] },
-      { userId: "voter-drep-3", submittedVote: [1], vote: [1] },
-      { userId: "voter-drep-4", submittedVote: [2], vote: [2] },
-      { userId: "voter-drep-5", submittedVote: [2], vote: [2] },
-      { userId: "voter-pool-1", submittedVote: [1], vote: [1] },
-      { userId: "voter-pool-2", submittedVote: [1], vote: [1] },
-      { userId: "voter-pool-3", submittedVote: [2], vote: [2] },
-      { userId: "voter-pool-4", submittedVote: [2], vote: [2] },
-      { userId: "voter-pool-5", submittedVote: [2], vote: [2] },
-      { userId: "voter-stake-1", submittedVote: [1], vote: [1] },
+      { userId: 'voter-drep-1', submittedVote: [1], vote: [1] },
+      { userId: 'voter-drep-2', submittedVote: [1], vote: [1] },
+      { userId: 'voter-drep-3', submittedVote: [1], vote: [1] },
+      { userId: 'voter-drep-4', submittedVote: [2], vote: [2] },
+      { userId: 'voter-drep-5', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-1', submittedVote: [1], vote: [1] },
+      { userId: 'voter-pool-2', submittedVote: [1], vote: [1] },
+      { userId: 'voter-pool-3', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-4', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-5', submittedVote: [2], vote: [2] },
+      { userId: 'voter-stake-1', submittedVote: [1], vote: [1] },
     ].map((v) => ({
       ballotId: ballot._id,
       proposalId: proposal._id,
@@ -325,14 +349,39 @@ runDescribe("aggregateVotes grouped results", () => {
     expect(result.resultsByGroup.stake).toBeDefined();
     const stakeGroup = result.resultsByGroup.stake;
     expect(stakeGroup.totalVotes).toBe(1);
-    expect(stakeGroup.results.find((r) => r.id === 1)).toEqual({ id: 1, label: "Yes", count: 1, votingPower: 7 });
+    expect(stakeGroup.results.find((r) => r.id === 1)).toEqual({
+      id: 1,
+      label: 'Yes',
+      count: 1,
+      votingPower: 7,
+    });
 
     const drep = result.resultsByGroup.drep;
-    expect(drep.results.find((r) => r.id === 1)).toEqual({ id: 1, label: "Yes", count: 3, votingPower: 60 });
-    expect(drep.results.find((r) => r.id === 2)).toEqual({ id: 2, label: "No", count: 2, votingPower: 90 });
+    expect(drep.results.find((r) => r.id === 1)).toEqual({
+      id: 1,
+      label: 'Yes',
+      count: 3,
+      votingPower: 60,
+    });
+    expect(drep.results.find((r) => r.id === 2)).toEqual({
+      id: 2,
+      label: 'No',
+      count: 2,
+      votingPower: 90,
+    });
     const pool = result.resultsByGroup.pool;
-    expect(pool.results.find((r) => r.id === 1)).toEqual({ id: 1, label: "Yes", count: 2, votingPower: 3 });
-    expect(pool.results.find((r) => r.id === 2)).toEqual({ id: 2, label: "No", count: 3, votingPower: 12 });
+    expect(pool.results.find((r) => r.id === 1)).toEqual({
+      id: 1,
+      label: 'Yes',
+      count: 2,
+      votingPower: 3,
+    });
+    expect(pool.results.find((r) => r.id === 2)).toEqual({
+      id: 2,
+      label: 'No',
+      count: 3,
+      votingPower: 12,
+    });
   });
 
   // Regression guard for the Vote.excludedAt soft-exclusion overlay.
@@ -352,41 +401,41 @@ runDescribe("aggregateVotes grouped results", () => {
   //   drep totalVotes: 5→4
   //   proposalParticipation.voterCount.drep: 5→4
   //   ballotParticipation.voterCount.drep:   5→4
-  maybeTest("excluded vote: excludedAt drops the row from every derivation surface", async () => {
-    const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + " excluded"));
+  maybeTest('excluded vote: excludedAt drops the row from every derivation surface', async () => {
+    const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + ' excluded'));
     const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
 
     const drepVoters = [10, 20, 30, 40, 50].map((power, i) => ({
       userId: `voter-drep-excl-${i + 1}`,
-      voterGroup: "drep",
+      voterGroup: 'drep',
       votingPower: power,
     }));
     const poolVoters = [1, 2, 3, 4, 5].map((power, i) => ({
       userId: `voter-pool-excl-${i + 1}`,
-      voterGroup: "pool",
+      voterGroup: 'pool',
       votingPower: power,
     }));
     await UserCache.insertMany(makeUserCaches(ballot._id, [...drepVoters, ...poolVoters]));
 
     const votes = [
-      { userId: "voter-drep-excl-1", submittedVote: [1], vote: [1] },
-      { userId: "voter-drep-excl-2", submittedVote: [1], vote: [1] },
+      { userId: 'voter-drep-excl-1', submittedVote: [1], vote: [1] },
+      { userId: 'voter-drep-excl-2', submittedVote: [1], vote: [1] },
       // voter-drep-excl-3 (Yes, power 30) is operator-flagged below.
       {
-        userId: "voter-drep-excl-3",
+        userId: 'voter-drep-excl-3',
         submittedVote: [1],
         vote: [1],
         excludedAt: new Date(),
-        excludedReason: "INELIGIBLE_VALIDATION_MISMATCH",
-        excludedBy: "test-operator",
+        excludedReason: 'INELIGIBLE_VALIDATION_MISMATCH',
+        excludedBy: 'test-operator',
       },
-      { userId: "voter-drep-excl-4", submittedVote: [2], vote: [2] },
-      { userId: "voter-drep-excl-5", submittedVote: [2], vote: [2] },
-      { userId: "voter-pool-excl-1", submittedVote: [1], vote: [1] },
-      { userId: "voter-pool-excl-2", submittedVote: [1], vote: [1] },
-      { userId: "voter-pool-excl-3", submittedVote: [2], vote: [2] },
-      { userId: "voter-pool-excl-4", submittedVote: [2], vote: [2] },
-      { userId: "voter-pool-excl-5", submittedVote: [2], vote: [2] },
+      { userId: 'voter-drep-excl-4', submittedVote: [2], vote: [2] },
+      { userId: 'voter-drep-excl-5', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-excl-1', submittedVote: [1], vote: [1] },
+      { userId: 'voter-pool-excl-2', submittedVote: [1], vote: [1] },
+      { userId: 'voter-pool-excl-3', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-excl-4', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-excl-5', submittedVote: [2], vote: [2] },
     ].map((v) => ({
       ballotId: ballot._id,
       proposalId: proposal._id,
@@ -403,20 +452,40 @@ runDescribe("aggregateVotes grouped results", () => {
     // Overall counts drop the excluded vote (was Yes/power 30).
     const yes = result.results.find((r) => r.id === 1);
     const no = result.results.find((r) => r.id === 2);
-    expect(yes).toEqual({ id: 1, label: "Yes", count: 4, votingPower: 33 });
-    expect(no).toEqual({ id: 2, label: "No", count: 5, votingPower: 102 });
+    expect(yes).toEqual({ id: 1, label: 'Yes', count: 4, votingPower: 33 });
+    expect(no).toEqual({ id: 2, label: 'No', count: 5, votingPower: 102 });
 
     // Per-group drep totals lose the excluded vote.
     const drep = result.resultsByGroup.drep;
     expect(drep.totalVotes).toBe(4);
-    expect(drep.results.find((r) => r.id === 1)).toEqual({ id: 1, label: "Yes", count: 2, votingPower: 30 });
-    expect(drep.results.find((r) => r.id === 2)).toEqual({ id: 2, label: "No", count: 2, votingPower: 90 });
+    expect(drep.results.find((r) => r.id === 1)).toEqual({
+      id: 1,
+      label: 'Yes',
+      count: 2,
+      votingPower: 30,
+    });
+    expect(drep.results.find((r) => r.id === 2)).toEqual({
+      id: 2,
+      label: 'No',
+      count: 2,
+      votingPower: 90,
+    });
 
     // Pool group is unchanged from the happy-path numbers.
     const pool = result.resultsByGroup.pool;
     expect(pool.totalVotes).toBe(5);
-    expect(pool.results.find((r) => r.id === 1)).toEqual({ id: 1, label: "Yes", count: 2, votingPower: 3 });
-    expect(pool.results.find((r) => r.id === 2)).toEqual({ id: 2, label: "No", count: 3, votingPower: 12 });
+    expect(pool.results.find((r) => r.id === 1)).toEqual({
+      id: 1,
+      label: 'Yes',
+      count: 2,
+      votingPower: 3,
+    });
+    expect(pool.results.find((r) => r.id === 2)).toEqual({
+      id: 2,
+      label: 'No',
+      count: 3,
+      votingPower: 12,
+    });
 
     // Participation denominators drop the excluded voter too —
     // proves `helper/results/ballotParticipation.js` filters

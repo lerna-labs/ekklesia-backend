@@ -4,14 +4,11 @@
 //
 // The API-key-gated integrator copy lives at /api/v1/public/results.
 
-import { Router } from "express";
-import { cacheControl } from "../../../helper/cacheControl.js";
-import { readBallotResults, readProposalResult } from "../../../helper/resultReaders.js";
-import { aggregationLimiter } from "../../../helper/rateLimiters.js";
-import {
-  canonicalApiPath,
-  setCanonicalLinkHeader,
-} from "../../../helper/idResolver.js";
+import { Router } from 'express';
+import { cacheControl } from '../../../helper/cacheControl.js';
+import { readBallotResults, readProposalResult } from '../../../helper/resultReaders.js';
+import { aggregationLimiter } from '../../../helper/rateLimiters.js';
+import { canonicalApiPath, setCanonicalLinkHeader } from '../../../helper/idResolver.js';
 
 const router = Router();
 
@@ -26,37 +23,37 @@ router.use(aggregationLimiter);
 // `externalProposal.id`. Cheap to do at the route layer because the
 // reader already returned the resolved `_id` for us.
 function applyCanonical(req, res, result, kind) {
-  if (result.canonical?.source !== "external") return;
+  if (result.canonical?.source !== 'external') return;
   const path = canonicalApiPath(kind, result.canonical.id);
   setCanonicalLinkHeader(res, path);
   result.canonical = path;
 }
 
-router.get("/ballot/:ballotId", async (req, res) => {
+router.get('/ballot/:ballotId', async (req, res) => {
   const result = await readBallotResults(req.params.ballotId);
   if (result.error) {
     return res.status(result.error.status).json({
-      status: "error",
+      status: 'error',
       code: result.error.code,
       message: result.error.message,
       candidates: result.error.candidates,
     });
   }
-  applyCanonical(req, res, result, "ballot");
+  applyCanonical(req, res, result, 'ballot');
   return res.json(result);
 });
 
-router.get("/proposal/:proposalId", async (req, res) => {
+router.get('/proposal/:proposalId', async (req, res) => {
   const result = await readProposalResult(req.params.proposalId);
   if (result.error) {
     return res.status(result.error.status).json({
-      status: "error",
+      status: 'error',
       code: result.error.code,
       message: result.error.message,
       candidates: result.error.candidates,
     });
   }
-  applyCanonical(req, res, result, "proposal");
+  applyCanonical(req, res, result, 'proposal');
   return res.json(result);
 });
 

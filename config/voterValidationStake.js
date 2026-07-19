@@ -7,10 +7,6 @@
 // chain data directly, swap this for a Koios-backed implementation
 // (see voterValidationDReps.js for the enumeration pattern).
 
-export {
-  validateVoter,
-  allowedVoterCount,
-  getTotalWeight,
-} from "./voterValidationSnapshot.js";
+export { validateVoter, allowedVoterCount, getTotalWeight } from './voterValidationSnapshot.js';
 
-export { computeFromUserCache as computePerVoterPower } from "../helper/votingPower/computeFromUserCache.js";
+export { computeFromUserCache as computePerVoterPower } from '../helper/votingPower/computeFromUserCache.js';

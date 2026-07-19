@@ -1,0 +1,54 @@
+name: Publish release artifact
+
+# Packages the deployable source on a version tag and attaches it to the GitHub
+# Release. Runs only on a version tag (never on a plain push to main), so a
+# release publishes exactly once. "!v*-*" excludes prerelease tags.
+on:
+  push:
+    tags: ["v*", "!v*-*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Package source tarball
+        id: pkg
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # Same tracked-source manifest as the preprod build (staging-rc.yml):
+          # runtime files only, no test suite, no untracked secrets or dumps.
+          asset="ekklesia-backend-${version}.tgz"
+          git ls-files -z -- \
+            server.js package.json package-lock.json .npmrc \
+            README.md LICENSE.md \
+            routes helper schema crons config assets backup \
+            development.config.cjs mainnet.config.cjs preprod.config.cjs \
+            ':(exclude)helper/__tests__/**' \
+            | tar --null -T - -czf "$asset"
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.RELEASE_MANAGER_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_MANAGER_APP_PRIVATE_KEY }}
+
+      - name: Create GitHub Release with the source tarball
+        # Attributed to the Release Manager App. Notes are the CHANGELOG section
+        # for this version.
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes=$(awk -v v="## ${version}" '$0==v{f=1;next} /^## /{if(f)exit} f' CHANGELOG.md)
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "${notes:-Release ${GITHUB_REF_NAME}}" \
+            "${{ steps.pkg.outputs.asset }}"

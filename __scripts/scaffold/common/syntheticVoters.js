@@ -12,38 +12,62 @@
 //   stake_synth_NNN → stake group (stakeholders)
 
 const ID_PREFIX = {
-  drep: "drep_synth_",
-  pool: "pool_synth_",
-  stake: "stake_synth_",
+  drep: 'drep_synth_',
+  pool: 'pool_synth_',
+  stake: 'stake_synth_',
 };
 
 const NAME_POOL = {
   drep: [
-    "DRep Aurora", "DRep Borealis", "DRep Caldera", "DRep Delta", "DRep Echo",
-    "DRep Fulgor", "DRep Gamma", "DRep Helios", "DRep Iris", "DRep Juno",
-    "DRep Kairos", "DRep Lyra",
+    'DRep Aurora',
+    'DRep Borealis',
+    'DRep Caldera',
+    'DRep Delta',
+    'DRep Echo',
+    'DRep Fulgor',
+    'DRep Gamma',
+    'DRep Helios',
+    'DRep Iris',
+    'DRep Juno',
+    'DRep Kairos',
+    'DRep Lyra',
   ],
   pool: [
-    "Skylight Pool", "Granite Pool", "Tundra Pool", "Mariner Pool", "Stellar Pool",
-    "Quartz Pool", "Cobalt Pool", "Radon Pool",
+    'Skylight Pool',
+    'Granite Pool',
+    'Tundra Pool',
+    'Mariner Pool',
+    'Stellar Pool',
+    'Quartz Pool',
+    'Cobalt Pool',
+    'Radon Pool',
   ],
   stake: [
-    "ADA Holder Α", "ADA Holder Β", "ADA Holder Γ", "ADA Holder Δ", "ADA Holder Ε",
-    "ADA Holder Ζ", "ADA Holder Η", "ADA Holder Θ", "ADA Holder Ι", "ADA Holder Κ",
-    "ADA Holder Λ", "ADA Holder Μ",
+    'ADA Holder Α',
+    'ADA Holder Β',
+    'ADA Holder Γ',
+    'ADA Holder Δ',
+    'ADA Holder Ε',
+    'ADA Holder Ζ',
+    'ADA Holder Η',
+    'ADA Holder Θ',
+    'ADA Holder Ι',
+    'ADA Holder Κ',
+    'ADA Holder Λ',
+    'ADA Holder Μ',
   ],
 };
 
 function makeCohort(group, count) {
   const out = [];
   for (let i = 1; i <= count; i++) {
-    const idx = String(i).padStart(3, "0");
+    const idx = String(i).padStart(3, '0');
     out.push({
       userId: `${ID_PREFIX[group]}${idx}`,
       name: NAME_POOL[group][(i - 1) % NAME_POOL[group].length] + ` #${idx}`,
       voterGroup: group,
       validated: true,
-      kind: "synthetic",
+      kind: 'synthetic',
     });
   }
   return out;
@@ -54,7 +78,7 @@ function makeCohort(group, count) {
 // distribution in votingPowerDistribution.js. Adjust if/when the math
 // drifts.
 export const SYNTHETIC_VOTERS = [
-  ...makeCohort("drep", 12),
-  ...makeCohort("pool", 8),
-  ...makeCohort("stake", 12),
+  ...makeCohort('drep', 12),
+  ...makeCohort('pool', 8),
+  ...makeCohort('stake', 12),
 ];

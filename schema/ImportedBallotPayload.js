@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -16,7 +16,7 @@ const importedBallotPayloadSchema = new Schema(
   {
     ballotId: {
       type: Schema.Types.ObjectId,
-      ref: "Ballot",
+      ref: 'Ballot',
       required: true,
     },
     schemaVersion: {
@@ -25,7 +25,7 @@ const importedBallotPayloadSchema = new Schema(
     },
     importMethod: {
       type: String,
-      enum: ["push", "upload"],
+      enum: ['push', 'upload'],
       required: true,
     },
     // Who sent it. For "push" this is the ApiKey.keyPrefix; for
@@ -59,18 +59,15 @@ const importedBallotPayloadSchema = new Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 importedBallotPayloadSchema.index({ ballotId: 1, createdAt: -1 });
 importedBallotPayloadSchema.index({ checksum: 1 });
 importedBallotPayloadSchema.index({
-  "source.moduleId": 1,
-  "source.externalBallotId": 1,
+  'source.moduleId': 1,
+  'source.externalBallotId': 1,
 });
 
-const ImportedBallotPayload = mongoose.model(
-  "ImportedBallotPayload",
-  importedBallotPayloadSchema
-);
+const ImportedBallotPayload = mongoose.model('ImportedBallotPayload', importedBallotPayloadSchema);
 export { ImportedBallotPayload };

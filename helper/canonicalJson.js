@@ -15,7 +15,7 @@
 import {
   canonicalize,
   canonicalBytes as sharedCanonicalBytes,
-} from "@lerna-labs/ekklesia-helpers/json";
+} from '@lerna-labs/ekklesia-helpers/json';
 
 export { canonicalize };
 

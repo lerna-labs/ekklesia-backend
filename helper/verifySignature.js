@@ -8,4 +8,4 @@ export {
   isPartyToScript,
   validateScriptSignatures,
   getScriptCriteria,
-} from "@lerna-labs/ekklesia-helpers/crypto";
+} from '@lerna-labs/ekklesia-helpers/crypto';

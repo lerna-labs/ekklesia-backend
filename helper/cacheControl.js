@@ -14,11 +14,11 @@
 export const cacheControl = (maxAge = 0) => {
   return (req, res, next) => {
     // For user-specific routes or POST/PUT requests, disable cache
-    if (req.method !== "GET" || req.headers.authorization) {
-      res.set("Cache-Control", "no-store");
+    if (req.method !== 'GET' || req.headers.authorization) {
+      res.set('Cache-Control', 'no-store');
     } else {
       // For GET requests without auth, set cache as specified
-      res.set("Cache-Control", `public, max-age=${maxAge}`);
+      res.set('Cache-Control', `public, max-age=${maxAge}`);
     }
     next();
   };

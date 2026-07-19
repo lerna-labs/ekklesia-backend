@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -31,12 +31,12 @@ const transactionSchema = new Schema(
     ballotId: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
-      ref: "Ballot",
+      ref: 'Ballot',
     },
     userId: {
       type: String,
       required: true,
-      ref: "Voter",
+      ref: 'Voter',
     },
     txHash: {
       type: String,
@@ -60,15 +60,15 @@ const transactionSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["created", "pending", "submitted"],
-      default: "created",
+      enum: ['created', 'pending', 'submitted'],
+      default: 'created',
       required: true,
     },
   },
   {
     timestamps: true, // Automatically manage createdAt and updatedAt
     versionKey: false, // Remove __v field from documents
-  }
+  },
 );
 
 // Indexes for faster queries
@@ -76,5 +76,5 @@ transactionSchema.index({ userId: 1 });
 transactionSchema.index({ ballotId: 1 });
 transactionSchema.index({ status: 1 });
 
-const Transaction = mongoose.model("Transaction", transactionSchema);
+const Transaction = mongoose.model('Transaction', transactionSchema);
 export { Transaction };

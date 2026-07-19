@@ -15,17 +15,14 @@
 // actually have Vote docs. Total vs Active comes naturally from
 // "validated voters" vs "voters with Vote docs".
 
-import crypto from "node:crypto";
+import crypto from 'node:crypto';
 
-const ADA = 1_000_000n;                       // lovelace per ADA
-const MAX_SUPPLY = 45_000_000_000n * ADA;     // 45B ADA in lovelace
+const ADA = 1_000_000n; // lovelace per ADA
+const MAX_SUPPLY = 45_000_000_000n * ADA; // 45B ADA in lovelace
 
 // Pseudo-random in [0, 1) keyed by salt + components.
 function prand(...parts) {
-  const buf = crypto
-    .createHash("sha256")
-    .update(parts.join("|"))
-    .digest();
+  const buf = crypto.createHash('sha256').update(parts.join('|')).digest();
   return buf.readUInt32BE(0) / 0xffffffff;
 }
 
@@ -34,7 +31,7 @@ function prand(...parts) {
  * Uniform between 40% and 60% of MAX_SUPPLY.
  */
 function eligibleTotalForBallot(ballotId) {
-  const r = prand("eligibleTotal", ballotId);
+  const r = prand('eligibleTotal', ballotId);
   // Work in number space scaled by 1000 to keep precision; convert
   // back to BigInt at the end.
   const pctScaled = 400 + Math.floor(r * 200); // 400..599 → 0.400..0.599
@@ -57,14 +54,14 @@ function powerLawShares(ballotId, voterIds) {
   // implausibly tiny.
   const alpha = 1.4;
   const ranked = [...voterIds]
-    .map((id) => ({ id, sort: prand("rank", ballotId, id) }))
+    .map((id) => ({ id, sort: prand('rank', ballotId, id) }))
     .sort((a, b) => a.sort - b.sort);
 
   const raw = ranked.map((v, i) => {
     const rank = i + 1;
     // Add per-voter jitter so two adjacent ranks aren't perfectly
     // 1/rank apart — looks more organic.
-    const jitter = 0.7 + prand("jitter", ballotId, v.id) * 0.6;
+    const jitter = 0.7 + prand('jitter', ballotId, v.id) * 0.6;
     return { id: v.id, w: jitter / Math.pow(rank, alpha) };
   });
   const sum = raw.reduce((s, r) => s + r.w, 0);
@@ -128,13 +125,13 @@ export function allocateBallotPower(ballotId, voters) {
  */
 export function turnoutForBallot(ballotId, state) {
   const id = String(ballotId);
-  if (state === "upcoming") return 0;
-  const r = prand("turnout", id);
-  if (state === "closed") return 0.6 + r * 0.35;
+  if (state === 'upcoming') return 0;
+  const r = prand('turnout', id);
+  if (state === 'closed') return 0.6 + r * 0.35;
   return 0.2 + r * 0.5;
 }
 
 export function participates(ballotId, userId, turnout) {
   if (turnout <= 0) return false;
-  return prand("participate", ballotId, userId) < turnout;
+  return prand('participate', ballotId, userId) < turnout;
 }

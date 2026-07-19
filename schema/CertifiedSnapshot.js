@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
@@ -26,7 +26,7 @@ const certifiedSnapshotSchema = new Schema(
     ballotId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: "Ballot",
+      ref: 'Ballot',
       index: true,
     },
     // Monotonic per ballot. Combined with ballotId, this is the unique
@@ -40,7 +40,7 @@ const certifiedSnapshotSchema = new Schema(
     // "chain" — future: on-chain metadata tx from voteAuthorityAddress
     source: {
       type: String,
-      enum: ["api", "chain"],
+      enum: ['api', 'chain'],
       required: true,
     },
     // Populated when source === "chain"; the L1 tx carrying the snapshot
@@ -104,7 +104,7 @@ const certifiedSnapshotSchema = new Schema(
             votingPower: { type: String, required: true },
             eligible: { type: Boolean, required: true },
           },
-          { _id: false }
+          { _id: false },
         ),
       ],
       default: [],
@@ -125,7 +125,7 @@ const certifiedSnapshotSchema = new Schema(
           ballotParticipation: { type: Object, default: null },
           proposalParticipation: { type: Object, default: null },
         },
-        { _id: false }
+        { _id: false },
       ),
       default: () => new Map(),
     },
@@ -139,7 +139,7 @@ const certifiedSnapshotSchema = new Schema(
           url: { type: String, required: true },
           label: { type: String, required: true },
         },
-        { _id: false }
+        { _id: false },
       ),
       default: null,
     },
@@ -147,13 +147,10 @@ const certifiedSnapshotSchema = new Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 certifiedSnapshotSchema.index({ ballotId: 1, version: 1 }, { unique: true });
 
-const CertifiedSnapshot = mongoose.model(
-  "CertifiedSnapshot",
-  certifiedSnapshotSchema
-);
+const CertifiedSnapshot = mongoose.model('CertifiedSnapshot', certifiedSnapshotSchema);
 export { CertifiedSnapshot };

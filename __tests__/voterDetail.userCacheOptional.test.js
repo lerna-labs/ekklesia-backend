@@ -14,13 +14,13 @@
  * Express app and drives it over loopback with the built-in fetch.
  */
 
-import path from "path";
-import { fileURLToPath } from "url";
-import http from "http";
-import dotenv from "dotenv";
+import path from 'path';
+import { fileURLToPath } from 'url';
+import http from 'http';
+import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, "..", ".env.development") });
+dotenv.config({ path: path.join(__dirname, '..', '.env.development') });
 
 function getMongoUri() {
   if (process.env.MONGODB_URI_TEST || process.env.MONGODB_URI) {
@@ -28,13 +28,13 @@ function getMongoUri() {
   }
   const database = process.env.MONGODB_DATABASE;
   if (!database) return null;
-  const host = process.env.MONGODB_HOST || "localhost";
-  const port = process.env.MONGODB_PORT || "27017";
+  const host = process.env.MONGODB_HOST || 'localhost';
+  const port = process.env.MONGODB_PORT || '27017';
   const username = process.env.MONGODB_USERNAME;
   const password = process.env.MONGODB_PASSWORD;
-  const authSource = process.env.MONGODB_AUTH_SOURCE || "admin";
+  const authSource = process.env.MONGODB_AUTH_SOURCE || 'admin';
   const dbName = process.env.MONGODB_DATABASE_TEST || `${database}_test`;
-  let uri = "mongodb://";
+  let uri = 'mongodb://';
   if (username && password) {
     uri += `${encodeURIComponent(username)}:${encodeURIComponent(password)}@`;
   }
@@ -43,27 +43,24 @@ function getMongoUri() {
   return uri;
 }
 
-import express from "express";
-import mongoose from "mongoose";
-import { Ballot } from "../schema/Ballot.js";
-import { Proposal } from "../schema/Proposal.js";
-import { Vote } from "../schema/Vote.js";
-import { User } from "../schema/User.js";
-import { UserCache } from "../schema/UserCache.js";
-import votersRouter from "../routes/api/v0/voters.js";
+import express from 'express';
+import mongoose from 'mongoose';
+import { Ballot } from '../schema/Ballot.js';
+import { Proposal } from '../schema/Proposal.js';
+import { Vote } from '../schema/Vote.js';
+import { User } from '../schema/User.js';
+import { UserCache } from '../schema/UserCache.js';
+import votersRouter from '../routes/api/v0/voters.js';
 
 // The exact script-based DRep (CIP129, prefix byte 23) from the bug report.
-const SCRIPT_DREP_ID =
-  "drep1ydpfkyjxzeqvalf6fgvj7lznrk8kcmfnvy9hyl6gr6ez6wgsjaelx";
+const SCRIPT_DREP_ID = 'drep1ydpfkyjxzeqvalf6fgvj7lznrk8kcmfnvy9hyl6gr6ez6wgsjaelx';
 // Valid CIP129 drep ids (correct bech32 checksum) that simply have no
 // votes — needed so validateAddress resolves cleanly to the 404 path
 // rather than a 400 "invalid address".
-const NONEXISTENT_DREP_ID =
-  "drep1y242424242424242424242424242424242424242424242sdg97tu";
-const EXCLUDED_ONLY_DREP_ID =
-  "drep1ywamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwcxuxrz2";
+const NONEXISTENT_DREP_ID = 'drep1y242424242424242424242424242424242424242424242sdg97tu';
+const EXCLUDED_ONLY_DREP_ID = 'drep1ywamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwcxuxrz2';
 
-const BALLOT_TITLE = "Test voter-detail UserCache-optional";
+const BALLOT_TITLE = 'Test voter-detail UserCache-optional';
 const mongoUri = getMongoUri();
 
 function makeBallot(title) {
@@ -71,30 +68,30 @@ function makeBallot(title) {
   const later = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   return {
     title,
-    description: "Regression ballot for voter-detail",
-    voterType: "drep",
-    voterDescription: "Test voters",
+    description: 'Regression ballot for voter-detail',
+    voterType: 'drep',
+    voterDescription: 'Test voters',
     voteWeighted: false,
     voteFilters: false,
     votePeriodStart: now,
     votePeriodEnd: later,
     proposalPeriodStart: now,
     proposalPeriodEnd: later,
-    voteAuthorityId: "test-authority",
-    voteAuthorityAddress: "addr_test_authority",
-    status: "live",
+    voteAuthorityId: 'test-authority',
+    voteAuthorityAddress: 'addr_test_authority',
+    status: 'live',
   };
 }
 
 function makeProposal(ballotId) {
   return {
     ballotId,
-    title: "Test proposal",
-    description: "Test",
-    voteType: "choice",
+    title: 'Test proposal',
+    description: 'Test',
+    voteType: 'choice',
     voteOptions: [
-      { id: 1, cost: 1, label: "Yes" },
-      { id: 2, cost: 1, label: "No" },
+      { id: 1, cost: 1, label: 'Yes' },
+      { id: 2, cost: 1, label: 'No' },
     ],
     requireAnswer: true,
   };
@@ -105,20 +102,20 @@ let server;
 let baseUrl;
 
 const runDescribe = mongoUri ? describe : describe.skip;
-runDescribe("GET /voters/:userId — UserCache is optional", () => {
+runDescribe('GET /voters/:userId — UserCache is optional', () => {
   let ballot;
   let proposal;
 
   beforeAll(async () => {
     if (!mongoUri) return;
-    mongoose.set("strictQuery", true);
+    mongoose.set('strictQuery', true);
     try {
       await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 2000 });
       mongoReady = true;
     } catch (err) {
       console.warn(
         `[voterDetail.userCacheOptional] skipping: MongoDB unreachable at ${mongoUri} (${err.message}). ` +
-          `Start a local Mongo or set MONGODB_URI_TEST to a reachable server.`
+          `Start a local Mongo or set MONGODB_URI_TEST to a reachable server.`,
       );
       return;
     }
@@ -136,14 +133,14 @@ runDescribe("GET /voters/:userId — UserCache is optional", () => {
       vote: [1],
       submittedAt: new Date(),
     });
-    await User.create({ _id: SCRIPT_DREP_ID, name: "Test Script DRep" });
+    await User.create({ _id: SCRIPT_DREP_ID, name: 'Test Script DRep' });
     // Sanity: no UserCache for this voter — the precondition under test.
     expect(await UserCache.countDocuments({ userId: SCRIPT_DREP_ID })).toBe(0);
 
     const app = express();
-    app.use("/voters", votersRouter);
+    app.use('/voters', votersRouter);
     await new Promise((resolve) => {
-      server = app.listen(0, "127.0.0.1", resolve);
+      server = app.listen(0, '127.0.0.1', resolve);
     });
     const { port } = server.address();
     baseUrl = `http://127.0.0.1:${port}`;
@@ -172,33 +169,31 @@ runDescribe("GET /voters/:userId — UserCache is optional", () => {
     });
 
   maybeTest(
-    "returns 200 with voting history for a script DRep that has votes but no UserCache row",
+    'returns 200 with voting history for a script DRep that has votes but no UserCache row',
     async () => {
       const res = await fetch(`${baseUrl}/voters/${SCRIPT_DREP_ID}`);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.userId).toBe(SCRIPT_DREP_ID);
-      expect(body.voterType).toBe("drep");
-      expect(body.name).toBe("Test Script DRep");
+      expect(body.voterType).toBe('drep');
+      expect(body.name).toBe('Test Script DRep');
       expect(body.ballotsVoted).toBe(1);
       expect(body.proposalsVoted).toBe(1);
       // No UserCache row -> voting power falls back to 0, voter still visible.
       expect(body.votes[0].votingPower).toBe(0);
-      expect(body.votes[0].proposals[0].vote).toEqual(["Yes"]);
-    }
+      expect(body.votes[0].proposals[0].vote).toEqual(['Yes']);
+    },
   );
 
-  maybeTest("still 404s for a voter that has cast no votes", async () => {
+  maybeTest('still 404s for a voter that has cast no votes', async () => {
     const res = await fetch(`${baseUrl}/voters/${NONEXISTENT_DREP_ID}`);
     expect(res.status).toBe(404);
   });
 
-  maybeTest("excluded-only votes do not resurrect a voter (404)", async () => {
+  maybeTest('excluded-only votes do not resurrect a voter (404)', async () => {
     // Same voter id, but the only vote is operator-excluded — must stay
     // hidden from detail just as it is from the directory.
-    const exBallot = await Ballot.create(
-      makeBallot(BALLOT_TITLE + " excluded")
-    );
+    const exBallot = await Ballot.create(makeBallot(BALLOT_TITLE + ' excluded'));
     const exProposal = await Proposal.create(makeProposal(exBallot._id));
     const exVoter = EXCLUDED_ONLY_DREP_ID;
     await Vote.create({

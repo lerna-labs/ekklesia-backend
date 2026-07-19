@@ -1,15 +1,15 @@
 // express router
-import { Router } from "express";
+import { Router } from 'express';
 const router = Router();
 
 // schema import
-import { Vote } from "../../../schema/Vote.js";
-import { Ballot } from "../../../schema/Ballot.js";
-import { User } from "../../../schema/User.js";
-import { validateAddress } from "../../../helper/validateAddress.js";
-import { cacheControl } from "../../../helper/cacheControl.js";
-import { projectVoteEntries } from "../../../helper/voterDetailMapper.js";
-import { aggregationLimiter } from "../../../helper/rateLimiters.js";
+import { Vote } from '../../../schema/Vote.js';
+import { Ballot } from '../../../schema/Ballot.js';
+import { User } from '../../../schema/User.js';
+import { validateAddress } from '../../../helper/validateAddress.js';
+import { cacheControl } from '../../../helper/cacheControl.js';
+import { projectVoteEntries } from '../../../helper/voterDetailMapper.js';
+import { aggregationLimiter } from '../../../helper/rateLimiters.js';
 
 // helper
 const API_URL = process.env.API_URL;
@@ -40,13 +40,13 @@ const API_URL = process.env.API_URL;
  * @returns {Object} 400 - Error if query parameters are invalid (page, limit, sort, or direction)
  * @returns {Object} 500 - Server error while fetching voter list
  */
-router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
+router.get('/', aggregationLimiter, cacheControl(300), async (req, res) => {
   const {
     page = 1,
     limit = 25, // Changed default from 10 to 25 to match frontend
-    search = "",
-    sort = "votes",
-    direction = "desc",
+    search = '',
+    sort = 'votes',
+    direction = 'desc',
   } = req.query;
 
   // Validate pagination parameters
@@ -55,36 +55,33 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
 
   if (isNaN(pageNum) || pageNum < 1) {
     return res.status(400).json({
-      status: "error",
-      message: "Invalid page parameter, must be a positive integer",
+      status: 'error',
+      message: 'Invalid page parameter, must be a positive integer',
     });
   }
 
   if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
     return res.status(400).json({
-      status: "error",
-      message:
-        "Invalid limit parameter, must be a positive integer between 1 and 100",
+      status: 'error',
+      message: 'Invalid limit parameter, must be a positive integer between 1 and 100',
     });
   }
 
   // Validate sort parameters
-  const validSortFields = ["userId", "votes", "lastLogin", "lastVoteAt"];
-  const validDirections = ["asc", "desc"];
+  const validSortFields = ['userId', 'votes', 'lastLogin', 'lastVoteAt'];
+  const validDirections = ['asc', 'desc'];
 
   if (!validSortFields.includes(sort)) {
     return res.status(400).json({
-      status: "error",
-      message: `Invalid sort parameter, must be one of: ${validSortFields.join(
-        ", "
-      )}`,
+      status: 'error',
+      message: `Invalid sort parameter, must be one of: ${validSortFields.join(', ')}`,
     });
   }
 
   if (!validDirections.includes(direction)) {
     return res.status(400).json({
-      status: "error",
-      message: "Invalid direction parameter, must be asc or desc",
+      status: 'error',
+      message: 'Invalid direction parameter, must be asc or desc',
     });
   }
 
@@ -107,13 +104,13 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
     // still appears if they voted legitimately on a different ballot.
     let matchConditions = {
       submittedAt: { $ne: null },
-      userId: { $type: "string" },
+      userId: { $type: 'string' },
       excludedAt: null,
     };
 
     // Escape special regex characters in search string
     const escapeRegex = (string) => {
-      return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     };
 
     // Cardano handles are stored bare in User.name (`adam`) but the
@@ -128,16 +125,14 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
     // handle) because the match below is an unanchored case-insensitive
     // substring — `adam` is still contained in `$adam`, so stripping
     // can only ever widen the match set, never miss one.
-    const normalizedSearch = search.startsWith("$")
-      ? search.slice(1)
-      : search;
+    const normalizedSearch = search.startsWith('$') ? search.slice(1) : search;
 
     // Case-insensitive substring match. Used against `userId` AND the
     // joined `User.name` further down — see the $or stage in the
     // pipelines below. Empty string after $-stripping means the user
     // typed only `$`, treat that as "no filter".
     const searchRegex = normalizedSearch
-      ? new RegExp(`${escapeRegex(normalizedSearch)}`, "i")
+      ? new RegExp(`${escapeRegex(normalizedSearch)}`, 'i')
       : null;
 
     // Stages used to filter grouped voters by `userId` OR resolved
@@ -152,34 +147,31 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
     // the per-row lookup on every list call.
     const searchStages = searchRegex
       ? [
-        {
-          $lookup: {
-            from: "users",
-            localField: "_id",
-            foreignField: "_id",
-            as: "userSearchData",
+          {
+            $lookup: {
+              from: 'users',
+              localField: '_id',
+              foreignField: '_id',
+              as: 'userSearchData',
+            },
           },
-        },
-        {
-          $addFields: {
-            searchName: {
-              $cond: {
-                if: { $gt: [{ $size: "$userSearchData" }, 0] },
-                then: { $arrayElemAt: ["$userSearchData.name", 0] },
-                else: null,
+          {
+            $addFields: {
+              searchName: {
+                $cond: {
+                  if: { $gt: [{ $size: '$userSearchData' }, 0] },
+                  then: { $arrayElemAt: ['$userSearchData.name', 0] },
+                  else: null,
+                },
               },
             },
           },
-        },
-        {
-          $match: {
-            $or: [
-              { _id: searchRegex },
-              { searchName: searchRegex },
-            ],
+          {
+            $match: {
+              $or: [{ _id: searchRegex }, { searchName: searchRegex }],
+            },
           },
-        },
-      ]
+        ]
       : [];
 
     // First count total unique voters with filters applied
@@ -189,12 +181,12 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
       },
       {
         $group: {
-          _id: "$userId",
+          _id: '$userId',
         },
       },
       ...searchStages,
       {
-        $count: "total",
+        $count: 'total',
       },
     ]);
 
@@ -211,22 +203,22 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
       },
       {
         $group: {
-          _id: "$userId",
+          _id: '$userId',
           votes: { $sum: 1 },
           // Most recent submitted vote per voter. Free piggyback on
           // the existing $group — every Vote row is already being
           // scanned for the count. Surfaced unconditionally so
           // frontend can render the column even when sorting by
           // something else; also drives sort=lastVoteAt below.
-          lastVoteAt: { $max: "$submittedAt" },
+          lastVoteAt: { $max: '$submittedAt' },
         },
       },
       ...(search
         ? [
-          {
-            $match: { _id: searchRegex },
-          },
-        ]
+            {
+              $match: { _id: searchRegex },
+            },
+          ]
         : []),
     ];
 
@@ -240,22 +232,22 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
     // lastLogin: null in the directory. routes/api/v0/session.js
     // upserts User.lastLogin on every successful login, so User is
     // the durable source.
-    if (sort === "lastLogin") {
+    if (sort === 'lastLogin') {
       pipeline.push(
         {
           $lookup: {
-            from: "users",
-            localField: "_id",
-            foreignField: "_id",
-            as: "userData",
+            from: 'users',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'userData',
           },
         },
         {
           $addFields: {
             lastLogin: {
               $cond: {
-                if: { $gt: [{ $size: "$userData" }, 0] },
-                then: { $arrayElemAt: ["$userData.lastLogin", 0] },
+                if: { $gt: [{ $size: '$userData' }, 0] },
+                then: { $arrayElemAt: ['$userData.lastLogin', 0] },
                 else: null,
               },
             },
@@ -266,8 +258,8 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
             // those in over time.
             name: {
               $cond: {
-                if: { $gt: [{ $size: "$userData" }, 0] },
-                then: { $arrayElemAt: ["$userData.name", 0] },
+                if: { $gt: [{ $size: '$userData' }, 0] },
+                then: { $arrayElemAt: ['$userData.name', 0] },
                 else: null,
               },
             },
@@ -277,28 +269,28 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
             // of whichever direction was requested.
             lastLoginSortValue: {
               $cond: {
-                if: { $gt: [{ $size: "$userData" }, 0] },
-                then: { $arrayElemAt: ["$userData.lastLogin", 0] },
+                if: { $gt: [{ $size: '$userData' }, 0] },
+                then: { $arrayElemAt: ['$userData.lastLogin', 0] },
                 else: new Date(0),
               },
             },
           },
-        }
+        },
       );
     }
 
     // Add sorting based on the requested field and direction
-    const sortOrder = direction === "asc" ? 1 : -1;
+    const sortOrder = direction === 'asc' ? 1 : -1;
 
     // Create sort stage based on requested field
-    if (sort === "userId") {
+    if (sort === 'userId') {
       pipeline.push({ $sort: { _id: sortOrder } });
-    } else if (sort === "votes") {
+    } else if (sort === 'votes') {
       pipeline.push({ $sort: { votes: sortOrder, _id: 1 } });
-    } else if (sort === "lastLogin") {
+    } else if (sort === 'lastLogin') {
       // Fixed sort syntax - use the pre-computed field
       pipeline.push({ $sort: { lastLoginSortValue: sortOrder, _id: 1 } });
-    } else if (sort === "lastVoteAt") {
+    } else if (sort === 'lastVoteAt') {
       // lastVoteAt is always present on every grouped row (every
       // voter in the directory has at least one submittedAt by the
       // $match filter), so no null-handling field is needed — sort
@@ -313,7 +305,7 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
       {
         $project: {
           _id: 0,
-          userId: "$_id",
+          userId: '$_id',
           votes: 1,
           lastLogin: 1,
           lastVoteAt: 1,
@@ -324,15 +316,15 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
           // present, so this is a no-op when name wasn't joined.
           name: 1,
         },
-      }
+      },
     );
 
     const voters = await Vote.aggregate(pipeline);
 
     if (!voters || voters.length === 0) {
       return res.status(200).json({
-        status: "msg",
-        message: "No voters found",
+        status: 'msg',
+        message: 'No voters found',
       });
     }
 
@@ -344,11 +336,9 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
     // every successful login), NOT `sessions.updatedAt`. Sessions
     // expire after 1h via TTL and represent the nonce handshake, not
     // a durable login record.
-    if (sort !== "lastLogin") {
+    if (sort !== 'lastLogin') {
       const userIds = voters.map((voter) => voter.userId);
-      const users = await User.find({ _id: { $in: userIds } }).select(
-        "_id lastLogin name"
-      );
+      const users = await User.find({ _id: { $in: userIds } }).select('_id lastLogin name');
 
       const userById = new Map();
       users.forEach((u) => {
@@ -381,12 +371,11 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error fetching voter list:", error);
+    console.error('Error fetching voter list:', error);
     return res.status(500).json({
-      status: "error",
-      message: "Server error while fetching voter list",
-      details:
-        process.env.NODE_ENV === "development" ? error.message : undefined,
+      status: 'error',
+      message: 'Server error while fetching voter list',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 });
@@ -401,25 +390,25 @@ router.get("/", aggregationLimiter, cacheControl(300), async (req, res) => {
  *   - count: Number of voters of this type who have submitted votes
  * @returns {Object} 500 - Server error while fetching voter types
  */
-router.get("/types", cacheControl(300), async (req, res) => {
+router.get('/types', cacheControl(300), async (req, res) => {
   try {
     const voters = await Vote.aggregate([
       {
         $match: { submittedVote: { $exists: true }, excludedAt: null },
       },
       {
-        $group: { _id: "$userId" },
+        $group: { _id: '$userId' },
       },
     ]);
 
     // Extract voter types from IDs
     const voterTypes = voters.reduce((types, voter) => {
       const userId = voter._id;
-      if (userId.startsWith("stake")) {
+      if (userId.startsWith('stake')) {
         types.stake = (types.stake || 0) + 1;
-      } else if (userId.startsWith("drep")) {
+      } else if (userId.startsWith('drep')) {
         types.drep = (types.drep || 0) + 1;
-      } else if (userId.startsWith("pool")) {
+      } else if (userId.startsWith('pool')) {
         types.pool = (types.pool || 0) + 1;
       }
       return types;
@@ -433,10 +422,10 @@ router.get("/types", cacheControl(300), async (req, res) => {
 
     return res.status(200).json(response);
   } catch (error) {
-    console.error("Error fetching voter types:", error);
+    console.error('Error fetching voter types:', error);
     return res.status(500).json({
-      status: "error",
-      message: "Server error while fetching voter types",
+      status: 'error',
+      message: 'Server error while fetching voter types',
     });
   }
 });
@@ -474,34 +463,34 @@ router.get("/types", cacheControl(300), async (req, res) => {
  * @returns {Object} 404 - Error if the voter has cast no submitted, non-excluded votes
  * @returns {Object} 500 - Server error while fetching voter data
  */
-router.get("/:userId", cacheControl(300), async (req, res) => {
+router.get('/:userId', cacheControl(300), async (req, res) => {
   let userId = req.params.userId;
   if (!userId) {
     return res.status(400).json({
-      status: "error",
-      message: "Voter ID is required",
+      status: 'error',
+      message: 'Voter ID is required',
     });
   }
 
   // Check voter ID type
   let voterType;
-  if (userId.startsWith("stake")) {
-    voterType = "stake";
-  } else if (userId.startsWith("drep")) {
-    voterType = "drep";
-  } else if (userId.startsWith("pool")) {
-    voterType = "pool";
+  if (userId.startsWith('stake')) {
+    voterType = 'stake';
+  } else if (userId.startsWith('drep')) {
+    voterType = 'drep';
+  } else if (userId.startsWith('pool')) {
+    voterType = 'pool';
   } else {
     return res.status(400).json({
-      status: "error",
-      message: "Invalid ID format: must start with stake, drep, or pool",
+      status: 'error',
+      message: 'Invalid ID format: must start with stake, drep, or pool',
     });
   }
 
   let userIdValidated = validateAddress(userId, voterType);
   if (userIdValidated.error) {
     return res.status(400).json({
-      status: "error",
+      status: 'error',
       message: userIdValidated.error,
     });
   }
@@ -528,8 +517,8 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
   });
   if (!hasVotes) {
     return res.status(404).json({
-      status: "error",
-      message: "Voter not found",
+      status: 'error',
+      message: 'Voter not found',
     });
   }
 
@@ -560,53 +549,50 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
     },
     {
       $group: {
-        _id: "$ballotId",
-        votes: { $push: "$$ROOT" },
+        _id: '$ballotId',
+        votes: { $push: '$$ROOT' },
       },
     },
     {
       $lookup: {
-        from: "ballots",
-        localField: "_id",
-        foreignField: "_id",
-        as: "ballot",
+        from: 'ballots',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'ballot',
       },
     },
     {
-      $unwind: "$ballot",
+      $unwind: '$ballot',
     },
     // Add lookup to get voting power from UserCache
     {
       $lookup: {
-        from: "usercaches",
-        let: { ballotId: "$_id", voter: userIdValidated },
+        from: 'usercaches',
+        let: { ballotId: '$_id', voter: userIdValidated },
         pipeline: [
           {
             $match: {
               $expr: {
-                $and: [
-                  { $eq: ["$ballotId", "$$ballotId"] },
-                  { $eq: ["$userId", "$$voter"] },
-                ],
+                $and: [{ $eq: ['$ballotId', '$$ballotId'] }, { $eq: ['$userId', '$$voter'] }],
               },
             },
           },
         ],
-        as: "voterPower",
+        as: 'voterPower',
       },
     },
     {
       $unwind: {
-        path: "$voterPower",
+        path: '$voterPower',
         preserveNullAndEmptyArrays: true,
       },
     },
     {
       $lookup: {
-        from: "proposals",
-        localField: "votes.proposalId",
-        foreignField: "_id",
-        as: "proposalDetails",
+        from: 'proposals',
+        localField: 'votes.proposalId',
+        foreignField: '_id',
+        as: 'proposalDetails',
       },
     },
     {
@@ -615,7 +601,7 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
         votes: 1,
         ballot: 1,
         proposalDetails: 1,
-        votingPower: "$voterPower.votingPower",
+        votingPower: '$voterPower.votingPower',
       },
     },
     {
@@ -625,7 +611,7 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
 
   // Properly hydrate and include virtuals
   const populatedBallots = await Ballot.populate(ballots, {
-    path: "ballot",
+    path: 'ballot',
   });
 
   // Process the votes to include proposal information
@@ -637,14 +623,8 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
       // Filter to only include proposals the voter has voted on
       const votedProposals = item.proposalDetails
         .map((p) => {
-          const vote = item.votes.find(
-            (v) => v.proposalId?.toString() === p._id.toString()
-          );
-          if (
-            vote?.submittedVote === undefined ||
-            vote?.submittedVote === null
-          )
-            return null; // Skip if no vote found
+          const vote = item.votes.find((v) => v.proposalId?.toString() === p._id.toString());
+          if (vote?.submittedVote === undefined || vote?.submittedVote === null) return null; // Skip if no vote found
 
           // Project per-vote-type. Likert/Weighted store object entries
           // ({ option, value }) which the previous primitive-only mapper
@@ -680,10 +660,7 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
   voterData.ballotsVoted = votes.length;
   // voterData = ballots[0]?.votingPower;
 
-  voterData.proposalsVoted = votes.reduce(
-    (count, ballot) => count + ballot.proposals.length,
-    0
-  );
+  voterData.proposalsVoted = votes.reduce((count, ballot) => count + ballot.proposals.length, 0);
 
   // lastVoteDate used to read `votes[0].votedAt`, but `votedAt` is
   // not a field on the projected ballot summary above (the schema
@@ -691,11 +668,13 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
   // returned undefined / null. Query the real value directly from
   // the Vote collection — the existing { userId, submittedAt } index
   // makes this a single B-tree seek.
-  const lastVote = await Vote.findOne(
-    { userId: userIdValidated, submittedAt: { $ne: null }, excludedAt: null }
-  )
+  const lastVote = await Vote.findOne({
+    userId: userIdValidated,
+    submittedAt: { $ne: null },
+    excludedAt: null,
+  })
     .sort({ submittedAt: -1 })
-    .select("submittedAt")
+    .select('submittedAt')
     .lean();
   voterData.lastVoteDate = lastVote?.submittedAt || null;
 
@@ -705,7 +684,7 @@ router.get("/:userId", cacheControl(300), async (req, res) => {
   // collection TTLs after 1 hour and was returning null for anyone
   // inactive since the request window — that wasn't a "never logged
   // in" signal, it was a "session record already expired" signal.
-  const user = await User.findById(userIdValidated).select("lastLogin name");
+  const user = await User.findById(userIdValidated).select('lastLogin name');
   voterData.lastLogin = user?.lastLogin || null;
   voterData.name = user?.name || null;
 

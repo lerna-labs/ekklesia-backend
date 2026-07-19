@@ -1,6 +1,6 @@
-import { Vote } from "../schema/Vote.js";
-import { Transaction } from "../schema/Transaction.js";
-import { createVoterTree } from "../helper/createVoterTree.js";
+import { Vote } from '../schema/Vote.js';
+import { Transaction } from '../schema/Transaction.js';
+import { createVoterTree } from '../helper/createVoterTree.js';
 
 /**
  * Creates or updates a transaction record for submitting votes
@@ -29,8 +29,8 @@ export async function createTransaction(userId, ballotId) {
   }).sort({ _id: -1 });
   if (votes.length === 0) {
     return res.status(400).json({
-      status: "error",
-      message: "no votes to submit",
+      status: 'error',
+      message: 'no votes to submit',
     });
   }
   // cleanup vote object
@@ -58,14 +58,14 @@ export async function createTransaction(userId, ballotId) {
 
   // store transaction in db
   const transaction = await Transaction.findOneAndUpdate(
-    { userId, ballotId, status: "created" },
+    { userId, ballotId, status: 'created' },
     {
       $set: {
         votes: cleanVotes,
         merkleRoot: merkleTree.rootHash,
       },
     },
-    { upsert: true, new: true }
+    { upsert: true, new: true },
   );
 
   // cleanup transaction object

@@ -35,30 +35,29 @@
 //                       actually minted on the previous attempt.
 //   --dry-run           Build + print the prepare body; do not POST.
 
-import process from "process";
-import { bootstrap, teardown, parseArgs } from "./common/env.js";
-import { buildPrepareBody, namespaceForTitle } from "./common/hydraPrepare.js";
-import { forEndpoint, HydraClientError } from "../../helper/hydraClient.js";
-import { Ballot } from "../../schema/Ballot.js";
+import process from 'process';
+import { bootstrap, teardown, parseArgs } from './common/env.js';
+import { buildPrepareBody, namespaceForTitle } from './common/hydraPrepare.js';
+import { forEndpoint, HydraClientError } from '../../helper/hydraClient.js';
+import { Ballot } from '../../schema/Ballot.js';
 
 const HYDRA_METADATA_FIELDS = [
-  "hydraEndpoint",
-  "hydraHeadId",
-  "ballotCid",
-  "instancePolicyId",
-  "definitionAssetName",
-  "instanceAssetName",
-  "ballotFingerprint",
-  "timelockSlot",
-  "prepareTxHash",
-  "prepareTxSubmittedAt",
+  'hydraEndpoint',
+  'hydraHeadId',
+  'ballotCid',
+  'instancePolicyId',
+  'definitionAssetName',
+  'instanceAssetName',
+  'ballotFingerprint',
+  'timelockSlot',
+  'prepareTxHash',
+  'prepareTxSubmittedAt',
 ];
 
 function explorerUrl(txHash) {
   if (!txHash) return null;
-  const network = (process.env.NETWORK_NAME || "preprod").toLowerCase();
-  const host =
-    network === "mainnet" ? "https://cexplorer.io" : "https://preprod.cexplorer.io";
+  const network = (process.env.NETWORK_NAME || 'preprod').toLowerCase();
+  const host = network === 'mainnet' ? 'https://cexplorer.io' : 'https://preprod.cexplorer.io';
   return `${host}/tx/${txHash}`;
 }
 
@@ -84,7 +83,7 @@ async function runPrepare(flags) {
     console.log(
       `[prepareBallotById] ${ballot.title} is already prepared at ` +
         `${ballot.hydraEndpoint}. Pass --force to re-prepare (only after ` +
-        `confirming the prior /prepare did NOT actually mint).`
+        `confirming the prior /prepare did NOT actually mint).`,
     );
     console.log(`  _id              = ${ballot._id}`);
     console.log(`  ballotCid        = ${ballot.ballotCid}`);
@@ -99,18 +98,15 @@ async function runPrepare(flags) {
     await Ballot.updateOne({ _id: ballot._id }, { $set });
     for (const f of HYDRA_METADATA_FIELDS) ballot[f] = null;
     ballot.commitUtxos = [];
-    console.log(
-      `[prepareBallotById] --force: cleared prior Hydra metadata for ${ballot.title}`
-    );
+    console.log(`[prepareBallotById] --force: cleared prior Hydra metadata for ${ballot.title}`);
   }
 
-  const endpoint =
-    flags.endpoint || ballot.hydraEndpoint || process.env.HYDRA_DEFAULT_ENDPOINT;
-  const isDryRun = flags["dry-run"] || flags.dryRun;
+  const endpoint = flags.endpoint || ballot.hydraEndpoint || process.env.HYDRA_DEFAULT_ENDPOINT;
+  const isDryRun = flags['dry-run'] || flags.dryRun;
   if (!endpoint && !isDryRun) {
     console.error(
-      "[prepareBallotById] no Hydra endpoint. Pass --endpoint=<url>, set " +
-        "HYDRA_DEFAULT_ENDPOINT, or stamp ballot.hydraEndpoint."
+      '[prepareBallotById] no Hydra endpoint. Pass --endpoint=<url>, set ' +
+        'HYDRA_DEFAULT_ENDPOINT, or stamp ballot.hydraEndpoint.',
     );
     return 1;
   }
@@ -124,29 +120,29 @@ async function runPrepare(flags) {
   const body = await buildPrepareBody(ballot, opts);
 
   if (isDryRun) {
-    console.log("[prepareBallotById] --dry-run: built body, NOT posting");
-    console.log(`  endpoint       = ${endpoint || "(none — would error)"}`);
+    console.log('[prepareBallotById] --dry-run: built body, NOT posting');
+    console.log(`  endpoint       = ${endpoint || '(none — would error)'}`);
     console.log(`  namespace      = ${body.namespace}`);
     console.log(`  questions      = ${body.ballot.questions.length}`);
     console.log(`  endEpoch       = ${body.ballot.endEpoch}`);
-    console.log(`  votingWindow   = ${body.ballot.ekklesia.votingWindow.open} → ${body.ballot.ekklesia.votingWindow.close}`);
-    console.log(`  votingAuthority= ${body.ballot.ekklesia.votingAuthority || "(empty)"}`);
+    console.log(
+      `  votingWindow   = ${body.ballot.ekklesia.votingWindow.open} → ${body.ballot.ekklesia.votingWindow.close}`,
+    );
+    console.log(`  votingAuthority= ${body.ballot.ekklesia.votingAuthority || '(empty)'}`);
     console.log(`  gasAmount      = ${body.gasAmount}`);
-    console.log("");
+    console.log('');
     console.log(JSON.stringify(body, null, 2));
     return 0;
   }
 
-  console.log(
-    `[prepareBallotById] calling ${endpoint}/prepare (namespace=${body.namespace}) …`
-  );
+  console.log(`[prepareBallotById] calling ${endpoint}/prepare (namespace=${body.namespace}) …`);
   const client = forEndpoint(endpoint);
   const data = await client.prepare(body);
 
   // Stamp the response onto the ballot — same field set as
   // scaffoldHydraBallot.js so the rest of the lifecycle (autoFillFromBallot,
   // /start, /settle/*) finds everything it needs.
-  ballot.source = "hydra";
+  ballot.source = 'hydra';
   ballot.hydraEndpoint = endpoint;
   if (data?.txHash) {
     ballot.prepareTxHash = data.txHash;
@@ -168,46 +164,44 @@ async function runPrepare(flags) {
   console.log(`  _id              = ${ballot._id}`);
   console.log(`  namespace        = ${body.namespace}`);
   console.log(`  hydraEndpoint    = ${ballot.hydraEndpoint}`);
-  console.log(`  prepareTxHash    = ${ballot.prepareTxHash || "(not returned)"}`);
-  console.log(`  explorer         = ${explorerUrl(ballot.prepareTxHash) || "-"}`);
+  console.log(`  prepareTxHash    = ${ballot.prepareTxHash || '(not returned)'}`);
+  console.log(`  explorer         = ${explorerUrl(ballot.prepareTxHash) || '-'}`);
   console.log(`  ballotCid        = ${ballot.ballotCid}`);
   console.log(`  instancePolicyId = ${ballot.instancePolicyId}`);
-  console.log(`  hydraHeadId      = ${ballot.hydraHeadId || "(set on /start)"}`);
-  console.log("");
-  console.log("# paste this line into your shell:");
+  console.log(`  hydraHeadId      = ${ballot.hydraHeadId || '(set on /start)'}`);
+  console.log('');
+  console.log('# paste this line into your shell:');
   console.log(`export BALLOT='${ballot._id}'`);
-  console.log("");
-  console.log("# Wait for the prepare tx to confirm before calling /start:");
+  console.log('');
+  console.log('# Wait for the prepare tx to confirm before calling /start:');
   console.log(`node __scripts/waitForPrepareConfirmation.js --ballotId ${ballot._id}`);
   return 0;
 }
 
 const { flags } = parseArgs();
 if (!flags.ballotId) {
-  console.error("[prepareBallotById] --ballotId is required");
+  console.error('[prepareBallotById] --ballotId is required');
   process.exit(1);
 }
 
-let exitCode = 0;
+let exitCode;
 try {
   exitCode = (await main(flags)) || 0;
 } catch (err) {
   if (err instanceof HydraClientError) {
     console.error(
       `[prepareBallotById] Hydra /prepare failed: ${err.message}` +
-        (err.data ? `\n  upstream: ${JSON.stringify(err.data)}` : "")
+        (err.data ? `\n  upstream: ${JSON.stringify(err.data)}` : ''),
     );
     console.error(
-      "\n  /prepare is NOT idempotent — it mints fresh tokens and spends\n" +
-        "  admin wallet UTxOs on every call. Before retrying with --force,\n" +
+      '\n  /prepare is NOT idempotent — it mints fresh tokens and spends\n' +
+        '  admin wallet UTxOs on every call. Before retrying with --force,\n' +
         "  confirm no tokens were actually minted: check the Hydra service's\n" +
-        "  /ballot list and the admin L1 address on the chain explorer, and\n" +
-        "  call POST /sweep on the Hydra service to recover residue if needed."
+        '  /ballot list and the admin L1 address on the chain explorer, and\n' +
+        '  call POST /sweep on the Hydra service to recover residue if needed.',
     );
   } else {
-    console.error(
-      `[prepareBallotById] unexpected error: ${err.stack || err.message}`
-    );
+    console.error(`[prepareBallotById] unexpected error: ${err.stack || err.message}`);
   }
   exitCode = 1;
 }

@@ -19,9 +19,7 @@
  */
 export function computeRankedDistribution({ proposal, votes, votersByUserId }) {
   const options = Array.isArray(proposal.voteOptions) ? proposal.voteOptions : [];
-  const optionIds = options
-    .map((o) => o.id)
-    .filter((id) => id !== "abstain"); // abstain isn't ranked
+  const optionIds = options.map((o) => o.id).filter((id) => id !== 'abstain'); // abstain isn't ranked
   if (optionIds.length === 0) return new Map();
 
   // Rank depth = option count. Voters can rank fewer; we still allocate
@@ -51,10 +49,10 @@ export function computeRankedDistribution({ proposal, votes, votersByUserId }) {
     if (!voter) continue;
     const ranking = Array.isArray(v.vote) ? v.vote : [];
     // Skip abstain-only votes — they don't contribute to the rank picture.
-    const usableRanking = ranking.filter((id) => id !== "abstain");
+    const usableRanking = ranking.filter((id) => id !== 'abstain');
     if (usableRanking.length === 0) continue;
 
-    const group = voter.voterGroup || "stake";
+    const group = voter.voterGroup || 'stake';
     const power = voter.votingPower ?? 1;
     const perOption = ensureGroup(group);
 
@@ -80,7 +78,7 @@ export function computeRankedDistribution({ proposal, votes, votersByUserId }) {
   const out = new Map();
   for (const [group, perOption] of acc.entries()) {
     const rows = options
-      .filter((o) => o.id !== "abstain")
+      .filter((o) => o.id !== 'abstain')
       .map((o) => {
         const data = perOption.get(o.id);
         return {

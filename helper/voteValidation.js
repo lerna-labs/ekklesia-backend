@@ -12,13 +12,13 @@
 // here than Hydra — divergence would cause silently-accepted drafts
 // that Hydra later rejects at /vote (no user-visible error path).
 
-import { Proposal } from "../schema/Proposal.js";
+import { Proposal } from '../schema/Proposal.js';
 
 export class VoteValidationError extends Error {
   constructor(message, { code, path } = {}) {
     super(message);
-    this.name = "VoteValidationError";
-    this.code = code || "BAD_INPUT";
+    this.name = 'VoteValidationError';
+    this.code = code || 'BAD_INPUT';
     this.path = path;
   }
 }
@@ -40,7 +40,7 @@ function isInt(n) {
  */
 export function validateVoteSelections(votes, proposals) {
   if (!Array.isArray(votes) || votes.length === 0) {
-    err("votes[] required", "votes");
+    err('votes[] required', 'votes');
   }
   const byId = new Map(proposals.map((p) => [String(p._id), p]));
   const seenQuestions = new Set();
@@ -48,42 +48,42 @@ export function validateVoteSelections(votes, proposals) {
   for (let i = 0; i < votes.length; i++) {
     const v = votes[i];
     const path = `votes[${i}]`;
-    if (!v || typeof v !== "object") err("must be an object", path);
-    if (!v.questionId) err("questionId required", `${path}.questionId`);
+    if (!v || typeof v !== 'object') err('must be an object', path);
+    if (!v.questionId) err('questionId required', `${path}.questionId`);
 
     const qid = String(v.questionId);
-    if (seenQuestions.has(qid)) err("duplicate questionId", `${path}.questionId`);
+    if (seenQuestions.has(qid)) err('duplicate questionId', `${path}.questionId`);
     seenQuestions.add(qid);
 
     const proposal = byId.get(qid);
-    if (!proposal) err("questionId not on this ballot", `${path}.questionId`);
+    if (!proposal) err('questionId not on this ballot', `${path}.questionId`);
 
     // Abstain is a top-level flag, mutually exclusive with selection.
     // Matches Hydra v2: { questionId, abstain: true } routes to the
     // tally's abstainedByRole counter, never to MethodTally aggregates.
     const hasAbstain = v.abstain === true;
-    const hasSelection = Object.prototype.hasOwnProperty.call(v, "selection");
+    const hasSelection = Object.prototype.hasOwnProperty.call(v, 'selection');
 
     if (hasAbstain) {
       if (v.abstain !== true) {
-        err("abstain must be exactly true", `${path}.abstain`);
+        err('abstain must be exactly true', `${path}.abstain`);
       }
       // abstain is allowed by default; only rejected when the proposal
       // sets requireAnswer: true. Missing / undefined / false all allow.
       if (proposal.requireAnswer === true) {
-        err("this question requires an answer — abstain is not allowed", `${path}.abstain`);
+        err('this question requires an answer — abstain is not allowed', `${path}.abstain`);
       }
       if (hasSelection) {
-        err("abstain and selection are mutually exclusive", path);
+        err('abstain and selection are mutually exclusive', path);
       }
       continue;
     }
 
     if (!hasSelection) {
-      err("selection or abstain:true required", path);
+      err('selection or abstain:true required', path);
     }
     if (!Array.isArray(v.selection)) {
-      err("selection must be an array", `${path}.selection`);
+      err('selection must be an array', `${path}.selection`);
     }
 
     validatePerMethod(v.selection, proposal, `${path}.selection`);
@@ -92,21 +92,19 @@ export function validateVoteSelections(votes, proposals) {
 
 function validatePerMethod(selection, proposal, path) {
   const optionIds = new Set(
-    (proposal.voteOptions || [])
-      .filter((o) => o.id !== "abstain")
-      .map((o) => Number(o.id))
+    (proposal.voteOptions || []).filter((o) => o.id !== 'abstain').map((o) => Number(o.id)),
   );
 
   switch (proposal.voteType) {
-    case "choice":
+    case 'choice':
       validateNumberArray(selection, optionIds, path);
-      if (selection.length !== 1) err("choice expects exactly one option", path);
+      if (selection.length !== 1) err('choice expects exactly one option', path);
       break;
 
-    case "multi-choice": {
+    case 'multi-choice': {
       validateNumberArray(selection, optionIds, path);
       if (new Set(selection).size !== selection.length) {
-        err("multi-choice selection must not repeat options", path);
+        err('multi-choice selection must not repeat options', path);
       }
       const min = Number.isFinite(Number(proposal.minSelections))
         ? Number(proposal.minSelections)
@@ -120,35 +118,35 @@ function validatePerMethod(selection, proposal, path) {
       break;
     }
 
-    case "scale":
+    case 'scale':
       validateNumberArray(selection, null, path);
-      if (selection.length !== 1) err("scale expects exactly one value", path);
+      if (selection.length !== 1) err('scale expects exactly one value', path);
       validateScaleGrid(selection[0], proposal, path);
       break;
 
-    case "ranked":
+    case 'ranked':
       validateNumberArray(selection, optionIds, path);
       if (new Set(selection).size !== selection.length) {
-        err("ranked selection must not repeat options", path);
+        err('ranked selection must not repeat options', path);
       }
       break;
 
-    case "budget":
+    case 'budget':
       // Knapsack: number[] (multi-choice shape) — Hydra multi-choice
       // enforces [min, max] count bounds; WE enforce Σ cost ≤ voterBudget.
       validateNumberArray(selection, optionIds, path);
       if (new Set(selection).size !== selection.length) {
-        err("budget selection must not repeat options", path);
+        err('budget selection must not repeat options', path);
       }
       validateKnapsackCap(selection, proposal, path);
       break;
 
-    case "weighted":
+    case 'weighted':
       validateSelectionEntries(selection, optionIds, path);
       validateWeightedSum(selection, proposal, path);
       break;
 
-    case "likert":
+    case 'likert':
       validateSelectionEntries(selection, optionIds, path);
       validateLikertGrid(selection, proposal, path);
       break;
@@ -161,7 +159,7 @@ function validatePerMethod(selection, proposal, path) {
 function validateNumberArray(selection, allowedIds, path) {
   for (let i = 0; i < selection.length; i++) {
     const v = selection[i];
-    if (!isInt(v)) err("entries must be integers", `${path}[${i}]`);
+    if (!isInt(v)) err('entries must be integers', `${path}[${i}]`);
     if (allowedIds && !allowedIds.has(v)) {
       err(`option ${v} not in voteOptions`, `${path}[${i}]`);
     }
@@ -172,17 +170,17 @@ function validateSelectionEntries(selection, allowedIds, path) {
   const seen = new Set();
   for (let i = 0; i < selection.length; i++) {
     const e = selection[i];
-    if (!e || typeof e !== "object") {
-      err("entries must be {option, value}", `${path}[${i}]`);
+    if (!e || typeof e !== 'object') {
+      err('entries must be {option, value}', `${path}[${i}]`);
     }
     if (!isInt(e.option) || !allowedIds.has(e.option)) {
       err(`option ${e.option} not in voteOptions`, `${path}[${i}].option`);
     }
     if (!isInt(e.value) || e.value < 0) {
-      err("value must be a non-negative integer", `${path}[${i}].value`);
+      err('value must be a non-negative integer', `${path}[${i}].value`);
     }
     if (seen.has(e.option)) {
-      err("duplicate option entry", `${path}[${i}].option`);
+      err('duplicate option entry', `${path}[${i}].option`);
     }
     seen.add(e.option);
   }
@@ -190,7 +188,7 @@ function validateSelectionEntries(selection, allowedIds, path) {
 
 function validateKnapsackCap(selection, proposal, path) {
   const costById = new Map(
-    (proposal.voteOptions || []).map((o) => [Number(o.id), Number(o.cost) || 0])
+    (proposal.voteOptions || []).map((o) => [Number(o.id), Number(o.cost) || 0]),
   );
   const cap = Number(proposal.voterBudget) || 0;
   let spent = 0;
@@ -203,7 +201,7 @@ function validateKnapsackCap(selection, proposal, path) {
 function validateWeightedSum(selection, proposal, path) {
   const target = Number(proposal.voterBudget);
   if (!Number.isFinite(target) || target <= 0) {
-    err("proposal.voterBudget must be a positive integer", path);
+    err('proposal.voterBudget must be a positive integer', path);
   }
   let sum = 0;
   for (const e of selection) sum += e.value;
@@ -213,7 +211,7 @@ function validateWeightedSum(selection, proposal, path) {
 }
 
 function validateScaleGrid(value, proposal, path) {
-  if (!isInt(value)) err("scale value must be an integer", path);
+  if (!isInt(value)) err('scale value must be an integer', path);
   const ids = (proposal.voteOptions || []).map((o) => Number(o.id));
   if (ids.length === 0) return;
   const min = Math.min(...ids);
@@ -222,7 +220,7 @@ function validateScaleGrid(value, proposal, path) {
   if (value < min || value > max) {
     err(`value ${value} outside [${min}, ${max}]`, path);
   }
-  if (((value - min) % step) !== 0) {
+  if ((value - min) % step !== 0) {
     err(`value ${value} not on step grid (min=${min}, step=${step})`, path);
   }
 }
@@ -237,16 +235,16 @@ function validateLikertGrid(selection, proposal, path) {
     if (v < min || v > max) {
       err(`rating ${v} outside [${min}, ${max}]`, `${path}[${i}].value`);
     }
-    if (((v - min) % step) !== 0) {
+    if ((v - min) % step !== 0) {
       err(`rating ${v} not on step grid (min=${min}, step=${step})`, `${path}[${i}].value`);
     }
   }
   // Likert expects exactly one entry per non-abstain option. Enforce.
-  const nonAbstainOptions = (proposal.voteOptions || []).filter((o) => o.id !== "abstain");
+  const nonAbstainOptions = (proposal.voteOptions || []).filter((o) => o.id !== 'abstain');
   if (selection.length !== nonAbstainOptions.length) {
     err(
       `likert expects one rating per option (${nonAbstainOptions.length}); got ${selection.length}`,
-      path
+      path,
     );
   }
 }

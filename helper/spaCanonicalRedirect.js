@@ -19,7 +19,7 @@
 // Resolutions are memoized in a small LRU so SPA navigation doesn't
 // hammer Mongo with the same lookups.
 
-import { resolveBallot, resolveProposal } from "./idResolver.js";
+import { resolveBallot, resolveProposal } from './idResolver.js';
 
 const CACHE_MAX = 1000;
 const CACHE_TTL_MS = 60_000;
@@ -60,7 +60,7 @@ const proposalCache = new TtlLru(CACHE_MAX, CACHE_TTL_MS);
 
 // Sentinel cached for misses + ambiguous results so we don't re-query
 // for the same dead input within the TTL window.
-const NO_RESOLVE = Symbol("no-canonical-resolution");
+const NO_RESOLVE = Symbol('no-canonical-resolution');
 
 async function lookupBallotCanonical(input) {
   const cached = ballotCache.get(input);
@@ -116,10 +116,7 @@ export async function spaCanonicalRedirect(req, res, next) {
 
     let canonicalProposal = null;
     if (proposalId) {
-      canonicalProposal = await lookupProposalCanonical(
-        proposalId,
-        canonicalBallot
-      );
+      canonicalProposal = await lookupProposalCanonical(proposalId, canonicalBallot);
       if (!canonicalProposal) return next(); // unknown proposal → SPA renders 404
     }
 
@@ -133,16 +130,14 @@ export async function spaCanonicalRedirect(req, res, next) {
     // Re-build the path. Match each known shape; anything else falls
     // through. We never invent path segments.
     const m =
-      req.path.match(
-        /^\/ballots\/[^/]+\/proposals\/[^/]+(\/results)?\/?$/
-      ) ||
+      req.path.match(/^\/ballots\/[^/]+\/proposals\/[^/]+(\/results)?\/?$/) ||
       req.path.match(/^\/ballots\/[^/]+\/proposals\/?$/) ||
       req.path.match(/^\/ballots\/[^/]+\/?$/);
     if (!m) return next();
 
     let target;
     if (proposalId) {
-      const suffix = /\/results\/?$/.test(req.path) ? "/results" : "";
+      const suffix = /\/results\/?$/.test(req.path) ? '/results' : '';
       target = `/ballots/${canonicalBallot}/proposals/${canonicalProposal}${suffix}`;
     } else if (/\/proposals\/?$/.test(req.path)) {
       target = `/ballots/${canonicalBallot}/proposals`;
@@ -150,9 +145,9 @@ export async function spaCanonicalRedirect(req, res, next) {
       target = `/ballots/${canonicalBallot}`;
     }
 
-    const qs = req.originalUrl.includes("?")
-      ? req.originalUrl.slice(req.originalUrl.indexOf("?"))
-      : "";
+    const qs = req.originalUrl.includes('?')
+      ? req.originalUrl.slice(req.originalUrl.indexOf('?'))
+      : '';
     return res.redirect(301, target + qs);
   } catch (err) {
     // Never block the SPA on canonicalization failure.

@@ -1,38 +1,59 @@
-import { computeLikertStats, bucketLikertVotesByGroup } from "../helper/results/likertStats.js";
+import { computeLikertStats, bucketLikertVotesByGroup } from '../helper/results/likertStats.js';
 
 const proposal = {
   ratingRange: { min: 1, max: 5 },
   voteOptions: [
-    { id: 1, label: ">2500" },
-    { id: 2, label: "2500" },
-    { id: 3, label: "2000" },
+    { id: 1, label: '>2500' },
+    { id: 2, label: '2500' },
+    { id: 3, label: '2000' },
   ],
 };
 
 const voters = new Map([
-  ["a", { voterGroup: "drep", votingPower: 100 }],
-  ["b", { voterGroup: "drep", votingPower: 200 }],
-  ["c", { voterGroup: "drep", votingPower: 300 }],
-  ["d", { voterGroup: "pool", votingPower: 5000 }],
+  ['a', { voterGroup: 'drep', votingPower: 100 }],
+  ['b', { voterGroup: 'drep', votingPower: 200 }],
+  ['c', { voterGroup: 'drep', votingPower: 300 }],
+  ['d', { voterGroup: 'pool', votingPower: 5000 }],
 ]);
 
-describe("likertStats.computeLikertStats", () => {
-  test("returns null when no options", () => {
+describe('likertStats.computeLikertStats', () => {
+  test('returns null when no options', () => {
     expect(
       computeLikertStats({
         proposal: { ratingRange: { min: 1, max: 5 }, voteOptions: [] },
         votes: [],
         votersByUserId: new Map(),
         voteWeighted: false,
-      })
+      }),
     ).toBeNull();
   });
 
-  test("computes per-option stats and distribution", () => {
+  test('computes per-option stats and distribution', () => {
     const votes = [
-      { userId: "a", vote: [{ option: 1, value: 5 }, { option: 2, value: 3 }, { option: 3, value: 1 }] },
-      { userId: "b", vote: [{ option: 1, value: 4 }, { option: 2, value: 4 }, { option: 3, value: 2 }] },
-      { userId: "c", vote: [{ option: 1, value: 5 }, { option: 2, value: 2 }, { option: 3, value: 3 }] },
+      {
+        userId: 'a',
+        vote: [
+          { option: 1, value: 5 },
+          { option: 2, value: 3 },
+          { option: 3, value: 1 },
+        ],
+      },
+      {
+        userId: 'b',
+        vote: [
+          { option: 1, value: 4 },
+          { option: 2, value: 4 },
+          { option: 3, value: 2 },
+        ],
+      },
+      {
+        userId: 'c',
+        vote: [
+          { option: 1, value: 5 },
+          { option: 2, value: 2 },
+          { option: 3, value: 3 },
+        ],
+      },
     ];
     const r = computeLikertStats({ proposal, votes, votersByUserId: voters, voteWeighted: false });
     expect(r.ratingRange).toEqual({ min: 1, max: 5 });
@@ -50,10 +71,22 @@ describe("likertStats.computeLikertStats", () => {
     expect(opt3.stats.distribution).toEqual([1, 1, 1, 0, 0]);
   });
 
-  test("weighted stats include powerDistribution", () => {
+  test('weighted stats include powerDistribution', () => {
     const votes = [
-      { userId: "a", vote: [{ option: 1, value: 5 }, { option: 2, value: 1 }] },
-      { userId: "b", vote: [{ option: 1, value: 3 }, { option: 2, value: 5 }] },
+      {
+        userId: 'a',
+        vote: [
+          { option: 1, value: 5 },
+          { option: 2, value: 1 },
+        ],
+      },
+      {
+        userId: 'b',
+        vote: [
+          { option: 1, value: 3 },
+          { option: 2, value: 5 },
+        ],
+      },
     ];
     const r = computeLikertStats({ proposal, votes, votersByUserId: voters, voteWeighted: true });
     const opt1 = r.options.find((o) => o.id === 1);
@@ -65,14 +98,35 @@ describe("likertStats.computeLikertStats", () => {
     expect(opt1.weightedStats.totalPower).toBe(300);
   });
 
-  test("MJ ranking sorts by weighted median", () => {
+  test('MJ ranking sorts by weighted median', () => {
     // Option 1: two voters rate 5 (100+300 power), one rates 4 (200)
     // Option 2: one rates 5 (100), one rates 4 (200), one rates 2 (300)
     // Option 3: all rate 1 (100+200+300)
     const votes = [
-      { userId: "a", vote: [{ option: 1, value: 5 }, { option: 2, value: 5 }, { option: 3, value: 1 }] },
-      { userId: "b", vote: [{ option: 1, value: 4 }, { option: 2, value: 4 }, { option: 3, value: 1 }] },
-      { userId: "c", vote: [{ option: 1, value: 5 }, { option: 2, value: 2 }, { option: 3, value: 1 }] },
+      {
+        userId: 'a',
+        vote: [
+          { option: 1, value: 5 },
+          { option: 2, value: 5 },
+          { option: 3, value: 1 },
+        ],
+      },
+      {
+        userId: 'b',
+        vote: [
+          { option: 1, value: 4 },
+          { option: 2, value: 4 },
+          { option: 3, value: 1 },
+        ],
+      },
+      {
+        userId: 'c',
+        vote: [
+          { option: 1, value: 5 },
+          { option: 2, value: 2 },
+          { option: 3, value: 1 },
+        ],
+      },
     ];
     const r = computeLikertStats({ proposal, votes, votersByUserId: voters, voteWeighted: true });
     expect(r.majorityJudgment).toHaveLength(3);
@@ -85,12 +139,26 @@ describe("likertStats.computeLikertStats", () => {
     expect(r.majorityJudgment[2].medianGrade).toBe(1);
   });
 
-  test("MJ flags ties when median + above/below match", () => {
+  test('MJ flags ties when median + above/below match', () => {
     // All three options get the same ratings from the same voters →
     // identical medians, identical above/below. Should be tied.
     const votes = [
-      { userId: "a", vote: [{ option: 1, value: 3 }, { option: 2, value: 3 }, { option: 3, value: 3 }] },
-      { userId: "b", vote: [{ option: 1, value: 3 }, { option: 2, value: 3 }, { option: 3, value: 3 }] },
+      {
+        userId: 'a',
+        vote: [
+          { option: 1, value: 3 },
+          { option: 2, value: 3 },
+          { option: 3, value: 3 },
+        ],
+      },
+      {
+        userId: 'b',
+        vote: [
+          { option: 1, value: 3 },
+          { option: 2, value: 3 },
+          { option: 3, value: 3 },
+        ],
+      },
     ];
     const r = computeLikertStats({ proposal, votes, votersByUserId: voters, voteWeighted: true });
     expect(r.majorityJudgment.every((e) => e.tied)).toBe(true);
@@ -98,16 +166,16 @@ describe("likertStats.computeLikertStats", () => {
   });
 });
 
-describe("likertStats.bucketLikertVotesByGroup", () => {
-  test("groups by voterGroup, drops abstain", () => {
+describe('likertStats.bucketLikertVotesByGroup', () => {
+  test('groups by voterGroup, drops abstain', () => {
     const m = bucketLikertVotesByGroup(
       [
-        { userId: "a", vote: [{ option: 1, value: 3 }] },
-        { userId: "d", vote: ["abstain"] },
+        { userId: 'a', vote: [{ option: 1, value: 3 }] },
+        { userId: 'd', vote: ['abstain'] },
       ],
-      voters
+      voters,
     );
-    expect(m.get("drep")).toHaveLength(1);
-    expect(m.get("pool")).toBeUndefined();
+    expect(m.get('drep')).toHaveLength(1);
+    expect(m.get('pool')).toBeUndefined();
   });
 });

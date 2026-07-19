@@ -8,9 +8,9 @@
 // returned data carries the resolved `_id` so callers can populate the
 // JSON `canonical` field and `Link: rel=canonical` header.
 
-import { Result } from "../schema/Result.js";
-import { Proposal } from "../schema/Proposal.js";
-import { resolveBallot, resolveProposal } from "./idResolver.js";
+import { Result } from '../schema/Result.js';
+import { Proposal } from '../schema/Proposal.js';
+import { resolveBallot, resolveProposal } from './idResolver.js';
 
 /**
  * Shape a single Result doc for wire response. Currently a passthrough
@@ -28,24 +28,20 @@ export async function readBallotResults(ballotId) {
     selectFields: { _id: 1 },
   });
   if (!resolved) {
-    return { error: { status: 404, message: "Ballot not found" } };
+    return { error: { status: 404, message: 'Ballot not found' } };
   }
   if (resolved.ambiguous) {
     return {
       error: {
         status: 409,
-        code: "ID_COLLISION",
-        message:
-          "External ballot id matches multiple ballots; use the canonical _id",
+        code: 'ID_COLLISION',
+        message: 'External ballot id matches multiple ballots; use the canonical _id',
         candidates: resolved.ambiguous,
       },
     };
   }
   const canonicalId = resolved.doc._id;
-  const proposals = await Proposal.find(
-    { ballotId: canonicalId },
-    { _id: 1 }
-  ).lean();
+  const proposals = await Proposal.find({ ballotId: canonicalId }, { _id: 1 }).lean();
   const ids = proposals.map((p) => p._id);
   const results = await Result.find({ proposalId: { $in: ids } }).lean();
   return {
@@ -59,22 +55,21 @@ export async function readProposalResult(proposalId) {
     selectFields: { _id: 1 },
   });
   if (!resolved) {
-    return { error: { status: 404, message: "Proposal not found" } };
+    return { error: { status: 404, message: 'Proposal not found' } };
   }
   if (resolved.ambiguous) {
     return {
       error: {
         status: 409,
-        code: "ID_COLLISION",
-        message:
-          "External proposal id matches multiple proposals; use the canonical _id",
+        code: 'ID_COLLISION',
+        message: 'External proposal id matches multiple proposals; use the canonical _id',
         candidates: resolved.ambiguous,
       },
     };
   }
   const canonicalId = resolved.doc._id;
   const row = await Result.findOne({ proposalId: canonicalId }).lean();
-  if (!row) return { error: { status: 404, message: "No results yet" } };
+  if (!row) return { error: { status: 404, message: 'No results yet' } };
   return {
     data: serializeResult(row),
     canonical: { id: String(canonicalId), source: resolved.source },

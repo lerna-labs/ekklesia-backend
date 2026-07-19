@@ -12,20 +12,11 @@
 // the `{userId, vote}` + `Map<userId, {voterGroup, votingPower}>` inputs
 // those helpers already consume.
 
-import {
-  bucketScaleSamplesByGroup,
-  computeScaleStats,
-} from "./scaleStats.js";
-import { computeRankedDistribution } from "./rankedDistribution.js";
-import {
-  bucketLikertVotesByGroup,
-  computeLikertStats,
-} from "./likertStats.js";
-import {
-  bucketWeightedVotesByGroup,
-  computeWeightedStats,
-} from "./weightedStats.js";
-import { votesForProposal } from "../hydraEvidence.js";
+import { bucketScaleSamplesByGroup, computeScaleStats } from './scaleStats.js';
+import { computeRankedDistribution } from './rankedDistribution.js';
+import { bucketLikertVotesByGroup, computeLikertStats } from './likertStats.js';
+import { bucketWeightedVotesByGroup, computeWeightedStats } from './weightedStats.js';
+import { votesForProposal } from '../hydraEvidence.js';
 
 /**
  * Unwind a per-voter `{userId, vote}` list into per-group option tallies +
@@ -44,7 +35,7 @@ function groupByVoterGroup(votes, votersByUserId) {
   for (const row of votes) {
     const meta = votersByUserId.get(row.userId);
     if (!meta) continue;
-    const group = meta.voterGroup || "default";
+    const group = meta.voterGroup || 'default';
     let entry = byGroup.get(group);
     if (!entry) {
       entry = { perOption: new Map(), distinctVoters: new Set() };
@@ -56,10 +47,10 @@ function groupByVoterGroup(votes, votersByUserId) {
     // For resultsByGroup[].results we count once per option-id appearance,
     // matching the provisional cron's $unwind semantics.
     for (const item of row.vote) {
-      const id = item && typeof item === "object" ? item.option : item;
+      const id = item && typeof item === 'object' ? item.option : item;
       const rec = entry.perOption.get(id) || { count: 0, votingPower: 0 };
       rec.count += 1;
-      rec.votingPower += typeof meta.votingPower === "number" ? meta.votingPower : 1;
+      rec.votingPower += typeof meta.votingPower === 'number' ? meta.votingPower : 1;
       entry.perOption.set(id, rec);
     }
   }
@@ -87,9 +78,9 @@ function deriveTopLevelResults(proposal, votes, votersByUserId) {
     // we drop voters the authority flagged ineligible: the caller builds
     // the map with ineligible voters omitted and the tally sees nothing.
     if (!meta) continue;
-    const power = typeof meta.votingPower === "number" ? meta.votingPower : 1;
+    const power = typeof meta.votingPower === 'number' ? meta.votingPower : 1;
     for (const item of row.vote) {
-      const id = item && typeof item === "object" ? item.option : item;
+      const id = item && typeof item === 'object' ? item.option : item;
       const rec = perOption.get(id) || { count: 0, votingPower: 0 };
       rec.count += 1;
       rec.votingPower += power;
@@ -106,10 +97,10 @@ function deriveTopLevelResults(proposal, votes, votersByUserId) {
     };
   });
   if (proposal.requireAnswer !== true) {
-    const abstainHit = perOption.get("abstain");
+    const abstainHit = perOption.get('abstain');
     results.push({
-      id: "abstain",
-      label: "Abstain",
+      id: 'abstain',
+      label: 'Abstain',
       count: abstainHit?.count || 0,
       votingPower: abstainHit?.votingPower || 0,
     });
@@ -131,9 +122,7 @@ function deriveTopLevelResults(proposal, votes, votersByUserId) {
 function deriveResultsByGroup({ ballot, proposal, votes, votersByUserId }) {
   const grouped = groupByVoterGroup(votes, votersByUserId);
   const resultsByGroup = {};
-  const optionLookup = new Map(
-    (proposal.voteOptions || []).map((o) => [o.id, o.label])
-  );
+  const optionLookup = new Map((proposal.voteOptions || []).map((o) => [o.id, o.label]));
   for (const [groupKey, bucket] of grouped.entries()) {
     const perGroupResults = (proposal.voteOptions || []).map((opt) => {
       const rec = bucket.perOption.get(opt.id);
@@ -145,10 +134,10 @@ function deriveResultsByGroup({ ballot, proposal, votes, votersByUserId }) {
       };
     });
     if (proposal.requireAnswer !== true) {
-      const abstainRec = bucket.perOption.get("abstain");
+      const abstainRec = bucket.perOption.get('abstain');
       perGroupResults.push({
-        id: "abstain",
-        label: "Abstain",
+        id: 'abstain',
+        label: 'Abstain',
         count: abstainRec?.count || 0,
         votingPower: abstainRec?.votingPower || 0,
       });
@@ -157,7 +146,7 @@ function deriveResultsByGroup({ ballot, proposal, votes, votersByUserId }) {
     // for well-formed ballots, but keep parity with the provisional cron's
     // permissive label fallback at line 203-208).
     for (const [id, rec] of bucket.perOption.entries()) {
-      if (id === "abstain") continue;
+      if (id === 'abstain') continue;
       if (optionLookup.has(id)) continue;
       perGroupResults.push({
         id,
@@ -175,8 +164,8 @@ function deriveResultsByGroup({ ballot, proposal, votes, votersByUserId }) {
     };
   }
 
-  if (["scale", "ranked", "likert", "weighted"].includes(proposal.voteType)) {
-    if (proposal.voteType === "scale") {
+  if (['scale', 'ranked', 'likert', 'weighted'].includes(proposal.voteType)) {
+    if (proposal.voteType === 'scale') {
       const samplesByGroup = bucketScaleSamplesByGroup(votes, votersByUserId);
       for (const [group, samples] of samplesByGroup.entries()) {
         if (!resultsByGroup[group]) continue;
@@ -186,7 +175,7 @@ function deriveResultsByGroup({ ballot, proposal, votes, votersByUserId }) {
           voteWeighted: !!ballot.voteWeighted,
         });
       }
-    } else if (proposal.voteType === "ranked") {
+    } else if (proposal.voteType === 'ranked') {
       const distByGroup = computeRankedDistribution({
         proposal,
         votes,
@@ -196,7 +185,7 @@ function deriveResultsByGroup({ ballot, proposal, votes, votersByUserId }) {
         if (!resultsByGroup[group]) continue;
         resultsByGroup[group].ranked = dist;
       }
-    } else if (proposal.voteType === "likert") {
+    } else if (proposal.voteType === 'likert') {
       const votesByGroup = bucketLikertVotesByGroup(votes, votersByUserId);
       for (const [group, groupVotes] of votesByGroup.entries()) {
         if (!resultsByGroup[group]) continue;
@@ -207,7 +196,7 @@ function deriveResultsByGroup({ ballot, proposal, votes, votersByUserId }) {
           voteWeighted: !!ballot.voteWeighted,
         });
       }
-    } else if (proposal.voteType === "weighted") {
+    } else if (proposal.voteType === 'weighted') {
       const votesByGroup = bucketWeightedVotesByGroup(votes, votersByUserId);
       for (const [group, groupVotes] of votesByGroup.entries()) {
         if (!resultsByGroup[group]) continue;
@@ -240,15 +229,14 @@ function ballotParticipationFromEvidence(auditFull, votersByUserId) {
   for (const v of voters) {
     const answers = v?.evidence?.answers || [];
     const hasNonAbstain = answers.some(
-      (a) => a?.abstain !== true && Array.isArray(a?.selection) && a.selection.length > 0
+      (a) => a?.abstain !== true && Array.isArray(a?.selection) && a.selection.length > 0,
     );
     if (!hasNonAbstain) continue;
     const meta = votersByUserId.get(v.voterId);
     if (!meta) continue; // unmapped voter → excluded (authority ineligible or pre-vote placeholder)
-    const group = meta.voterGroup || "default";
+    const group = meta.voterGroup || 'default';
     voterCount[group] = (voterCount[group] || 0) + 1;
-    totalVotingPower[group] =
-      (totalVotingPower[group] || 0) + (meta.votingPower || 0);
+    totalVotingPower[group] = (totalVotingPower[group] || 0) + (meta.votingPower || 0);
   }
   return { totalVotingPower, voterCount };
 }
@@ -262,21 +250,16 @@ function proposalParticipationFromEvidence(auditFull, proposalId, votersByUserId
   const totalVotingPower = {};
   const voterCount = {};
   for (const v of voters) {
-    const answer = (v?.evidence?.answers || []).find(
-      (a) => a && a.questionId === proposalId
-    );
+    const answer = (v?.evidence?.answers || []).find((a) => a && a.questionId === proposalId);
     if (!answer) continue;
     const hasNonAbstain =
-      answer.abstain !== true &&
-      Array.isArray(answer.selection) &&
-      answer.selection.length > 0;
+      answer.abstain !== true && Array.isArray(answer.selection) && answer.selection.length > 0;
     if (!hasNonAbstain) continue;
     const meta = votersByUserId.get(v.voterId);
     if (!meta) continue; // unmapped → excluded
-    const group = meta.voterGroup || "default";
+    const group = meta.voterGroup || 'default';
     voterCount[group] = (voterCount[group] || 0) + 1;
-    totalVotingPower[group] =
-      (totalVotingPower[group] || 0) + (meta.votingPower || 0);
+    totalVotingPower[group] = (totalVotingPower[group] || 0) + (meta.votingPower || 0);
   }
   return { totalVotingPower, voterCount };
 }
@@ -303,16 +286,15 @@ function participatingAbstainersFromEvidence(auditFull, proposalId, votersByUser
     const answer = answers.find((a) => a && a.questionId === proposalId);
     if (!answer) continue; // didn't engage this proposal → not an abstainer
     const abstainedHere =
-      answer.abstain === true ||
-      !(Array.isArray(answer.selection) && answer.selection.length > 0);
+      answer.abstain === true || !(Array.isArray(answer.selection) && answer.selection.length > 0);
     if (!abstainedHere) continue; // cast a real selection here → not an abstainer
     const inPool = answers.some(
-      (a) => a?.abstain !== true && Array.isArray(a?.selection) && a.selection.length > 0
+      (a) => a?.abstain !== true && Array.isArray(a?.selection) && a.selection.length > 0,
     );
     if (!inPool) continue; // all-abstain voter → not in pool, don't subtract
     const meta = votersByUserId.get(v.voterId);
     if (!meta) continue; // unmapped → excluded (authority ineligible / placeholder)
-    const group = meta.voterGroup || "default";
+    const group = meta.voterGroup || 'default';
     voterCount[group] = (voterCount[group] || 0) + 1;
     totalVotingPower[group] = (totalVotingPower[group] || 0) + (meta.votingPower || 0);
   }
@@ -344,18 +326,18 @@ export function deriveProposalTally({ ballot, proposal, auditFull, votersByUserI
   const proposalParticipation = proposalParticipationFromEvidence(
     auditFull,
     proposalId,
-    votersByUserId
+    votersByUserId,
   );
   const participatingAbstainers = participatingAbstainersFromEvidence(
     auditFull,
     proposalId,
-    votersByUserId
+    votersByUserId,
   );
   // Reconcile per-group totalVotes with the distinct-voter count —
   // matches the provisional cron's reconciliation at line 321-326.
   for (const group of Object.keys(resultsByGroup)) {
     const distinct = proposalParticipation.voterCount?.[group];
-    if (typeof distinct === "number") {
+    if (typeof distinct === 'number') {
       resultsByGroup[group].totalVotes = distinct;
     }
   }

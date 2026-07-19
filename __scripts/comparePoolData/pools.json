@@ -13,9 +13,7 @@
       "deposit": "500000000",
       "reward_addr": "stake_test1uzq9ru7prvfv22f9qq049h0qlg8a9qvvr0tda9nhyaewd0s3gu7vj",
       "reward_addr_delegated_drep": null,
-      "owners": [
-        "stake_test1uzq9ru7prvfv22f9qq049h0qlg8a9qvvr0tda9nhyaewd0s3gu7vj"
-      ],
+      "owners": ["stake_test1uzq9ru7prvfv22f9qq049h0qlg8a9qvvr0tda9nhyaewd0s3gu7vj"],
       "relays": [
         {
           "dns": null,
@@ -74,12 +72,8 @@
       "margin_cost": 1,
       "fixed_cost": "340000000",
       "reward_account": "stake_test1uzq9ru7prvfv22f9qq049h0qlg8a9qvvr0tda9nhyaewd0s3gu7vj",
-      "owners": [
-        "stake_test1uzq9ru7prvfv22f9qq049h0qlg8a9qvvr0tda9nhyaewd0s3gu7vj"
-      ],
-      "registration": [
-        "92b405634237c20bbe68edb9f4c375fd7eb484ab17073e4f4f204061067af207"
-      ],
+      "owners": ["stake_test1uzq9ru7prvfv22f9qq049h0qlg8a9qvvr0tda9nhyaewd0s3gu7vj"],
+      "registration": ["92b405634237c20bbe68edb9f4c375fd7eb484ab17073e4f4f204061067af207"],
       "retirement": [],
       "calidus_key": {
         "id": "calidus15yyujm9gs25cjnxvzy48la0lttp3pmu7jxm4w4tr958w0uq2x0j2u",
@@ -106,9 +100,7 @@
       "deposit": "500000000",
       "reward_addr": "stake_test1uz02jxdjfxrwxann6248szk9fywgdlgehkpac6c5c2rtapq0zyfwu",
       "reward_addr_delegated_drep": null,
-      "owners": [
-        "stake_test1urqntq4wexjylnrdnp97qq79qkxxvrsa9lcnwr7ckjd6w0cr04y4p"
-      ],
+      "owners": ["stake_test1urqntq4wexjylnrdnp97qq79qkxxvrsa9lcnwr7ckjd6w0cr04y4p"],
       "relays": [
         {
           "dns": null,
@@ -167,9 +159,7 @@
       "margin_cost": 0.1,
       "fixed_cost": "340000000",
       "reward_account": "stake_test1uz02jxdjfxrwxann6248szk9fywgdlgehkpac6c5c2rtapq0zyfwu",
-      "owners": [
-        "stake_test1urqntq4wexjylnrdnp97qq79qkxxvrsa9lcnwr7ckjd6w0cr04y4p"
-      ],
+      "owners": ["stake_test1urqntq4wexjylnrdnp97qq79qkxxvrsa9lcnwr7ckjd6w0cr04y4p"],
       "registration": [
         "83528d780e2fc5650b3b59ae618d1fe3b75ca39b40601e56b0c969beda8d89a8",
         "0ec45465bdff0573374e8771365f234c1a8b79b40dc1f71d2c7400b1cfe4186b",
@@ -204,9 +194,7 @@
       "deposit": "500000000",
       "reward_addr": "stake_test1uprgh7clcztzj7ss307lkw7k4fltgxp0x79muqjpl4gvrrqxcnvpz",
       "reward_addr_delegated_drep": null,
-      "owners": [
-        "stake_test1uprgh7clcztzj7ss307lkw7k4fltgxp0x79muqjpl4gvrrqxcnvpz"
-      ],
+      "owners": ["stake_test1uprgh7clcztzj7ss307lkw7k4fltgxp0x79muqjpl4gvrrqxcnvpz"],
       "relays": [
         {
           "dns": null,
@@ -265,9 +253,7 @@
       "margin_cost": 0.1,
       "fixed_cost": "300000000",
       "reward_account": "stake_test1uprgh7clcztzj7ss307lkw7k4fltgxp0x79muqjpl4gvrrqxcnvpz",
-      "owners": [
-        "stake_test1uprgh7clcztzj7ss307lkw7k4fltgxp0x79muqjpl4gvrrqxcnvpz"
-      ],
+      "owners": ["stake_test1uprgh7clcztzj7ss307lkw7k4fltgxp0x79muqjpl4gvrrqxcnvpz"],
       "registration": [
         "6d6563e4b69c93a1f5dd74bf0b66641afbef63dafc61a23499f98959240c0f22",
         "05b3c12cbf2a02f1438be50c9fe1a9d7d26f15e327054b36a5f71cfa32e5d6c2"
@@ -298,9 +284,7 @@
       "deposit": "500000000",
       "reward_addr": "stake_test1ur3684yasu2v3v3r2ne790dj98txmj0m9zkpmxtj9u6zydcutsvpn",
       "reward_addr_delegated_drep": null,
-      "owners": [
-        "stake_test1ur3684yasu2v3v3r2ne790dj98txmj0m9zkpmxtj9u6zydcutsvpn"
-      ],
+      "owners": ["stake_test1ur3684yasu2v3v3r2ne790dj98txmj0m9zkpmxtj9u6zydcutsvpn"],
       "relays": [
         {
           "dns": null,
@@ -359,12 +343,8 @@
       "margin_cost": 0.1,
       "fixed_cost": "300000000",
       "reward_account": "stake_test1ur3684yasu2v3v3r2ne790dj98txmj0m9zkpmxtj9u6zydcutsvpn",
-      "owners": [
-        "stake_test1ur3684yasu2v3v3r2ne790dj98txmj0m9zkpmxtj9u6zydcutsvpn"
-      ],
-      "registration": [
-        "767dc942375a5d16af1f18aa426e1fbbe5b68ddab0f9f4409fb58ea5721d228d"
-      ],
+      "owners": ["stake_test1ur3684yasu2v3v3r2ne790dj98txmj0m9zkpmxtj9u6zydcutsvpn"],
+      "registration": ["767dc942375a5d16af1f18aa426e1fbbe5b68ddab0f9f4409fb58ea5721d228d"],
       "retirement": [],
       "calidus_key": {
         "id": "calidus158cp49cy4twyetngn3733fjtedm8q0k2x3h7ay7d0jn32use2rudv",

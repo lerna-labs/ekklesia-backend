@@ -8,15 +8,15 @@
 // proceed without touching the database at all. Otherwise fall back
 // to the API-key check (which hits Mongo once).
 
-import { verifyToken } from "./verifyToken.js";
-import { userIsAdmin } from "./adminAuth.js";
-import { hashKey } from "./apiKeyAuth.js";
-import { ApiKey } from "../schema/ApiKey.js";
+import { verifyToken } from './verifyToken.js';
+import { userIsAdmin } from './adminAuth.js';
+import { hashKey } from './apiKeyAuth.js';
+import { ApiKey } from '../schema/ApiKey.js';
 
 function extractKey(req) {
-  const header = req.get("authorization");
-  if (header && header.startsWith("Bearer ")) return header.slice(7).trim();
-  const x = req.get("x-api-key");
+  const header = req.get('authorization');
+  if (header && header.startsWith('Bearer ')) return header.slice(7).trim();
+  const x = req.get('x-api-key');
   if (x) return x.trim();
   return null;
 }
@@ -30,8 +30,8 @@ export function adminOrScope(scope) {
   return async (req, res, next) => {
     // 1. Admin JWT path.
     const token = verifyToken(req);
-    if (token.status === "success" && userIsAdmin({ userId: token.userId, role: token.role })) {
-      req.auth = { kind: "admin", userId: token.userId };
+    if (token.status === 'success' && userIsAdmin({ userId: token.userId, role: token.role })) {
+      req.auth = { kind: 'admin', userId: token.userId };
       return next();
     }
 
@@ -41,19 +41,19 @@ export function adminOrScope(scope) {
       try {
         const record = await ApiKey.findOne({ keyHash: hashKey(plain), enabled: true });
         if (!record) {
-          return res.status(401).json({ status: "error", message: "Invalid API key" });
+          return res.status(401).json({ status: 'error', message: 'Invalid API key' });
         }
         if (record.expiresAt && record.expiresAt < new Date()) {
-          return res.status(401).json({ status: "error", message: "API key expired" });
+          return res.status(401).json({ status: 'error', message: 'API key expired' });
         }
         if (!record.scopes?.includes(scope)) {
-          return res.status(403).json({ status: "error", message: `Missing scope: ${scope}` });
+          return res.status(403).json({ status: 'error', message: `Missing scope: ${scope}` });
         }
         ApiKey.updateOne({ _id: record._id }, { $set: { lastUsedAt: new Date() } }).catch(
-          () => null
+          () => null,
         );
         req.auth = {
-          kind: "apiKey",
+          kind: 'apiKey',
           id: record._id.toString(),
           label: record.label,
           prefix: record.keyPrefix,
@@ -62,16 +62,15 @@ export function adminOrScope(scope) {
         req.apiKey = req.auth;
         return next();
       } catch (err) {
-        console.error("compositeAuth: API key lookup failed", err);
-        return res.status(500).json({ status: "error", message: "Auth lookup failed" });
+        console.error('compositeAuth: API key lookup failed', err);
+        return res.status(500).json({ status: 'error', message: 'Auth lookup failed' });
       }
     }
 
     // Neither path succeeded.
     return res.status(401).json({
-      status: "error",
-      message:
-        "Admin session or API key required (Authorization: Bearer <key> or x-api-key)",
+      status: 'error',
+      message: 'Admin session or API key required (Authorization: Bearer <key> or x-api-key)',
     });
   };
 }

@@ -10,7 +10,7 @@
 // Evolve the contract by bumping SCHEMA_VERSION and branching the
 // validator — never silently change a v1 meaning.
 
-export const SCHEMA_VERSION = "1";
+export const SCHEMA_VERSION = '1';
 
 export const MAX = Object.freeze({
   title: 200,
@@ -32,11 +32,11 @@ export const MAX = Object.freeze({
  * only — the rules live in ./validator.js.
  */
 export const COMPILED_BALLOT_SHAPE = Object.freeze({
-  schemaVersion: "string, must equal SCHEMA_VERSION",
+  schemaVersion: 'string, must equal SCHEMA_VERSION',
   source: {
-    moduleId: "string, e.g. catalyst-v2",
-    moduleUrl: "string URL",
-    externalBallotId: "string, stable id in the source system",
+    moduleId: 'string, e.g. catalyst-v2',
+    moduleUrl: 'string URL',
+    externalBallotId: 'string, stable id in the source system',
     version: "string, source's own version tag for this import",
   },
   ballot: {
@@ -51,77 +51,74 @@ export const COMPILED_BALLOT_SHAPE = Object.freeze({
           '"CredentialBased" | "StakeBased" | "PledgeBased". Valid combinations: drep→CredentialBased|StakeBased; pool→CredentialBased|StakeBased|PledgeBased; stake→StakeBased.',
       },
     ],
-    voterDescription: "string",
-    voteWeighted: "boolean",
-    voteFilters: "boolean",
-    votePeriodStart: "ISO8601 date-time",
-    votePeriodEnd: "ISO8601 date-time",
-    proposalPeriodStart: "ISO8601 date-time",
-    proposalPeriodEnd: "ISO8601 date-time",
-    voteAuthorityId: "string",
-    voteAuthorityAddress: "string, cardano address",
+    voterDescription: 'string',
+    voteWeighted: 'boolean',
+    voteFilters: 'boolean',
+    votePeriodStart: 'ISO8601 date-time',
+    votePeriodEnd: 'ISO8601 date-time',
+    proposalPeriodStart: 'ISO8601 date-time',
+    proposalPeriodEnd: 'ISO8601 date-time',
+    voteAuthorityId: 'string',
+    voteAuthorityAddress: 'string, cardano address',
     resultsCalculationMode:
       '"standard" | "participation" (optional; default "standard"). Frontend results-rendering hint only — see schema/Ballot.js. The backend applies no threshold.',
-    ipfsHash: "string | null",
-    voterValidationScript: "string (optional; uses default if absent)",
-    rollupScript: "string (optional; uses default if absent)",
-    startupScript: "string (optional; uses default if absent)",
+    ipfsHash: 'string | null',
+    voterValidationScript: 'string (optional; uses default if absent)',
+    rollupScript: 'string (optional; uses default if absent)',
+    startupScript: 'string (optional; uses default if absent)',
   },
   facets: [
     {
-      key: "string, must be URL-safe ident ([a-zA-Z0-9_-])",
+      key: 'string, must be URL-safe ident ([a-zA-Z0-9_-])',
       label: `string ≤ ${MAX.label}`,
       type: '"enum" | "number" | "string" | "boolean" | "date"',
-      multi: "boolean (meaningful only for type:enum)",
+      multi: 'boolean (meaningful only for type:enum)',
       options: 'string[] (required iff type:"enum"); no item may contain ","',
-      unit: "string | null",
-      sortable: "boolean (must be false if multi:true)",
-      filterable: "boolean",
+      unit: 'string | null',
+      sortable: 'boolean (must be false if multi:true)',
+      filterable: 'boolean',
       defaultSort: '"asc" | "desc" | null; at most one facet per ballot',
     },
   ],
   proposals: [
     {
       externalProposal: {
-        id: "string, stable id in source system",
+        id: 'string, stable id in source system',
         url: "string URL (canonical 'view full proposal')",
         snapshot: {
           title: `string ≤ ${MAX.title}`,
           summary: `string ≤ ${MAX.summary}`,
           rationale: `string ≤ ${MAX.rationale} (optional)`,
           authors: `string[] ≤ ${MAX.authors} (each ≤ ${MAX.authorName})`,
-          version: "string",
+          version: 'string',
           facets: {
-            "<facetKey>":
-              "string or number — CSV for multi:true enums; raw for number/boolean/date",
+            '<facetKey>':
+              'string or number — CSV for multi:true enums; raw for number/boolean/date',
           },
         },
       },
       title: `string ≤ ${MAX.title}`,
-      voteType:
-        '"choice" | "multi-choice" | "budget" | "weighted" | "ranked" | "scale" | "likert"',
-      minSelections:
-        "number (optional; multi-choice only — default 1 when unset)",
+      voteType: '"choice" | "multi-choice" | "budget" | "weighted" | "ranked" | "scale" | "likert"',
+      minSelections: 'number (optional; multi-choice only — default 1 when unset)',
       maxSelections:
-        "number (optional; multi-choice only — defaults to voteOptions.length when unset)",
-      ratingRange:
-        '{ min: number, max: number, step?: number } (optional; likert only)',
-      voteIncrement: "number",
-      voterBudget: "number",
-      requireAnswer: "boolean (optional; default false = abstain allowed)",
+        'number (optional; multi-choice only — defaults to voteOptions.length when unset)',
+      ratingRange: '{ min: number, max: number, step?: number } (optional; likert only)',
+      voteIncrement: 'number',
+      voterBudget: 'number',
+      requireAnswer: 'boolean (optional; default false = abstain allowed)',
       voteOptions: [
         {
           id: 'integer (or legacy "abstain" sentinel)',
-          label: "string ≤ 120 (required)",
-          cost: "number ≥ 0 (optional; default 1)",
-          description: "string ≤ 1000 (optional; voter-facing blurb)",
+          label: 'string ≤ 120 (required)',
+          cost: 'number ≥ 0 (optional; default 1)',
+          description: 'string ≤ 1000 (optional; voter-facing blurb)',
           referenceUrl: "string ≤ 500 (optional; canonical 'learn more' URL)",
-          imageUrl: "string ≤ 500 (optional; thumbnail for the option)",
-          metadata: "object, free-form (optional; one-off attributes the frontend understands)",
+          imageUrl: 'string ≤ 500 (optional; thumbnail for the option)',
+          metadata: 'object, free-form (optional; one-off attributes the frontend understands)',
         },
       ],
-      data: "object, arbitrary structured data (bounded by overall payload size)",
-      ipfsHash: "string | null",
+      data: 'object, arbitrary structured data (bounded by overall payload size)',
+      ipfsHash: 'string | null',
     },
   ],
 });

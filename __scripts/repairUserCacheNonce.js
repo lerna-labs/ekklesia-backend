@@ -41,12 +41,12 @@
 //   0 — completed (dry-run or apply)
 //   1 — bad args / ballot not found / DB connect failed
 
-import process from "process";
-import mongoose from "mongoose";
-import { bootstrap, teardown, parseArgs } from "./scaffold/common/env.js";
-import { Ballot } from "../schema/Ballot.js";
-import { UserCache } from "../schema/UserCache.js";
-import { VotePackage } from "../schema/VotePackage.js";
+import process from 'process';
+import mongoose from 'mongoose';
+import { bootstrap, teardown, parseArgs } from './scaffold/common/env.js';
+import { Ballot } from '../schema/Ballot.js';
+import { UserCache } from '../schema/UserCache.js';
+import { VotePackage } from '../schema/VotePackage.js';
 
 const { flags } = parseArgs();
 const apply = Boolean(flags.apply);
@@ -59,11 +59,11 @@ if (ballotIdArg && !mongoose.isValidObjectId(ballotIdArg)) {
 
 await bootstrap();
 
-const ballotFilter = { source: "hydra" };
+const ballotFilter = { source: 'hydra' };
 if (ballotIdArg) ballotFilter._id = new mongoose.Types.ObjectId(ballotIdArg);
 
 const ballots = await Ballot.find(ballotFilter)
-  .select("_id title status source")
+  .select('_id title status source')
   .sort({ createdAt: 1 })
   .lean();
 
@@ -71,15 +71,13 @@ if (ballots.length === 0) {
   console.log(
     ballotIdArg
       ? `[repair] no Hydra ballot matches ${ballotIdArg}`
-      : "[repair] no Hydra ballots found"
+      : '[repair] no Hydra ballots found',
   );
   await teardown();
   process.exit(ballotIdArg ? 1 : 0);
 }
 
-console.log(
-  `[repair] scanning ${ballots.length} ballot(s)${apply ? "" : " — DRY RUN"}`
-);
+console.log(`[repair] scanning ${ballots.length} ballot(s)${apply ? '' : ' — DRY RUN'}`);
 
 const grandTotals = { voters: 0, repaired: 0, alreadyAligned: 0, missingRow: 0 };
 
@@ -89,16 +87,16 @@ for (const ballot of ballots) {
     {
       $match: {
         ballotId: ballot._id,
-        status: "hydra-confirmed",
-        nonce: { $type: "number" },
+        status: 'hydra-confirmed',
+        nonce: { $type: 'number' },
       },
     },
-    { $group: { _id: "$userId", maxNonce: { $max: "$nonce" } } },
+    { $group: { _id: '$userId', maxNonce: { $max: '$nonce' } } },
   ]);
 
   if (maxByVoter.length === 0) {
     console.log(
-      `[repair] ${ballot._id} "${ballot.title}" (${ballot.status}): no confirmed packages — skipping`
+      `[repair] ${ballot._id} "${ballot.title}" (${ballot.status}): no confirmed packages — skipping`,
     );
     continue;
   }
@@ -107,12 +105,10 @@ for (const ballot of ballots) {
   const repairs = [];
 
   for (const { _id: userId, maxNonce } of maxByVoter) {
-    const cache = await UserCache.findOne({ ballotId: ballot._id, userId })
-      .select("nonce")
-      .lean();
+    const cache = await UserCache.findOne({ ballotId: ballot._id, userId }).select('nonce').lean();
 
     const cacheNonce = cache?.nonce ?? null;
-    if (cache && typeof cacheNonce === "number" && cacheNonce >= maxNonce) {
+    if (cache && typeof cacheNonce === 'number' && cacheNonce >= maxNonce) {
       tallies.alreadyAligned++;
       continue;
     }
@@ -125,14 +121,14 @@ for (const ballot of ballots) {
   console.log(
     `[repair] ${ballot._id} "${ballot.title}" (${ballot.status}): ` +
       `voters=${tallies.voters} aligned=${tallies.alreadyAligned} ` +
-      `needsRepair=${tallies.repaired} (missingRow=${tallies.missingRow})`
+      `needsRepair=${tallies.repaired} (missingRow=${tallies.missingRow})`,
   );
 
   // Always print a small preview so dry-runs are useful.
   const preview = repairs.slice(0, 10);
   for (const r of preview) {
     console.log(
-      `  ${r.userId}: ${r.from === null ? "null" : r.from} → ${r.to}${r.hadRow ? "" : " (creates row)"}`
+      `  ${r.userId}: ${r.from === null ? 'null' : r.from} → ${r.to}${r.hadRow ? '' : ' (creates row)'}`,
     );
   }
   if (repairs.length > preview.length) {
@@ -147,7 +143,7 @@ for (const ballot of ballots) {
       await UserCache.updateOne(
         { ballotId: ballot._id, userId: r.userId },
         { $max: { nonce: r.to } },
-        { upsert: true }
+        { upsert: true },
       );
     }
     console.log(`[repair] ${ballot._id} wrote ${repairs.length} repair(s)`);
@@ -162,10 +158,10 @@ for (const ballot of ballots) {
 console.log(
   `\n[repair] totals: voters=${grandTotals.voters} ` +
     `aligned=${grandTotals.alreadyAligned} repaired=${grandTotals.repaired} ` +
-    `(missingRow=${grandTotals.missingRow})`
+    `(missingRow=${grandTotals.missingRow})`,
 );
 if (!apply) {
-  console.log("[repair] dry-run — re-run with --apply to write");
+  console.log('[repair] dry-run — re-run with --apply to write');
 }
 
 await teardown();

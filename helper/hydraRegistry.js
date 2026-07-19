@@ -21,12 +21,12 @@
 // have its own variable. A missing var fails fast with NO_API_KEY rather
 // than silently authenticating against the wrong head.
 
-import { Ballot } from "../schema/Ballot.js";
+import { Ballot } from '../schema/Ballot.js';
 
 export class HydraRegistryError extends Error {
   constructor(message, { code } = {}) {
     super(message);
-    this.name = "HydraRegistryError";
+    this.name = 'HydraRegistryError';
     this.code = code;
   }
 }
@@ -34,7 +34,7 @@ export class HydraRegistryError extends Error {
 function envKeyForEndpoint(endpoint) {
   // Collapse any run of non-alphanumerics to a single "_" so URLs with
   // multi-char separators (e.g. "://") produce friendly env-var names.
-  return `HYDRA_API_KEY_${endpoint.replace(/[^a-z0-9]+/gi, "_").toUpperCase()}`;
+  return `HYDRA_API_KEY_${endpoint.replace(/[^a-z0-9]+/gi, '_').toUpperCase()}`;
 }
 
 function resolveApiKey(endpoint) {
@@ -49,20 +49,21 @@ function resolveApiKey(endpoint) {
  */
 export async function resolveByBallotId(ballotId) {
   const ballot = await Ballot.findById(ballotId).lean();
-  if (!ballot) throw new HydraRegistryError(`Ballot ${ballotId} not found`, { code: "BALLOT_NOT_FOUND" });
+  if (!ballot)
+    throw new HydraRegistryError(`Ballot ${ballotId} not found`, { code: 'BALLOT_NOT_FOUND' });
 
   const endpoint = ballot.hydraEndpoint || process.env.HYDRA_DEFAULT_ENDPOINT;
   if (!endpoint) {
     throw new HydraRegistryError(
       `Ballot ${ballotId} has no hydraEndpoint and HYDRA_DEFAULT_ENDPOINT is not set`,
-      { code: "NO_ENDPOINT" }
+      { code: 'NO_ENDPOINT' },
     );
   }
   const apiKey = resolveApiKey(endpoint);
   if (!apiKey) {
     throw new HydraRegistryError(
       `No API key configured for endpoint ${endpoint} — set ${envKeyForEndpoint(endpoint)} in env`,
-      { code: "NO_API_KEY" }
+      { code: 'NO_API_KEY' },
     );
   }
   return { endpoint, apiKey, ballot };
@@ -73,12 +74,12 @@ export async function resolveByBallotId(ballotId) {
  * been associated with an instance).
  */
 export function resolveByEndpoint(endpoint) {
-  if (!endpoint) throw new HydraRegistryError("endpoint required", { code: "NO_ENDPOINT" });
+  if (!endpoint) throw new HydraRegistryError('endpoint required', { code: 'NO_ENDPOINT' });
   const apiKey = resolveApiKey(endpoint);
   if (!apiKey) {
     throw new HydraRegistryError(
       `No API key configured for endpoint ${endpoint} — set ${envKeyForEndpoint(endpoint)} in env`,
-      { code: "NO_API_KEY" }
+      { code: 'NO_API_KEY' },
     );
   }
   return { endpoint, apiKey };

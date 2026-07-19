@@ -1,6 +1,6 @@
-import jwt from "jsonwebtoken";
-import dotenv from "dotenv";
-const environment = process.env.NODE_ENV || "development";
+import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+const environment = process.env.NODE_ENV || 'development';
 const envPath = `.env.${environment}`;
 dotenv.config({ path: envPath });
 
@@ -48,10 +48,10 @@ export function verifyToken(req) {
 
   // Check if JWT_SECRET is available
   if (!JWT_SECRET) {
-    console.error("JWT_SECRET is not defined in environment variables");
+    console.error('JWT_SECRET is not defined in environment variables');
     return {
-      status: "error",
-      message: "Server configuration error",
+      status: 'error',
+      message: 'Server configuration error',
       code: 500,
     };
   }
@@ -62,8 +62,8 @@ export function verifyToken(req) {
   // Return early if no token found
   if (!token) {
     return {
-      status: "error",
-      message: "No token provided",
+      status: 'error',
+      message: 'No token provided',
       code: 401,
     };
   }
@@ -74,21 +74,21 @@ export function verifyToken(req) {
   // library's defaults ever rotate (or if an attacker forges a token
   // with `alg: "none"`).
   try {
-    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
 
     // Make sure the token contains the required fields
     if (!decoded || !decoded.userId) {
       return {
-        status: "error",
-        message: "Invalid token format",
+        status: 'error',
+        message: 'Invalid token format',
         code: 401,
       };
     }
 
     // Return success with voter ID
     return {
-      status: "success",
-      message: "Token is valid",
+      status: 'success',
+      message: 'Token is valid',
       userId: decoded.userId,
       signType: decoded.signType,
       multiSig: decoded.multiSig || false,
@@ -96,25 +96,25 @@ export function verifyToken(req) {
     };
   } catch (error) {
     // Handle specific JWT error types
-    if (error.name === "TokenExpiredError") {
+    if (error.name === 'TokenExpiredError') {
       return {
-        status: "error",
-        message: "Token has expired",
+        status: 'error',
+        message: 'Token has expired',
         code: 401,
       };
-    } else if (error.name === "JsonWebTokenError") {
+    } else if (error.name === 'JsonWebTokenError') {
       return {
-        status: "error",
-        message: "Invalid token",
+        status: 'error',
+        message: 'Invalid token',
         code: 401,
       };
     }
 
     // Generic error fallback
-    console.error("Token verification error:", error.message);
+    console.error('Token verification error:', error.message);
     return {
-      status: "error",
-      message: "Token verification failed",
+      status: 'error',
+      message: 'Token verification failed',
       code: 401,
     };
   }

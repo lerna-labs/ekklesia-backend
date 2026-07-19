@@ -34,9 +34,9 @@
 // interval. Failed fetches converge to "we tried, here's null" rather
 // than re-hitting Koios on every cron tick.
 
-import { Vote } from "../schema/Vote.js";
-import { User } from "../schema/User.js";
-import { fetchName } from "@lerna-labs/ekklesia-helpers/cardano";
+import { Vote } from '../schema/Vote.js';
+import { User } from '../schema/User.js';
+import { fetchName } from '@lerna-labs/ekklesia-helpers/cardano';
 
 // At ~1 req/sec per fetcher (Koios + Handle.me chain), 20 candidates
 // per tick is ~30s of work — safely under the cron's 10-minute window.
@@ -67,9 +67,9 @@ async function resolveName(userId) {
  * @returns {Promise<{candidates: number, attempted: number, resolved: number}>}
  */
 export async function backfillVoterNames() {
-  const ids = await Vote.distinct("userId", {
+  const ids = await Vote.distinct('userId', {
     submittedAt: { $ne: null },
-    userId: { $type: "string" },
+    userId: { $type: 'string' },
   });
   if (ids.length === 0) return { candidates: 0, attempted: 0, resolved: 0 };
 
@@ -79,16 +79,13 @@ export async function backfillVoterNames() {
   // dropped here so we don't burn the daily retry budget on rows the
   // helper will always return null for.
   const eligibleIds = ids.filter(
-    (id) =>
-      id.startsWith("drep") ||
-      id.startsWith("stake") ||
-      id.startsWith("pool")
+    (id) => id.startsWith('drep') || id.startsWith('stake') || id.startsWith('pool'),
   );
 
   // Pull existing User docs so we can filter out the already-resolved
   // and already-tried-recently population without a per-id round trip.
   const existing = await User.find({ _id: { $in: eligibleIds } })
-    .select("_id name nameFetchedAt")
+    .select('_id name nameFetchedAt')
     .lean();
   const existingById = new Map(existing.map((u) => [u._id, u]));
 
@@ -102,24 +99,22 @@ export async function backfillVoterNames() {
     if (candidates.length >= MAX_PER_TICK) break;
   }
   if (candidates.length === 0) {
-    console.log("[voterNameBackfill] no candidates this tick");
+    console.log('[voterNameBackfill] no candidates this tick');
     return { candidates: 0, attempted: 0, resolved: 0 };
   }
   console.log(
-    `[voterNameBackfill] ${eligibleIds.length} eligible voter(s); ${candidates.length} candidate(s) this tick`
+    `[voterNameBackfill] ${eligibleIds.length} eligible voter(s); ${candidates.length} candidate(s) this tick`,
   );
 
   let attempted = 0;
   let resolved = 0;
   for (const userId of candidates) {
     attempted += 1;
-    let name = null;
+    let name;
     try {
       name = await resolveName(userId);
     } catch (err) {
-      console.warn(
-        `[voterNameBackfill] resolve failed for ${userId}: ${err.message}`
-      );
+      console.warn(`[voterNameBackfill] resolve failed for ${userId}: ${err.message}`);
       name = null;
     }
     const setFields = { nameFetchedAt: new Date() };
@@ -139,16 +134,12 @@ export async function backfillVoterNames() {
           $set: setFields,
           $setOnInsert: { lastLogin: null },
         },
-        { upsert: true }
+        { upsert: true },
       );
     } catch (err) {
-      console.error(
-        `[voterNameBackfill] upsert failed for ${userId}: ${err.message}`
-      );
+      console.error(`[voterNameBackfill] upsert failed for ${userId}: ${err.message}`);
     }
   }
-  console.log(
-    `[voterNameBackfill] attempted ${attempted}, resolved ${resolved}`
-  );
+  console.log(`[voterNameBackfill] attempted ${attempted}, resolved ${resolved}`);
   return { candidates: candidates.length, attempted, resolved };
 }

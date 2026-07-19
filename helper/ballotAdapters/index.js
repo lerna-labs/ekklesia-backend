@@ -7,8 +7,8 @@
 //
 // Add new sources by dropping a sibling file in this folder and registering it below.
 
-import * as legacyAdapter from "./legacyAdapter.js";
-import * as hydraAdapter from "./hydraAdapter.js";
+import * as legacyAdapter from './legacyAdapter.js';
+import * as hydraAdapter from './hydraAdapter.js';
 
 export const adapters = [legacyAdapter, hydraAdapter];
 
@@ -44,7 +44,7 @@ export async function listUnified({
   // Good enough while Hydra adapter is a stub; optimize in Phase 2 if needed.
   const take = page * limit;
   const perSource = await Promise.all(
-    active.map((adapter) => adapter.list({ filter, sort, skip: 0, limit: take }))
+    active.map((adapter) => adapter.list({ filter, sort, skip: 0, limit: take })),
   );
 
   const merged = perSource.flatMap((r) => r.items);

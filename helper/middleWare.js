@@ -1,16 +1,16 @@
 // imports
-import validator from "validator";
+import validator from 'validator';
 
 // schema imports
-import { Ballot } from "../schema/Ballot.js";
-import { Proposal } from "../schema/Proposal.js";
-import { Transaction } from "../schema/Transaction.js";
+import { Ballot } from '../schema/Ballot.js';
+import { Proposal } from '../schema/Proposal.js';
+import { Transaction } from '../schema/Transaction.js';
 
 // helper imports
-import { verifyToken } from "../helper/verifyToken.js";
-import { validateAddress, getAddressType } from "../helper/validateAddress.js";
-import { resolveBallot, resolveProposal } from "../helper/idResolver.js";
-import { PublicKey } from "@emurgo/cardano-serialization-lib-nodejs";
+import { verifyToken } from '../helper/verifyToken.js';
+import { validateAddress, getAddressType } from '../helper/validateAddress.js';
+import { resolveBallot, resolveProposal } from '../helper/idResolver.js';
+import { PublicKey } from '@emurgo/cardano-serialization-lib-nodejs';
 
 /**
  * Middleware to verify user authentication token
@@ -34,9 +34,9 @@ import { PublicKey } from "@emurgo/cardano-serialization-lib-nodejs";
 export function isAuthenticated(req, res, next) {
   try {
     const voterToken = verifyToken(req);
-    if (voterToken.status === "error") {
+    if (voterToken.status === 'error') {
       return res.status(voterToken.code).json({
-        status: "error",
+        status: 'error',
         message: voterToken.message,
       });
     } else {
@@ -47,8 +47,8 @@ export function isAuthenticated(req, res, next) {
     }
   } catch (error) {
     return res.status(500).json({
-      status: "error",
-      message: "Internal Server Error",
+      status: 'error',
+      message: 'Internal Server Error',
     });
   }
 }
@@ -77,8 +77,8 @@ export async function getTransaction(req, res, next) {
   // check if transactionId is a valid mongo id
   if (!transactionId && !validator.isMongoId(transactionId)) {
     return res.status(400).json({
-      status: "error",
-      message: "Invalid Transaction ID",
+      status: 'error',
+      message: 'Invalid Transaction ID',
     });
   }
 
@@ -90,8 +90,8 @@ export async function getTransaction(req, res, next) {
     });
     if (!transaction) {
       return res.status(404).json({
-        status: "error",
-        message: "Transaction not found",
+        status: 'error',
+        message: 'Transaction not found',
       });
     }
     req.transaction = transaction;
@@ -100,8 +100,8 @@ export async function getTransaction(req, res, next) {
     next();
   } catch (error) {
     return res.status(500).json({
-      status: "error",
-      message: "Internal Server Error",
+      status: 'error',
+      message: 'Internal Server Error',
     });
   }
 }
@@ -132,10 +132,10 @@ export async function getBallot(req, res, next) {
   // module at import time. `resolveBallot` handles both and reports
   // ambiguity for the rare cross-module collision case.
   const ballotId = req.params.ballotId;
-  if (!ballotId || typeof ballotId !== "string" || ballotId.length > 128) {
+  if (!ballotId || typeof ballotId !== 'string' || ballotId.length > 128) {
     return res.status(400).json({
-      status: "error",
-      message: "Ballot ID is required",
+      status: 'error',
+      message: 'Ballot ID is required',
     });
   }
 
@@ -143,26 +143,25 @@ export async function getBallot(req, res, next) {
     const result = await resolveBallot(ballotId, {
       lean: false, // callers (e.g. /api/v0/ballots/:id) do .toObject()
       selectFields:
-        "_id title description votePeriodStart votePeriodEnd voterType " +
-        "voteWeighted voterValidationScript voteFilters status source " +
-        "facets proposalSource votingPowerSource proposalPeriodStart " +
-        "proposalPeriodEnd voteAuthorityId ipfsHash hydraEndpoint " +
-        "hydraHeadId hydraHeadStatus ballotCid instancePolicyId " +
-        "provisionalResultsEnabled",
+        '_id title description votePeriodStart votePeriodEnd voterType ' +
+        'voteWeighted voterValidationScript voteFilters status source ' +
+        'facets proposalSource votingPowerSource proposalPeriodStart ' +
+        'proposalPeriodEnd voteAuthorityId ipfsHash hydraEndpoint ' +
+        'hydraHeadId hydraHeadStatus ballotCid instancePolicyId ' +
+        'provisionalResultsEnabled',
     });
 
     if (!result) {
       return res.status(404).json({
-        status: "error",
-        message: "Ballot not found",
+        status: 'error',
+        message: 'Ballot not found',
       });
     }
     if (result.ambiguous) {
       return res.status(409).json({
-        status: "error",
-        code: "ID_COLLISION",
-        message:
-          "External ballot id matches multiple ballots; use the canonical _id",
+        status: 'error',
+        code: 'ID_COLLISION',
+        message: 'External ballot id matches multiple ballots; use the canonical _id',
         candidates: result.ambiguous,
       });
     }
@@ -173,8 +172,8 @@ export async function getBallot(req, res, next) {
     return next();
   } catch (error) {
     return res.status(500).json({
-      status: "error",
-      message: "Internal Server Error",
+      status: 'error',
+      message: 'Internal Server Error',
     });
   }
 }
@@ -205,14 +204,10 @@ export async function getProposal(req, res, next) {
   // import time. When the path also carries `:ballotId`, the lookup
   // is scoped to that parent — the only realistic external-id
   // collision path (same upstream id reused across ballots).
-  if (
-    !proposalId ||
-    typeof proposalId !== "string" ||
-    proposalId.length > 128
-  ) {
+  if (!proposalId || typeof proposalId !== 'string' || proposalId.length > 128) {
     return res.status(400).json({
-      status: "error",
-      message: "Proposal ID is required",
+      status: 'error',
+      message: 'Proposal ID is required',
     });
   }
 
@@ -224,16 +219,15 @@ export async function getProposal(req, res, next) {
 
     if (!result) {
       return res.status(404).json({
-        status: "error",
-        message: "Proposal not found",
+        status: 'error',
+        message: 'Proposal not found',
       });
     }
     if (result.ambiguous) {
       return res.status(409).json({
-        status: "error",
-        code: "ID_COLLISION",
-        message:
-          "External proposal id matches multiple proposals; use the canonical _id",
+        status: 'error',
+        code: 'ID_COLLISION',
+        message: 'External proposal id matches multiple proposals; use the canonical _id',
         candidates: result.ambiguous,
       });
     }
@@ -244,8 +238,8 @@ export async function getProposal(req, res, next) {
     return next();
   } catch (error) {
     return res.status(500).json({
-      status: "error",
-      message: "Internal Server Error",
+      status: 'error',
+      message: 'Internal Server Error',
     });
   }
 }
@@ -277,16 +271,16 @@ export function validateSessionRequest(req, res, next) {
   // Check if signerAddress exists in the request
   if (!signerAddress) {
     return res.status(400).json({
-      status: "error",
-      message: "Missing signerAddress in request body",
+      status: 'error',
+      message: 'Missing signerAddress in request body',
     });
   }
 
   // Check if signType exists in the request
   if (!signType) {
     return res.status(400).json({
-      status: "error",
-      message: "Missing signType in request body",
+      status: 'error',
+      message: 'Missing signType in request body',
     });
   }
 
@@ -307,18 +301,17 @@ export function validateSessionRequest(req, res, next) {
   // evaluated against the matching group. Pool credentials are always
   // key-based, so only drep/stake script wrappers are accepted.
   const scriptAddress = req.body?.scriptAddress;
-  if (typeof scriptAddress === "string" && scriptAddress.trim()) {
+  if (typeof scriptAddress === 'string' && scriptAddress.trim()) {
     const trimmedScript = scriptAddress.trim();
     const scriptParts = getAddressType(trimmedScript);
     if (
       scriptParts.error ||
-      scriptParts.hashType !== "script" ||
-      (scriptParts.type !== "drep" && scriptParts.type !== "stake")
+      scriptParts.hashType !== 'script' ||
+      (scriptParts.type !== 'drep' && scriptParts.type !== 'stake')
     ) {
       return res.status(400).json({
-        status: "error",
-        message:
-          "scriptAddress must be a drep or stake script (multisig) address.",
+        status: 'error',
+        message: 'scriptAddress must be a drep or stake script (multisig) address.',
       });
     }
     // Stake scripts encode the network in their header byte, so a
@@ -326,15 +319,15 @@ export function validateSessionRequest(req, res, next) {
     // far better than letting it fail later as an opaque "not found". (A
     // drep_script carries no network byte; those surface at verify time
     // when the script can't be resolved on our network.)
-    const expectedNetwork = Number.parseInt(process.env.NETWORK_ID ?? "", 10);
+    const expectedNetwork = Number.parseInt(process.env.NETWORK_ID ?? '', 10);
     if (
-      scriptParts.type === "stake" &&
+      scriptParts.type === 'stake' &&
       Number.isInteger(expectedNetwork) &&
       Number.isInteger(scriptParts.networkId) &&
       scriptParts.networkId !== expectedNetwork
     ) {
       return res.status(400).json({
-        status: "error",
+        status: 'error',
         message:
           `scriptAddress is for the wrong network (address network id ` +
           `${scriptParts.networkId}, this service expects ${expectedNetwork}).`,
@@ -354,11 +347,11 @@ export function validateSessionRequest(req, res, next) {
   // wallet. (Payment addresses ARE accepted on the multisig path above,
   // where identity is the script and the payment key only proves
   // membership.)
-  if (signType === "addr" || signType === "addr_test") {
+  if (signType === 'addr' || signType === 'addr_test') {
     return res.status(400).json({
-      status: "error",
+      status: 'error',
       message:
-        "Payment addresses are not accepted. Use your stake credential (stake1... or stake_test1...) or one of: drep, pool.",
+        'Payment addresses are not accepted. Use your stake credential (stake1... or stake_test1...) or one of: drep, pool.',
     });
   }
 
@@ -367,21 +360,21 @@ export function validateSessionRequest(req, res, next) {
   // console.log("Address validation in validateSessionRequest MW", addressBech32);
   if (addressBech32.error) {
     return res.status(400).json({
-      status: "error",
+      status: 'error',
       message: addressBech32.error,
     });
   }
 
   // check if address is drep id and if not cip129, throw error
   if (
-    signerAddress.startsWith("drep") &&
+    signerAddress.startsWith('drep') &&
     addressBech32.cip129 &&
     addressBech32.cip129 != signerAddress.trim()
   ) {
-    console.log("MW: Not a CIP129 Address", addressBech32);
+    console.log('MW: Not a CIP129 Address', addressBech32);
     return res.status(400).json({
-      status: "error",
-      message: "Please use a CIP129 address",
+      status: 'error',
+      message: 'Please use a CIP129 address',
     });
   }
 
@@ -392,10 +385,10 @@ export function validateSessionRequest(req, res, next) {
   }
 
   // converting drep PubKey to hex or whatever
-  if (signerAddress.length === 64 && signType === "drep") {
+  if (signerAddress.length === 64 && signType === 'drep') {
     const pubkey = PublicKey.from_hex(signerAddress);
     let keyhash = pubkey.hash();
-    const keyHashHex = Buffer.from(keyhash.to_bytes()).toString("hex");
+    const keyHashHex = Buffer.from(keyhash.to_bytes()).toString('hex');
     signerAddress = keyHashHex;
   }
 

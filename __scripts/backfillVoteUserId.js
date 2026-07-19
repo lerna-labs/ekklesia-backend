@@ -34,25 +34,22 @@
 //   node __scripts/backfillVoteUserId.js          # report only
 //   node __scripts/backfillVoteUserId.js --apply  # rename + reindex
 
-import process from "process";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-import dotenv from "dotenv";
-import { loadLocalOverrides } from "../helper/envOverlay.js";
-import {
-  connectToDatabase,
-  disconnectFromDatabase,
-} from "../helper/dbManager.js";
-import { Vote } from "../schema/Vote.js";
-import { Session } from "../schema/Session.js";
+import process from 'process';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import dotenv from 'dotenv';
+import { loadLocalOverrides } from '../helper/envOverlay.js';
+import { connectToDatabase, disconnectFromDatabase } from '../helper/dbManager.js';
+import { Vote } from '../schema/Vote.js';
+import { Session } from '../schema/Session.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(here, "..");
-const envName = process.env.NODE_ENV || "development";
+const repoRoot = join(here, '..');
+const envName = process.env.NODE_ENV || 'development';
 dotenv.config({ path: join(repoRoot, `.env.${envName}`) });
 loadLocalOverrides(repoRoot);
 
-const apply = process.argv.includes("--apply");
+const apply = process.argv.includes('--apply');
 
 await connectToDatabase();
 try {
@@ -79,24 +76,22 @@ try {
   const voteIndexes = await votesColl.indexes();
   const has = (name) => voteIndexes.some((i) => i.name === name);
   console.log(
-    `[backfill] votes.voterId_1:                ${has("voterId_1") ? "present (stale)" : "absent"}`
+    `[backfill] votes.voterId_1:                ${has('voterId_1') ? 'present (stale)' : 'absent'}`,
   );
   console.log(
-    `[backfill] votes.proposalId_1_voterId_1:   ${has("proposalId_1_voterId_1") ? "present (stale)" : "absent"}`
+    `[backfill] votes.proposalId_1_voterId_1:   ${has('proposalId_1_voterId_1') ? 'present (stale)' : 'absent'}`,
   );
   console.log(
-    `[backfill] votes.proposalId_1_userId_1:    ${has("proposalId_1_userId_1") ? "present" : "absent"}`
+    `[backfill] votes.proposalId_1_userId_1:    ${has('proposalId_1_userId_1') ? 'present' : 'absent'}`,
   );
   const sessionIndexes = await sessionsColl.indexes();
-  const sessionsHasVoterId = sessionIndexes.some(
-    (i) => i.name === "voterId_1"
-  );
+  const sessionsHasVoterId = sessionIndexes.some((i) => i.name === 'voterId_1');
   console.log(
-    `[backfill] sessions.voterId_1:             ${sessionsHasVoterId ? "present (stale)" : "absent"}`
+    `[backfill] sessions.voterId_1:             ${sessionsHasVoterId ? 'present (stale)' : 'absent'}`,
   );
 
   if (!apply) {
-    console.log("[backfill] dry-run — re-run with --apply to write");
+    console.log('[backfill] dry-run — re-run with --apply to write');
   } else {
     // --- Phase 2a: drop the old uniqueness guard FIRST ---
     //
@@ -106,17 +101,17 @@ try {
     // second update (E11000). Drop before renaming. Same for the
     // single-field voterId_1 — keeping it would waste a B-tree on a
     // field nothing reads or writes anymore.
-    if (has("voterId_1")) {
-      await votesColl.dropIndex("voterId_1");
-      console.log("[backfill] dropped index votes.voterId_1");
+    if (has('voterId_1')) {
+      await votesColl.dropIndex('voterId_1');
+      console.log('[backfill] dropped index votes.voterId_1');
     }
-    if (has("proposalId_1_voterId_1")) {
-      await votesColl.dropIndex("proposalId_1_voterId_1");
-      console.log("[backfill] dropped index votes.proposalId_1_voterId_1");
+    if (has('proposalId_1_voterId_1')) {
+      await votesColl.dropIndex('proposalId_1_voterId_1');
+      console.log('[backfill] dropped index votes.proposalId_1_voterId_1');
     }
     if (sessionsHasVoterId) {
-      await sessionsColl.dropIndex("voterId_1");
-      console.log("[backfill] dropped index sessions.voterId_1");
+      await sessionsColl.dropIndex('voterId_1');
+      console.log('[backfill] dropped index sessions.voterId_1');
     }
 
     // --- Phase 2b: rename ---
@@ -128,23 +123,19 @@ try {
       // manually before they clobber a real userId).
       const result = await votesColl.updateMany(
         { voterId: { $exists: true }, userId: { $exists: false } },
-        { $rename: { voterId: "userId" } }
+        { $rename: { voterId: 'userId' } },
       );
-      console.log(
-        `[backfill] renamed voterId → userId on ${result.modifiedCount} Vote doc(s)`
-      );
+      console.log(`[backfill] renamed voterId → userId on ${result.modifiedCount} Vote doc(s)`);
     }
 
     // --- Phase 3: re-add the current uniqueness guard ---
     const after = await votesColl.indexes();
-    if (!after.some((i) => i.name === "proposalId_1_userId_1")) {
+    if (!after.some((i) => i.name === 'proposalId_1_userId_1')) {
       await votesColl.createIndex(
         { proposalId: 1, userId: 1 },
-        { unique: true, name: "proposalId_1_userId_1" }
+        { unique: true, name: 'proposalId_1_userId_1' },
       );
-      console.log(
-        "[backfill] created index votes.proposalId_1_userId_1 UNIQUE"
-      );
+      console.log('[backfill] created index votes.proposalId_1_userId_1 UNIQUE');
     }
   }
 } finally {
