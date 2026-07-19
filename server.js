@@ -18,6 +18,7 @@ import { normalizeQuery } from './helper/normalizeQuery.js';
 import { publicGetLimiter } from './helper/rateLimiters.js';
 import { createOgMetaMiddleware } from './helper/og/ogMeta.js';
 import { ogBallotImage, ogProposalImage } from './helper/og/ogImage.js';
+import { spaCanonicalRedirect } from './helper/spaCanonicalRedirect.js';
 
 // Initialize console with timestamps
 initializeConsole();
@@ -53,6 +54,15 @@ if (process.env.JWT_SECRET.length < 32) {
 const app = express();
 const PORT = process.env.SERVER_PORT || 3000;
 
+// We sit behind a single Caddy reverse proxy (which sets X-Forwarded-For
+// by default). Trust exactly one hop so `req.ip` resolves to the real
+// client (the left-most X-Forwarded-For entry) instead of Caddy's address.
+// Without this, every anonymous visitor collapses onto the proxy IP and
+// shares one rate-limit bucket. "1" (not `true`) keeps the trust scope
+// tight — a client can't spoof its IP by injecting extra X-Forwarded-For
+// hops.
+app.set('trust proxy', 1);
+
 // Security headers + server-stack disclosure. Helmet defaults cover
 // X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS, and
 // removal of X-Powered-By. CSP is left disabled here because the SPA
@@ -72,8 +82,15 @@ app.use(
 // req.query.filter.key — Express 5's default "simple" parser leaves
 // those keys as literal strings.
 app.set('query parser', 'extended');
-app.use(express.json()); // json parser
-app.use(express.urlencoded({ extended: true })); // urlencoded parser
+// JSON body parser. The CompiledBallot import endpoint
+// (POST /api/v1/admin/ballots/import) can carry several hundred KB once a
+// real ballot has its proposal set; the default 100 KB cap 413s those.
+// 10 MB covers a fully-loaded payload (MAX.proposals × MAX.rationale ≈ 5 MB
+// of rationale text plus headroom) without being unbounded. All routes that
+// accept bodies sit behind rate limiters and admin/scope auth, so a larger
+// global cap is not exposed to anonymous traffic in practice.
+app.use(express.json({ limit: '10mb' })); // json parser
+app.use(express.urlencoded({ extended: true, limit: '10mb' })); // urlencoded parser
 app.use(cookieParser()); // cookie parser
 app.use(
   cors({
@@ -106,6 +123,21 @@ async function startServer() {
 
     // Serve static files from the public directory (SvelteKit assets)
     app.use(express.static(join(__dirname, 'public')));
+
+    // SEO canonical 301 — when the user arrives at a SPA URL whose
+    // :ballotId or :proposalId segment is the upstream proposals-module
+    // identifier, redirect to the canonical _id URL before the SPA
+    // boots. Falls through to the SPA on any non-match / failure.
+    // Mounted ahead of OG cards so they receive the canonical id.
+    app.get(
+      [
+        '/ballots/:ballotId',
+        '/ballots/:ballotId/proposals',
+        '/ballots/:ballotId/proposals/:proposalId',
+        '/ballots/:ballotId/proposals/:proposalId/results',
+      ],
+      spaCanonicalRedirect,
+    );
 
     // Per-ballot / per-proposal OpenGraph cards. Slots between
     // express.static (so /social.png and other shipped assets keep their

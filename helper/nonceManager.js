@@ -20,7 +20,9 @@
 //
 // Storage: UserCache (one row per (userId, ballotId)).
 
+import mongoose from 'mongoose';
 import { UserCache } from '../schema/UserCache.js';
+import { VotePackage } from '../schema/VotePackage.js';
 
 export class NonceError extends Error {
   constructor(message, { code } = {}) {
@@ -38,17 +40,58 @@ export class NonceError extends Error {
  * works uniformly whether the existing nonce is a number, null (the schema
  * default for fresh/reset rows), or missing entirely. MongoDB's plain `$inc`
  * rejects null with a TypeMismatch error.
+ *
+ * Defense in depth: clamps the reservation against the highest already-
+ * confirmed VotePackage.nonce for this (voter, ballot). If anything has
+ * reset UserCache.nonce after the voter's previous vote(s) confirmed —
+ * e.g. an operator script that deleted the row, an over-eager release,
+ * a manual edit — the naïve increment would return a value Hydra has
+ * already accepted, and `/vote` would reject the next submission with
+ * NONCE_STALE. The floor makes reserveNext idempotent against that
+ * class of UserCache drift.
  */
 export async function reserveNext({ userId, ballotId }) {
   if (!userId || !ballotId) {
     throw new NonceError('userId and ballotId are required', { code: 'BAD_INPUT' });
   }
+  const floor = await maxConfirmedPackageNonce(userId, ballotId);
   const updated = await UserCache.findOneAndUpdate(
     { userId, ballotId },
-    [{ $set: { nonce: { $add: [{ $ifNull: ['$nonce', 0] }, 1] } } }],
+    [
+      {
+        $set: {
+          nonce: {
+            $max: [{ $add: [{ $ifNull: ['$nonce', 0] }, 1] }, floor + 1],
+          },
+        },
+      },
+    ],
     { new: true, upsert: true, setDefaultsOnInsert: true, updatePipeline: true },
   );
   return updated.nonce;
+}
+
+/**
+ * Highest nonce on a hydra-confirmed VotePackage for this voter/ballot,
+ * or 0 if the voter has never committed a vote here. Source of the
+ * reservation floor in `reserveNext`. `aggregate()` does not auto-cast
+ * a string ballotId, so do it here.
+ */
+async function maxConfirmedPackageNonce(userId, ballotId) {
+  const ballotObjectId =
+    typeof ballotId === 'string' ? new mongoose.Types.ObjectId(ballotId) : ballotId;
+  const [row] = await VotePackage.aggregate([
+    {
+      $match: {
+        ballotId: ballotObjectId,
+        userId,
+        status: 'hydra-confirmed',
+        nonce: { $type: 'number' },
+      },
+    },
+    { $group: { _id: null, max: { $max: '$nonce' } } },
+  ]);
+  return typeof row?.max === 'number' ? row.max : 0;
 }
 
 /**

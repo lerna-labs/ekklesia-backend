@@ -17,6 +17,7 @@ const VALID_POWER_SOURCES_BY_GROUP = {
   pool: new Set(['CredentialBased', 'StakeBased', 'PledgeBased']),
   stake: new Set(['StakeBased']),
 };
+const RESULTS_CALCULATION_MODES = new Set(['standard', 'participation']);
 const VOTE_TYPES = new Set([
   'choice',
   'multi-choice',
@@ -139,6 +140,19 @@ function validateBallot(b, errors) {
   });
   if (!isNonEmptyString(b.voteAuthorityId)) pushMissing(errors, 'ballot.voteAuthorityId');
   if (!isNonEmptyString(b.voteAuthorityAddress)) pushMissing(errors, 'ballot.voteAuthorityAddress');
+
+  // Optional results-presentation hint. Omitted → backend defaults to
+  // "standard". Only the enum is enforced; the field carries no further
+  // semantics at import time.
+  if (
+    b.resultsCalculationMode != null &&
+    !RESULTS_CALCULATION_MODES.has(b.resultsCalculationMode)
+  ) {
+    errors.push({
+      path: 'ballot.resultsCalculationMode',
+      message: `must be one of ${[...RESULTS_CALCULATION_MODES].join(', ')}`,
+    });
+  }
 
   // Period sanity
   const vs = Date.parse(b.votePeriodStart);

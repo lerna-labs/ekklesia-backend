@@ -71,10 +71,42 @@ async function rollupVoters(ballotIdObj, distinctUserIds) {
 // $ne:"abstain" matches votes whose submittedVote array contains
 // at least one non-abstain element — covers single-target (default,
 // scale) and multi-target (ranked, budget) shapes uniformly.
+//
+// `excludedAt: null` honors the operator-driven soft-exclusion overlay
+// on `Vote` so the participation denominator stays in lockstep with the
+// filtered tally.
 const NON_ABSTAIN_FILTER = {
   submittedAt: { $ne: null },
   submittedVote: { $elemMatch: { $ne: 'abstain' } },
+  excludedAt: null,
 };
+
+// A vote is "pure abstain" on a proposal when its submittedVote array
+// contains "abstain" and NO non-abstain element — i.e. the voter
+// explicitly opted out of this question (`["abstain"]`), as opposed to
+// not voting on it at all (no Vote row). `submittedVote: "abstain"`
+// requires at least one "abstain"; the `$not`/`$elemMatch` clause rules
+// out arrays that also carry a real selection. Honors the same
+// `excludedAt: null` overlay as the pool filter.
+const PURE_ABSTAIN_FILTER = {
+  submittedAt: { $ne: null },
+  excludedAt: null,
+  $and: [
+    { submittedVote: 'abstain' },
+    { submittedVote: { $not: { $elemMatch: { $ne: 'abstain' } } } },
+  ],
+};
+
+/**
+ * Internal: distinct user ids in the ballot-wide participation pool —
+ * voters who cast at least one non-abstain vote on ANY proposal.
+ */
+async function participationPoolUserIds(ballotIdObj) {
+  return Vote.distinct('userId', {
+    ballotId: ballotIdObj,
+    ...NON_ABSTAIN_FILTER,
+  });
+}
 
 /**
  * Compute ballot-level participation grouped by voter group.
@@ -88,11 +120,32 @@ const NON_ABSTAIN_FILTER = {
  */
 export async function computeBallotParticipation(ballotId) {
   const id = asObjectId(ballotId);
-  const distinctUserIds = await Vote.distinct('userId', {
-    ballotId: id,
-    ...NON_ABSTAIN_FILTER,
-  });
+  const distinctUserIds = await participationPoolUserIds(id);
   return rollupVoters(id, distinctUserIds);
+}
+
+/**
+ * Compute per-group count + voting power of voters who are in the
+ * ballot-wide participation pool AND explicitly abstained on THIS
+ * proposal (the intersection). Voters who abstained on this proposal
+ * but never cast a non-abstain vote anywhere are excluded — they were
+ * never in the pool, so subtracting them from the pool denominator
+ * would be wrong. See schema/Result.js `participatingAbstainers`.
+ *
+ * @param {ObjectId|String} proposalId
+ * @param {ObjectId|String} ballotId — needed for the voter-power lookup
+ * @returns {Promise<{ totalVotingPower: Record<string, number>, voterCount: Record<string, number> }>}
+ */
+export async function computeParticipatingAbstainers(proposalId, ballotId) {
+  const pid = asObjectId(proposalId);
+  const bid = asObjectId(ballotId);
+  const [poolUserIds, abstainerUserIds] = await Promise.all([
+    participationPoolUserIds(bid),
+    Vote.distinct('userId', { proposalId: pid, ...PURE_ABSTAIN_FILTER }),
+  ]);
+  const pool = new Set(poolUserIds);
+  const intersection = abstainerUserIds.filter((u) => pool.has(u));
+  return rollupVoters(bid, intersection);
 }
 
 /**

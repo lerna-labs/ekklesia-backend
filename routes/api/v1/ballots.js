@@ -19,6 +19,12 @@ import {
   canonicalContentBytes,
 } from '../../../helper/proposalContent.js';
 import { canonicalBytes } from '../../../helper/canonicalJson.js';
+import {
+  resolveBallot,
+  resolveProposal,
+  canonicalApiPath,
+  setCanonicalLinkHeader,
+} from '../../../helper/idResolver.js';
 
 const router = Router();
 
@@ -153,8 +159,24 @@ router.get('/:id', async (req, res) => {
     if (!doc) {
       return res.status(404).json({ status: 'error', message: 'Ballot not found' });
     }
+    if (doc.__ambiguous) {
+      return res.status(409).json({
+        status: 'error',
+        code: 'ID_COLLISION',
+        message: 'External ballot id matches multiple ballots; use the canonical _id',
+        candidates: doc.__ambiguous,
+      });
+    }
     applyBallotCache(res, doc);
-    return res.status(200).json({ data: doc });
+    // When the caller addressed the ballot via its upstream
+    // externalBallotId, expose the canonical _id URL for SEO + SPA
+    // history-replaceState consumers.
+    const payload = { data: doc };
+    if (doc.id && doc.id !== req.params.id) {
+      payload.canonical = canonicalApiPath('ballot', doc.id);
+      setCanonicalLinkHeader(res, payload.canonical);
+    }
+    return res.status(200).json(payload);
   } catch (error) {
     console.error('Error fetching ballot:', error);
     return res.status(500).json({
@@ -180,21 +202,49 @@ router.get('/:id', async (req, res) => {
  */
 router.get('/:id/questions/:qid/content', async (req, res) => {
   try {
-    const ballot = await Ballot.findById(req.params.id).lean();
-    if (!ballot) {
+    const bRes = await resolveBallot(req.params.id);
+    if (!bRes) {
       return res.status(404).json({ status: 'error', message: 'Ballot not found' });
     }
-    const proposal = await Proposal.findOne({
-      _id: req.params.qid,
-      ballotId: ballot._id,
-    }).lean();
-    if (!proposal) {
+    if (bRes.ambiguous) {
+      return res.status(409).json({
+        status: 'error',
+        code: 'ID_COLLISION',
+        message: 'External ballot id matches multiple ballots; use the canonical _id',
+        candidates: bRes.ambiguous,
+      });
+    }
+    const ballot = bRes.doc;
+    const pRes = await resolveProposal(req.params.qid, {
+      ballotId: String(ballot._id),
+    });
+    if (!pRes) {
       return res
         .status(404)
         .json({ status: 'error', message: 'Proposal not found on this ballot' });
     }
+    if (pRes.ambiguous) {
+      return res.status(409).json({
+        status: 'error',
+        code: 'ID_COLLISION',
+        message:
+          'External proposal id matches multiple proposals on this ballot; use the canonical _id',
+        candidates: pRes.ambiguous,
+      });
+    }
+    const proposal = pRes.doc;
     const bytes = canonicalContentBytes(proposal, ballot);
     applyBallotCache(res, ballot);
+    // The audit endpoint returns raw canonical bytes — no JSON
+    // envelope — so the only canonical signal is the Link header.
+    if (bRes.source === 'external' || pRes.source === 'external') {
+      setCanonicalLinkHeader(
+        res,
+        canonicalApiPath('ballot-question', String(ballot._id), {
+          qid: String(proposal._id),
+        }),
+      );
+    }
     res.set('Content-Type', 'application/json; charset=utf-8');
     res.set('Content-Length', String(bytes.length));
     return res.end(bytes);
@@ -212,10 +262,19 @@ router.get('/:id/questions/:qid/content', async (req, res) => {
  */
 router.get('/:id/archive', async (req, res) => {
   try {
-    const ballot = await Ballot.findById(req.params.id).lean();
-    if (!ballot) {
+    const bRes = await resolveBallot(req.params.id);
+    if (!bRes) {
       return res.status(404).json({ status: 'error', message: 'Ballot not found' });
     }
+    if (bRes.ambiguous) {
+      return res.status(409).json({
+        status: 'error',
+        code: 'ID_COLLISION',
+        message: 'External ballot id matches multiple ballots; use the canonical _id',
+        candidates: bRes.ambiguous,
+      });
+    }
+    const ballot = bRes.doc;
     const proposals = await Proposal.find({ ballotId: ballot._id }).lean();
 
     // Canonical ballot summary. Not byte-identical to Hydra's pinned
@@ -303,6 +362,9 @@ router.get('/:id/archive', async (req, res) => {
     };
 
     applyBallotCache(res, ballot);
+    if (bRes.source === 'external') {
+      setCanonicalLinkHeader(res, canonicalApiPath('ballot-archive', String(ballot._id)));
+    }
     res.set('Content-Type', 'application/json; charset=utf-8');
     res.set('Content-Disposition', `attachment; filename="ballot-${ballot._id}-archive.json"`);
     return res.status(200).json(bundle);
@@ -330,10 +392,19 @@ router.get('/:id/archive', async (req, res) => {
 // version), `certified` is false but `narrative` is set.
 router.get('/:id/certified', async (req, res) => {
   try {
-    const ballot = await Ballot.findById(req.params.id).lean();
-    if (!ballot) {
+    const bRes = await resolveBallot(req.params.id);
+    if (!bRes) {
       return res.status(404).json({ status: 'error', message: 'Ballot not found' });
     }
+    if (bRes.ambiguous) {
+      return res.status(409).json({
+        status: 'error',
+        code: 'ID_COLLISION',
+        message: 'External ballot id matches multiple ballots; use the canonical _id',
+        candidates: bRes.ambiguous,
+      });
+    }
+    const ballot = bRes.doc;
     const all = await CertifiedSnapshot.find({ ballotId: ballot._id }).sort({ version: -1 }).lean();
     const history = all.map((s) => ({
       version: s.version,
@@ -348,6 +419,13 @@ router.get('/:id/certified', async (req, res) => {
     }));
     const activeVersion = ballot.currentCertifiedVersion || null;
     const active = activeVersion ? all.find((s) => s.version === activeVersion) || null : null;
+    // Emit `canonical` + Link header when the caller addressed via
+    // the upstream externalBallotId — same shape as the unified ballot
+    // route so consumers learn one rule.
+    const canonical =
+      bRes.source === 'external' ? canonicalApiPath('ballot-certified', String(ballot._id)) : null;
+    if (canonical) setCanonicalLinkHeader(res, canonical);
+
     if (!active) {
       return res.json({
         status: 'success',
@@ -356,6 +434,7 @@ router.get('/:id/certified', async (req, res) => {
           narrative: ballot.authorityNarrative || null,
           history,
         },
+        ...(canonical ? { canonical } : {}),
       });
     }
     // Materialize per-proposal tally from the active snapshot's stored
@@ -379,6 +458,7 @@ router.get('/:id/certified', async (req, res) => {
         perProposal,
         history,
       },
+      ...(canonical ? { canonical } : {}),
     });
   } catch (err) {
     console.error('[ballots/:id/certified]', err);

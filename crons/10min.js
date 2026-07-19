@@ -31,6 +31,7 @@ import { Ballot } from '../schema/Ballot.js';
 import { aggregateVotes } from './10minAggregateVotes.js';
 import { snapshotVotingPower } from './15minVotingPower.js';
 import { reconcileVoteMirrors } from './reconcileVoteMirrors.js';
+import { backfillVoterNames } from './voterNameBackfill.js';
 
 // connect db
 if (!isDatabaseConnected()) {
@@ -80,6 +81,15 @@ try {
   await snapshotVotingPower();
 } catch (err) {
   console.error('snapshotVotingPower failed:', err);
+}
+
+// Resolve display names for voters who appear in the directory without
+// a cached User.name (historical voters, multisig DReps). Throttled
+// internally to stay polite with Koios + Handle.me.
+try {
+  await backfillVoterNames();
+} catch (err) {
+  console.error('backfillVoterNames failed:', err);
 }
 
 // ballot rollup

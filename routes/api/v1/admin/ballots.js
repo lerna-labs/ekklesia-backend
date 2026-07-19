@@ -25,9 +25,39 @@ import { writeFinalResult } from '../../../../crons/10minAggregateVotes.js';
 import { certifyBallot, CertifyError } from '../../../../helper/results/certify.js';
 import { VoterPowerSnapshot } from '../../../../schema/VoterPowerSnapshot.js';
 import { ImportedBallotPayload } from '../../../../schema/ImportedBallotPayload.js';
+import { resolveBallot } from '../../../../helper/idResolver.js';
 import crypto from 'node:crypto';
 
 const router = Router();
+
+// All admin lifecycle handlers below address ballots through `:id`.
+// Resolve once per request (`router.param`), accept either the
+// canonical Mongo `_id` or the upstream `proposalSource.externalBallotId`
+// the proposals module pushed at import time, then rewrite
+// `req.params.id` to the canonical value so every downstream
+// `Ballot.findById(req.params.id)` / `forBallot(req.params.id)` call
+// addresses the real row without any handler-body churn.
+router.param('id', async (req, res, next, id) => {
+  try {
+    const result = await resolveBallot(id);
+    if (!result) {
+      return res.status(404).json({ status: 'error', message: 'Ballot not found' });
+    }
+    if (result.ambiguous) {
+      return res.status(409).json({
+        status: 'error',
+        code: 'ID_COLLISION',
+        message: 'External ballot id matches multiple ballots; use the canonical _id',
+        candidates: result.ambiguous,
+      });
+    }
+    req.params.id = String(result.doc._id);
+    req.ballotResolvedFrom = result.source; // 'internal' | 'external'
+    return next();
+  } catch (err) {
+    return res.status(500).json({ status: 'error', message: 'Server error' });
+  }
+});
 
 // POST /import — accepts a CompiledBallot (v1) from either a proposals
 // module (API key with `write:ballot-import`) or an admin (JWT). Must

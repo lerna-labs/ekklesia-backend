@@ -6,6 +6,7 @@ import { Result } from '../schema/Result.js';
 import {
   computeBallotParticipation,
   computeProposalParticipation,
+  computeParticipatingAbstainers,
 } from '../helper/results/ballotParticipation.js';
 import { computeScaleStats, bucketScaleSamplesByGroup } from '../helper/results/scaleStats.js';
 import { computeRankedDistribution } from '../helper/results/rankedDistribution.js';
@@ -39,6 +40,7 @@ export async function aggregateVotes() {
 
   const proposalIds = await Vote.find({
     submittedAt: { $gte: twelveMinutesAgo, $lt: now },
+    excludedAt: null,
   }).distinct('proposalId');
 
   if (proposalIds.length === 0) {
@@ -123,6 +125,7 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
     const recentVotesCount = await Vote.countDocuments({
       proposalId,
       submittedAt: { $gte: recent.since, $lt: recent.before },
+      excludedAt: null,
     });
     if (recentVotesCount === 0) {
       console.log(`Skipping proposal ${proposalId}: no recent votes`);
@@ -131,7 +134,7 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
   }
 
   const voteAggregation = await Vote.aggregate([
-    { $match: { proposalId } },
+    { $match: { proposalId, excludedAt: null } },
     {
       $lookup: {
         from: 'usercaches',
@@ -192,7 +195,7 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
   }
 
   const byGroupAggregation = await Vote.aggregate([
-    { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
+    { $match: { proposalId, submittedVote: { $exists: true, $ne: null }, excludedAt: null } },
     {
       $lookup: {
         from: 'usercaches',
@@ -281,6 +284,7 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
     const rawVotes = await Vote.find({
       proposalId,
       submittedAt: { $ne: null },
+      excludedAt: null,
     })
       .select('userId vote submittedVote')
       .lean();
@@ -342,9 +346,10 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
     }
   }
 
-  const [ballotParticipation, proposalParticipation] = await Promise.all([
+  const [ballotParticipation, proposalParticipation, participatingAbstainers] = await Promise.all([
     computeBallotParticipation(ballot._id),
     computeProposalParticipation(proposalId, ballot._id),
+    computeParticipatingAbstainers(proposalId, ballot._id),
   ]);
 
   // Reconcile per-group totalVotes with distinct voter counts. The
@@ -375,6 +380,7 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
         resultsByGroup,
         ballotParticipation,
         proposalParticipation,
+        participatingAbstainers,
         source: 'provisional',
         ballotSource: ballot.source,
         ballotId: ballot._id,
@@ -456,6 +462,8 @@ export async function writeFinalResult(ballotId, hydraData = {}) {
             derived?.ballotParticipation || provisional?.ballotParticipation || null,
           proposalParticipation:
             derived?.proposalParticipation || provisional?.proposalParticipation || null,
+          participatingAbstainers:
+            derived?.participatingAbstainers || provisional?.participatingAbstainers || null,
           source: 'final',
           ballotSource: ballot.source,
           ballotId: ballot._id,

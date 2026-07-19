@@ -36,7 +36,7 @@ import { VotePackage } from '../../../schema/VotePackage.js';
 import { checkVoterValidation } from '../../../helper/voterValidation.js';
 import { syncVoteRecords } from '../../../helper/voteMirror.js';
 import { loadValidationScript } from '../../../helper/loadValidationScript.js';
-import { buildDraft, BrokerError } from '../../../helper/voteBroker.js';
+import { buildDraft, BrokerError, merkleRootHex } from '../../../helper/voteBroker.js';
 import { validateVotesForBallot } from '../../../helper/voteValidation.js';
 import { canonicalize } from '../../../helper/canonicalJson.js';
 import {
@@ -44,14 +44,18 @@ import {
   dedupeSignatures,
   MultisigError,
 } from '../../../helper/multisigCollector.js';
-import { normalizeWitness, CoseWitnessError } from '../../../helper/coseWitness.js';
+import {
+  normalizeWitness,
+  CoseWitnessError,
+  verifyWitnessAgainstMerkleRoot,
+} from '../../../helper/coseWitness.js';
 import { User } from '../../../schema/User.js';
-import blake from 'blakejs';
 import * as nonceManager from '../../../helper/nonceManager.js';
 import { forBallot, HydraClientError } from '../../../helper/hydraClient.js';
 import { credentialHrp, responderRoleFor } from '../../../helper/voterCredential.js';
 import { voteWriteLimiter } from '../../../helper/rateLimiters.js';
 import { checkVotingWindow } from '../../../helper/votingWindow.js';
+import { resolveBallot } from '../../../helper/idResolver.js';
 
 const router = Router();
 
@@ -142,11 +146,24 @@ function requireSession(req, res) {
 }
 
 async function requireHydraBallot(req, res) {
-  const ballot = await Ballot.findById(req.params.ballotId);
-  if (!ballot) {
+  // Accept the canonical _id or the upstream externalBallotId. The
+  // broker downstream addresses Hydra by the canonical _id, so the
+  // resolver flattens the alias before any in-head call runs.
+  const result = await resolveBallot(req.params.ballotId);
+  if (!result) {
     res.status(404).json({ status: 'error', message: 'Ballot not found' });
     return null;
   }
+  if (result.ambiguous) {
+    res.status(409).json({
+      status: 'error',
+      code: 'ID_COLLISION',
+      message: 'External ballot id matches multiple ballots; use the canonical _id',
+      candidates: result.ambiguous,
+    });
+    return null;
+  }
+  const ballot = result.doc;
   if (ballot.source !== 'hydra') {
     res.status(400).json({
       status: 'error',
@@ -251,11 +268,13 @@ router.post('/:ballotId/draft', async (req, res) => {
     }
   }
   if (!validated) {
-    return res.status(403).json({
-      status: 'error',
-      code: ERROR_CODES.ELIGIBILITY_DENIED,
-      message: 'Voter is not eligible for this ballot',
-    });
+    return res
+      .status(403)
+      .json({
+        status: 'error',
+        code: ERROR_CODES.ELIGIBILITY_DENIED,
+        message: 'Voter is not eligible for this ballot',
+      });
   }
 
   // Multisig voters: if the caller didn't include a nativeScript, pull
@@ -383,11 +402,13 @@ router.post('/:ballotId/signature', async (req, res) => {
 
   const { packageId, witness: rawWitness } = req.body || {};
   if (!packageId || !rawWitness) {
-    return res.status(400).json({
-      status: 'error',
-      code: ERROR_CODES.BAD_INPUT,
-      message: 'packageId and witness required',
-    });
+    return res
+      .status(400)
+      .json({
+        status: 'error',
+        code: ERROR_CODES.BAD_INPUT,
+        message: 'packageId and witness required',
+      });
   }
 
   // CIP-30 `signData` returns only { signature (COSE_Sign1 hex), key (COSE key hex) }.
@@ -414,11 +435,45 @@ router.post('/:ballotId/signature', async (req, res) => {
       .json({ status: 'error', code: ERROR_CODES.FORBIDDEN, message: 'Not the package owner' });
   }
   if (!['draft', 'awaiting-signatures'].includes(pkg.status)) {
-    return res.status(409).json({
-      status: 'error',
-      code: ERROR_CODES.PACKAGE_TERMINAL,
-      message: `Package in terminal state: ${pkg.status}`,
-    });
+    return res
+      .status(409)
+      .json({
+        status: 'error',
+        code: ERROR_CODES.PACKAGE_TERMINAL,
+        message: `Package in terminal state: ${pkg.status}`,
+      });
+  }
+
+  // Verify the witness BEFORE storing it. Recompute the merkleRoot from the
+  // package's own signingPayload (single source of truth) and confirm the
+  // COSE_Sign1 both (a) signs that exact value and (b) is a valid Ed25519
+  // signature. Previously the route stored any witness that passed key
+  // membership, so a signature over the wrong message (the evidence voteHash)
+  // was accepted, counted toward the threshold, and submitted to Hydra.
+  if (!pkg.signingPayload) {
+    return res
+      .status(409)
+      .json({
+        status: 'error',
+        code: ERROR_CODES.BAD_INPUT,
+        message: 'Package has no signing payload to verify against',
+      });
+  }
+  let verification;
+  try {
+    verification = verifyWitnessAgainstMerkleRoot(witness, merkleRootHex(pkg.signingPayload));
+  } catch (err) {
+    if (err instanceof CoseWitnessError) {
+      return res
+        .status(400)
+        .json({ status: 'error', code: ERROR_CODES.SIGNATURE_INVALID, message: err.message });
+    }
+    throw err;
+  }
+  if (!verification.ok) {
+    return res
+      .status(400)
+      .json({ status: 'error', code: ERROR_CODES.SIGNATURE_INVALID, message: verification.reason });
   }
 
   pkg.signatures = dedupeSignatures([...(pkg.signatures || []), witness]);
@@ -495,11 +550,13 @@ router.post('/:ballotId/submit', async (req, res) => {
     return res.json({ status: 'success', package: await currentPackageView(pkg._id) });
   }
   if (pkg.status !== 'awaiting-submission') {
-    return res.status(409).json({
-      status: 'error',
-      code: ERROR_CODES.PACKAGE_TERMINAL,
-      message: `Package in state ${pkg.status}`,
-    });
+    return res
+      .status(409)
+      .json({
+        status: 'error',
+        code: ERROR_CODES.PACKAGE_TERMINAL,
+        message: `Package in state ${pkg.status}`,
+      });
   }
 
   // Stamp activity so a stalled /submit retry loop isn't swept by the
@@ -654,13 +711,19 @@ router.get('/:ballotId/packages', async (req, res) => {
 //               here. To preserve any of these votes, they MUST be
 //               included in the next /draft submission.
 //
-//   inFlight    Packages still in flight (awaiting signatures,
-//               awaiting submission, draft, or failed). Newest first.
-//               When one of these submits successfully it REPLACES
-//               the confirmed state above. UI should surface these
-//               (especially multisig packages waiting on cosigner
-//               signatures) and warn the voter before they create a
-//               new draft that would supersede an in-flight one.
+//   inFlight    Packages still genuinely actionable (awaiting
+//               signatures, awaiting submission, draft, or failed),
+//               newest first. ONLY packages with nonce ABOVE the
+//               confirmed head appear here: Hydra enforces strict
+//               nonce === currentVersion + 1, so a package at/below the
+//               confirmed nonce is a superseded earlier attempt that can
+//               never (re)submit — surfacing it would make the editor
+//               rehydrate a stale version. When one of these submits
+//               successfully it REPLACES the confirmed state above. UI
+//               should surface these (especially multisig packages
+//               waiting on cosigner signatures) and warn the voter
+//               before they create a new draft that would supersede an
+//               in-flight one.
 //
 //   {
 //     status: "success",
@@ -676,19 +739,22 @@ router.get('/:ballotId/packages', async (req, res) => {
 //     summary: { confirmed, awaitingSignatures, awaitingSubmission,
 //                draft, failed }
 //   }
-router.get('/:ballotId/mine', async (req, res) => {
-  const session = requireSession(req, res);
-  if (!session) return;
-  const ballot = await requireHydraBallot(req, res);
-  if (!ballot) return;
-
-  const packages = await VotePackage.find({
-    ballotId: ballot._id,
-    userId: session.userId,
-  })
-    .sort({ nonce: -1 })
-    .lean();
-
+/**
+ * Build the { confirmed, inFlight, summary } view for GET /:ballotId/mine
+ * from a voter's raw VotePackage docs (any order). Pure and DB-free so it
+ * can be unit-tested directly; exported for that reason.
+ *
+ * Load-bearing rule: Hydra enforces strict `nonce === currentVersion + 1`,
+ * so a non-terminal package whose nonce is <= the latest confirmed nonce
+ * is permanently unsubmittable — a superseded earlier attempt. Such
+ * packages MUST NOT appear in `inFlight`, otherwise the editor rehydrates
+ * a stale version from a dead/failed attempt (the first-version-sticks
+ * bug). A `failed` package ABOVE the head stays in for a manual retry.
+ *
+ * @param {Array<object>} packages  Lean VotePackage docs.
+ * @returns {{confirmed: object|null, inFlight: object[], summary: object}}
+ */
+export function buildMineView(packages) {
   const summary = {
     confirmed: 0,
     awaitingSignatures: 0,
@@ -699,9 +765,8 @@ router.get('/:ballotId/mine', async (req, res) => {
 
   // Per-proposal vote map mirroring the canonical wire shape the voter
   // submitted at /draft — `{ selection: number[] }` or `{ abstain: true }`
-  // keyed by questionId. The Vote collection's `["abstain"]` sentinel
-  // is an internal legacy collapse and is NOT part of the public
-  // contract; the frontend's type definitions use the wire shape.
+  // keyed by questionId. The Vote collection's `["abstain"]` sentinel is
+  // an internal legacy collapse and is NOT part of the public contract.
   const extractVotes = (pkg) => {
     const out = {};
     for (const a of pkg.signingPayload?.votes || []) {
@@ -718,8 +783,11 @@ router.get('/:ballotId/mine', async (req, res) => {
     return out;
   };
 
-  let confirmed = null;
-  const inFlight = [];
+  // `nonce` is declared Number in the schema but legacy rows can be
+  // non-numeric (see nonceManager.confirmedHead's $type guard), so pick
+  // the latest confirmed by numeric value rather than trusting any sort.
+  const toNonce = (n) => (typeof n === 'number' ? n : Number(n));
+  let confirmedPkg = null;
 
   for (const pkg of packages) {
     if (pkg.status === 'hydra-confirmed') summary.confirmed++;
@@ -728,32 +796,43 @@ router.get('/:ballotId/mine', async (req, res) => {
     else if (pkg.status === 'draft') summary.draft++;
     else if (pkg.status === 'failed') summary.failed++;
 
-    if (pkg.status === 'hydra-confirmed') {
-      // Latest-confirmed-wins. Packages are sorted by nonce desc, so
-      // the first confirmed we see IS the latest.
-      if (!confirmed) {
-        confirmed = {
-          packageId: pkg._id.toString(),
-          nonce: pkg.nonce,
-          submittedAt: pkg.confirmedAt || null,
-          hydraTxId: pkg.hydraTxId || null,
-          votes: extractVotes(pkg),
-        };
-      }
-      continue;
+    if (
+      pkg.status === 'hydra-confirmed' &&
+      (!confirmedPkg || toNonce(pkg.nonce) > toNonce(confirmedPkg.nonce))
+    ) {
+      confirmedPkg = pkg;
     }
+  }
 
-    // `inFlight` is the "voter could still act on this" list. Terminal
-    // states (abandoned, cancelled) are surfaced in `summary` only, not
-    // here — the DELETE handler and TTL sweep both land packages in
-    // "abandoned" and those shouldn't reappear in the voter's active UX.
-    // `failed` stays in to support a manual retry path.
+  const confirmed = confirmedPkg
+    ? {
+        packageId: confirmedPkg._id.toString(),
+        nonce: toNonce(confirmedPkg.nonce),
+        submittedAt: confirmedPkg.confirmedAt || null,
+        hydraTxId: confirmedPkg.hydraTxId || null,
+        votes: extractVotes(confirmedPkg),
+      }
+    : null;
+
+  // Once confirmed at nonce N, every package at nonce <= N is superseded.
+  const confirmedHead = confirmed ? confirmed.nonce : -Infinity;
+
+  const inFlight = [];
+  for (const pkg of packages) {
+    if (pkg.status === 'hydra-confirmed') continue;
     if (pkg.status === 'abandoned' || pkg.status === 'cancelled') continue;
+    // INVARIANT: never emit a superseded package here. The frontend
+    // (broker.js mineToProposalAnnotations) overlays inFlight ON TOP OF
+    // confirmed — inFlight always wins — so a stale package leaked into
+    // this list rehydrates the editor with an old version. A package at
+    // or below the confirmed head can never resubmit (strict nonce ===
+    // currentVersion + 1), so it is not actionable and must be dropped.
+    if (toNonce(pkg.nonce) <= confirmedHead) continue;
 
     const entry = {
       packageId: pkg._id.toString(),
       status: pkg.status,
-      nonce: pkg.nonce,
+      nonce: toNonce(pkg.nonce),
       createdAt: pkg.createdAt || null,
       votes: extractVotes(pkg),
     };
@@ -772,12 +851,27 @@ router.get('/:ballotId/mine', async (req, res) => {
     inFlight.push(entry);
   }
 
+  // Newest-first regardless of input order.
+  inFlight.sort((a, b) => toNonce(b.nonce) - toNonce(a.nonce));
+
+  return { confirmed, inFlight, summary };
+}
+
+router.get('/:ballotId/mine', async (req, res) => {
+  const session = requireSession(req, res);
+  if (!session) return;
+  const ballot = await requireHydraBallot(req, res);
+  if (!ballot) return;
+
+  const packages = await VotePackage.find({
+    ballotId: ballot._id,
+    userId: session.userId,
+  }).lean();
+
   return res.json({
     status: 'success',
     ballotId: ballot._id.toString(),
-    confirmed,
-    inFlight,
-    summary,
+    ...buildMineView(packages),
   });
 });
 
@@ -792,28 +886,26 @@ async function currentPackageView(id) {
  *   - signingPayloadHex: utf8-hex of merkleRoot (what the voter signs)
  *   - signedPayloadJson: canonical JSON string for display
  *   - multisig: { required, eligibleKeys, outstandingKeys, satisfied } when nativeScript
+ *
+ * The merkleRoot is ALWAYS recomputed from the stored `signingPayload`. It is
+ * NEVER seeded from `pkg.voteHash`: voteHash is the blake2b_256 of the whole
+ * VoteEvidence bundle (a superset of the signing payload), so the two are
+ * never equal. Serving voteHash here handed multisig cosigners the evidence
+ * hash as their signing target — they then signed a message no verifier would
+ * accept, and the divergent witnesses were stored and submitted anyway.
+ * Exported so the invariant is unit-testable without a DB round-trip.
  */
-function enrichPackageView(pkg) {
+export function enrichPackageView(pkg) {
   if (!pkg) return null;
-  let merkleRoot = pkg.voteHash || null;
+  let merkleRoot = null;
   let signedPayloadJson = null;
   let signingPayloadHex = null;
   if (pkg.signingPayload) {
     signedPayloadJson = JSON.stringify(pkg.signingPayload);
-    // Recompute merkleRoot deterministically from the stored payload so
-    // it matches what the voter signs at /draft time. (pkg.voteHash also
-    // stamps the signing target after the broker computes it; both
-    // values should be identical.)
-    if (!merkleRoot) {
-      // Fallback only — happens if the package was created before
-      // voteHash was being stamped at draft time.
-      try {
-        merkleRoot = Buffer.from(
-          blake.blake2b(Buffer.from(signedPayloadJson, 'utf8'), null, 32),
-        ).toString('hex');
-      } catch {
-        /* ignore */
-      }
+    try {
+      merkleRoot = merkleRootHex(pkg.signingPayload);
+    } catch {
+      merkleRoot = null;
     }
     if (merkleRoot) {
       signingPayloadHex = Buffer.from(merkleRoot, 'utf8').toString('hex');
@@ -836,6 +928,45 @@ function enrichPackageView(pkg) {
   };
 }
 
+export class PackageInvariantError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'PackageInvariantError';
+    this.code = 'INVALID_PACKAGE';
+  }
+}
+
+/**
+ * The valid-package invariant the backend guarantees before it ever calls
+ * Hydra: every stored witness verifies against the package's OWN merkleRoot
+ * (recomputed from signingPayload), and the native script — or the single
+ * key — is satisfied by those verified signers. This is the backstop that
+ * keeps an unverifiable package off-chain even if a witness slipped past the
+ * /signature gate. Pure; exported for tests. Throws PackageInvariantError.
+ */
+export function assertValidPackage(pkg) {
+  if (!pkg?.signingPayload) throw new PackageInvariantError('package has no signingPayload');
+  const root = merkleRootHex(pkg.signingPayload);
+  const sigs = pkg.signatures || [];
+  if (sigs.length === 0) throw new PackageInvariantError('package has no signatures');
+  for (const w of sigs) {
+    let v;
+    try {
+      v = verifyWitnessAgainstMerkleRoot(w, root);
+    } catch (err) {
+      throw new PackageInvariantError(`witness ${w.key || '?'}: ${err.message}`);
+    }
+    if (!v.ok) throw new PackageInvariantError(`witness ${w.key || '?'}: ${v.reason}`);
+  }
+  if (pkg.nativeScript) {
+    const s = multisigStatus(pkg.nativeScript, sigs);
+    if (!s.satisfied) {
+      throw new PackageInvariantError('native-script threshold not satisfied by verified signers');
+    }
+  }
+  return true;
+}
+
 /**
  * Submit a ready VotePackage to the Hydra instance. On success stores the
  * confirmation artifacts on both the VotePackage and per-proposal Vote
@@ -844,6 +975,11 @@ function enrichPackageView(pkg) {
  */
 async function submitPackage(pkg, ballot) {
   try {
+    // Never hand Hydra a package we can't ourselves verify. Re-assert the
+    // valid-package invariant over the stored witnesses first; a failure
+    // drops through to the catch below (marked failed, nonce released).
+    assertValidPackage(pkg);
+
     pkg.status = 'broker-submitted';
     await pkg.save();
 

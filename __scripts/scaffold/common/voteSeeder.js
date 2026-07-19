@@ -21,6 +21,7 @@ import { turnoutForBallot, participates } from './votingPowerDistribution.js';
 import {
   computeBallotParticipation,
   computeProposalParticipation,
+  computeParticipatingAbstainers,
 } from '../../../helper/results/ballotParticipation.js';
 import {
   computeScaleStats,
@@ -443,9 +444,10 @@ async function seedProposal(ballot, proposal, voters, state) {
 
   const votersByUserId = new Map(voters.map((v) => [v.userId, v]));
   const tally = rollup(proposal, cast, votersByUserId, ballot);
-  const [ballotParticipation, proposalParticipation] = await Promise.all([
+  const [ballotParticipation, proposalParticipation, participatingAbstainers] = await Promise.all([
     computeBallotParticipation(ballot._id),
     computeProposalParticipation(proposal._id, ballot._id),
+    computeParticipatingAbstainers(proposal._id, ballot._id),
   ]);
 
   // Reconcile per-group totalVotes with distinct voter counts. The
@@ -467,6 +469,7 @@ async function seedProposal(ballot, proposal, voters, state) {
     resultsByGroup: tally.resultsByGroup,
     ballotParticipation,
     proposalParticipation,
+    participatingAbstainers,
     source: state === 'closed' ? 'final' : 'provisional',
     finalizedAt: state === 'closed' ? now : null,
   };

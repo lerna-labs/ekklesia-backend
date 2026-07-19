@@ -47,6 +47,7 @@ function apiToken() {
 
 /**
  * Fetches the DRep name for a given DRep ID from the Koios API.
+ * !! OUTDATED - HAS BEEN REPLACED BY EKKLESIA HELPERS - MARKED FOR CLEANUP
  *
  * @description
  * This function queries the Koios API to get DRep information, then fetches the metadata
@@ -122,6 +123,7 @@ export async function fetchDrepName(drepId) {
 
 /**
  * Validates that a DRep ID is registered with the Koios API (drep_info, registered=eq.true).
+ * !! OUTDATED - MARKED FOR CLEANUP
  *
  * @param {string} drepId - DRep ID in CIP129 Bech32 format (e.g. "drep1...")
  * @returns {Promise<boolean>} True if registered and found, false otherwise or on error

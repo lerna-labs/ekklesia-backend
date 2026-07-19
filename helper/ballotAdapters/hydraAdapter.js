@@ -5,9 +5,9 @@
 // the data is cheap to fetch; heavier details are fetched per-ballot on
 // `get()`.
 
-import mongoose from 'mongoose';
 import { Ballot } from '../../schema/Ballot.js';
 import { forBallot, HydraClientError } from '../hydraClient.js';
+import { resolveBallot } from '../idResolver.js';
 
 export const source = 'hydra';
 
@@ -28,15 +28,22 @@ export async function list({
 }
 
 export async function get(id) {
-  if (!mongoose.isValidObjectId(id)) return null;
-  const doc = await Ballot.findOne({ _id: id, ...ownershipMatch() }).lean();
-  if (!doc) return null;
+  const result = await resolveBallot(id, {
+    extraFilter: ownershipMatch(),
+  });
+  if (!result) return null;
+  if (result.ambiguous) return { __ambiguous: result.ambiguous };
+
+  const doc = result.doc;
+  const canonicalId = String(doc._id);
 
   const unified = toUnified(doc);
-  // Best-effort enrichment from the live Hydra instance. Failures are
-  // non-fatal — the row still renders from local metadata.
+  // Best-effort enrichment from the live Hydra instance — keyed on
+  // the canonical _id so the Hydra client always sees the resolved
+  // value, never the raw external id the caller passed in. Failures
+  // are non-fatal; the row still renders from local metadata.
   try {
-    const client = await forBallot(id);
+    const client = await forBallot(canonicalId);
     const [headInfo, ballot] = await Promise.all([
       client.headInfo().catch(() => null),
       client.ballot().catch(() => null),
@@ -48,7 +55,7 @@ export async function get(id) {
     };
   } catch (err) {
     if (!(err instanceof HydraClientError)) {
-      console.warn(`[hydraAdapter.get] enrichment failed for ${id}: ${err.message}`);
+      console.warn(`[hydraAdapter.get] enrichment failed for ${canonicalId}: ${err.message}`);
     }
   }
   return unified;
@@ -81,6 +88,7 @@ export function toUnified(doc) {
       prepareTxSubmittedAt: doc.prepareTxSubmittedAt ?? null,
     },
     provisionalResultsEnabled: doc.provisionalResultsEnabled ?? false,
+    resultsCalculationMode: doc.resultsCalculationMode ?? 'standard',
     proposalSource: doc.proposalSource?.moduleId ? doc.proposalSource : null,
     facets: Array.isArray(doc.facets) ? doc.facets : [],
     votingPowerSource: doc.votingPowerSource

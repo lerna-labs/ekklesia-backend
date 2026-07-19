@@ -38,16 +38,23 @@ router.get('/:proposalId', cacheControl(300), getProposal, async (req, res) => {
   const userId = voterToken.userId || false;
 
   // fetch total vote count
+  // `excludedAt: null` honors the operator soft-exclusion overlay on Vote
+  // so this results-page count agrees with the cron-written tally.
   const totalVotes = await Vote.countDocuments({
     proposalId,
     submittedVote: { $exists: true, $ne: null },
+    excludedAt: null,
   });
 
-  // fetch user vote
+  // fetch user vote — `excludedAt: null` hides the row from the voter
+  // themselves when an operator has flagged it as invalid. They see "no
+  // vote on file" on the offending ballot, consistent with the voter
+  // directory + results pages dropping the same row.
   if (userId) {
     const userVote = await Vote.findOne({
       proposalId,
       userId,
+      excludedAt: null,
     }).lean();
 
     // add user vote to proposal object
@@ -154,7 +161,7 @@ router.get('/:proposalId/results/grouped', getProposal, async (req, res) => {
 
   // Fallback: on-the-fly aggregation (mirror cron: unwind submittedVote, group by voterGroup + vote value)
   const byGroupAggregation = await Vote.aggregate([
-    { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
+    { $match: { proposalId, submittedVote: { $exists: true, $ne: null }, excludedAt: null } },
     {
       $lookup: {
         from: 'usercaches',
@@ -250,7 +257,7 @@ router.get('/:proposalId/results', getProposal, async (req, res) => {
 
   // vote aggregation (only submitted votes; group by first option in submittedVote array)
   const voteAggregation = await Vote.aggregate([
-    { $match: { proposalId, submittedVote: { $exists: true, $ne: null } } },
+    { $match: { proposalId, submittedVote: { $exists: true, $ne: null }, excludedAt: null } },
     {
       $lookup: {
         from: 'usercaches', // collection name in MongoDB

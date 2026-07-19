@@ -258,6 +258,30 @@ const ballotSchema = new Schema(
       type: Object,
       default: null,
     },
+    // Presentation hint for the frontend results UI. The backend does NOT
+    // decide pass/fail or apply a threshold — Ekklesia stays neutral on
+    // what the percentage means. This flag only signals which denominator
+    // convention the frontend should render with.
+    //
+    //   "standard"      — yes / expressed votes (the existing behavior;
+    //                     also the meaning when the field is omitted).
+    //   "participation" — yes / (ballot participation pool − abstainers on
+    //                     this proposal). Surfaces the "participated in the
+    //                     ballot but didn't vote on this proposal" cohort as
+    //                     a distinct fourth segment. The pool lives on every
+    //                     Result as `ballotParticipation`; the pool-member
+    //                     abstainers on a given proposal live on each Result
+    //                     as `participatingAbstainers`.
+    //
+    // Ballot-level (not per-proposal): every proposal under the ballot
+    // shares the same convention. Reversible — clearing back to "standard"
+    // reverts the UI. New modes (quadratic, approval, …) can extend the
+    // enum without breaking existing clients.
+    resultsCalculationMode: {
+      type: String,
+      enum: ['standard', 'participation'],
+      default: 'standard',
+    },
 
     // Authority for this ballot's per-voter voting power. See
     // .claude/plans/violet-clever-noether.md for the full design.
@@ -373,6 +397,16 @@ const ballotSchema = new Schema(
 ballotSchema.index({ title: 1 });
 ballotSchema.index({ voterType: 1 });
 ballotSchema.index({ source: 1 });
+// Dual-id resolution: lets every route lookup accept the upstream
+// proposals-module identifier in place of the canonical Mongo _id.
+// Sparse because legacy / scaffold rows leave proposalSource.* null.
+// Non-unique by deliberate decision — the same upstream id can
+// legitimately reappear on a new ballot over time; the resolver
+// returns 409 on collision rather than failing writes.
+ballotSchema.index(
+  { 'proposalSource.externalBallotId': 1 },
+  { sparse: true, name: 'externalBallotId_lookup' },
+);
 
 const Ballot = mongoose.model('Ballot', ballotSchema);
 export { Ballot };

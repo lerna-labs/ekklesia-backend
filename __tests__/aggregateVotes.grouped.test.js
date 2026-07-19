@@ -383,4 +383,117 @@ runDescribe('aggregateVotes grouped results', () => {
       votingPower: 12,
     });
   });
+
+  // Regression guard for the Vote.excludedAt soft-exclusion overlay.
+  // Every Vote query that contributes to a results page must filter
+  // `excludedAt: null`. This one test covers all five filter sites
+  // in `crons/10minAggregateVotes.js` (proposalIds discovery,
+  // recent-activity probe, two `Vote.aggregate` pipelines, the
+  // `Vote.find` for scale/ranked/likert/weighted) PLUS the participation
+  // helpers in `helper/results/ballotParticipation.js` — if any one of
+  // them drops the filter clause, an excluded voter resurfaces here.
+  //
+  // Setup mirrors the "two groups" happy-path test, then flips one
+  // drep voter (voter-drep-3 with power 30 voting Yes) to excluded.
+  // Expected deltas vs. the happy-path numbers:
+  //   overall Yes: count 5→4, power 63→33  (−1, −30)
+  //   drep   Yes:  count 3→2, power 60→30  (−1, −30)
+  //   drep totalVotes: 5→4
+  //   proposalParticipation.voterCount.drep: 5→4
+  //   ballotParticipation.voterCount.drep:   5→4
+  maybeTest('excluded vote: excludedAt drops the row from every derivation surface', async () => {
+    const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + ' excluded'));
+    const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
+
+    const drepVoters = [10, 20, 30, 40, 50].map((power, i) => ({
+      userId: `voter-drep-excl-${i + 1}`,
+      voterGroup: 'drep',
+      votingPower: power,
+    }));
+    const poolVoters = [1, 2, 3, 4, 5].map((power, i) => ({
+      userId: `voter-pool-excl-${i + 1}`,
+      voterGroup: 'pool',
+      votingPower: power,
+    }));
+    await UserCache.insertMany(makeUserCaches(ballot._id, [...drepVoters, ...poolVoters]));
+
+    const votes = [
+      { userId: 'voter-drep-excl-1', submittedVote: [1], vote: [1] },
+      { userId: 'voter-drep-excl-2', submittedVote: [1], vote: [1] },
+      // voter-drep-excl-3 (Yes, power 30) is operator-flagged below.
+      {
+        userId: 'voter-drep-excl-3',
+        submittedVote: [1],
+        vote: [1],
+        excludedAt: new Date(),
+        excludedReason: 'INELIGIBLE_VALIDATION_MISMATCH',
+        excludedBy: 'test-operator',
+      },
+      { userId: 'voter-drep-excl-4', submittedVote: [2], vote: [2] },
+      { userId: 'voter-drep-excl-5', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-excl-1', submittedVote: [1], vote: [1] },
+      { userId: 'voter-pool-excl-2', submittedVote: [1], vote: [1] },
+      { userId: 'voter-pool-excl-3', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-excl-4', submittedVote: [2], vote: [2] },
+      { userId: 'voter-pool-excl-5', submittedVote: [2], vote: [2] },
+    ].map((v) => ({
+      ballotId: ballot._id,
+      proposalId: proposal._id,
+      submittedAt: new Date(),
+      ...v,
+    }));
+    await Vote.insertMany(votes);
+
+    await aggregateVotes();
+
+    const result = await Result.findOne({ proposalId: proposal._id }).lean();
+    expect(result).not.toBeNull();
+
+    // Overall counts drop the excluded vote (was Yes/power 30).
+    const yes = result.results.find((r) => r.id === 1);
+    const no = result.results.find((r) => r.id === 2);
+    expect(yes).toEqual({ id: 1, label: 'Yes', count: 4, votingPower: 33 });
+    expect(no).toEqual({ id: 2, label: 'No', count: 5, votingPower: 102 });
+
+    // Per-group drep totals lose the excluded vote.
+    const drep = result.resultsByGroup.drep;
+    expect(drep.totalVotes).toBe(4);
+    expect(drep.results.find((r) => r.id === 1)).toEqual({
+      id: 1,
+      label: 'Yes',
+      count: 2,
+      votingPower: 30,
+    });
+    expect(drep.results.find((r) => r.id === 2)).toEqual({
+      id: 2,
+      label: 'No',
+      count: 2,
+      votingPower: 90,
+    });
+
+    // Pool group is unchanged from the happy-path numbers.
+    const pool = result.resultsByGroup.pool;
+    expect(pool.totalVotes).toBe(5);
+    expect(pool.results.find((r) => r.id === 1)).toEqual({
+      id: 1,
+      label: 'Yes',
+      count: 2,
+      votingPower: 3,
+    });
+    expect(pool.results.find((r) => r.id === 2)).toEqual({
+      id: 2,
+      label: 'No',
+      count: 3,
+      votingPower: 12,
+    });
+
+    // Participation denominators drop the excluded voter too —
+    // proves `helper/results/ballotParticipation.js` filters
+    // `excludedAt: null` in both the ballot- and proposal-scoped
+    // `Vote.distinct` calls.
+    expect(result.proposalParticipation.voterCount).toEqual({ drep: 4, pool: 5 });
+    expect(result.ballotParticipation.voterCount).toEqual({ drep: 4, pool: 5 });
+    expect(result.proposalParticipation.totalVotingPower.drep).toBe(120); // 150 − 30
+    expect(result.ballotParticipation.totalVotingPower.drep).toBe(120);
+  });
 });

@@ -184,7 +184,12 @@ export function getAddressType(bech32Address) {
   try {
     const { prefix, words } = bech32.decode(bech32Address, 256);
     const body_hex = Buffer.from(bech32.fromWords(words)).toString('hex');
-    let type, keyHash, hashType, keyPrefix, keyBody;
+    let type,
+      keyHash,
+      hashType,
+      keyPrefix,
+      keyBody,
+      networkId = null;
     if (body_hex.length > 56) {
       [keyPrefix, keyBody] = extractParts(body_hex);
       keyHash = keyBody;
@@ -238,6 +243,10 @@ export function getAddressType(bech32Address) {
             break;
         }
         type = 'stake';
+        // Shelley header byte encodes the network in its low nibble
+        // (0 = testnet, 1 = mainnet). drep / pool / calidus carry no
+        // network byte, so networkId stays null for those.
+        networkId = Number.parseInt(keyPrefix, 16) & 0x0f;
         break;
     }
     // Ensure no dangling whitespace that could cause downstream issues...
@@ -245,6 +254,7 @@ export function getAddressType(bech32Address) {
       type: type.trim(),
       keyHash: keyHash.trim(),
       hashType: hashType.trim(),
+      networkId,
     };
   } catch (error) {
     return {

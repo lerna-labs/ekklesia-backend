@@ -10,6 +10,7 @@ import { listUnified, getUnified } from '../../../../helper/ballotAdapters/index
 import { requireApiKey, requireScope } from '../../../../helper/apiKeyAuth.js';
 import { publicApiLimiter } from '../../../../helper/rateLimiters.js';
 import { escapeRegex } from '../../../../helper/escapeRegex.js';
+import { canonicalApiPath, setCanonicalLinkHeader } from '../../../../helper/idResolver.js';
 
 const router = Router();
 
@@ -74,7 +75,20 @@ router.get('/:id', async (req, res) => {
   try {
     const doc = await getUnified(req.params.id);
     if (!doc) return res.status(404).json({ status: 'error', message: 'Ballot not found' });
-    return res.json({ data: doc });
+    if (doc.__ambiguous) {
+      return res.status(409).json({
+        status: 'error',
+        code: 'ID_COLLISION',
+        message: 'External ballot id matches multiple ballots; use the canonical _id',
+        candidates: doc.__ambiguous,
+      });
+    }
+    const payload = { data: doc };
+    if (doc.id && doc.id !== req.params.id) {
+      payload.canonical = canonicalApiPath('ballot', doc.id);
+      setCanonicalLinkHeader(res, payload.canonical);
+    }
+    return res.json(payload);
   } catch (err) {
     console.error('[public/ballots/:id] error:', err);
     return res.status(500).json({ status: 'error', message: 'Server error' });

@@ -312,6 +312,7 @@ export async function certifyBallot({
           resultsByGroup: tally.resultsByGroup,
           ballotParticipation: tally.ballotParticipation,
           proposalParticipation: tally.proposalParticipation,
+          participatingAbstainers: tally.participatingAbstainers,
         },
       },
       { upsert: true },

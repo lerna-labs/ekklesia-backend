@@ -23,8 +23,10 @@
 
 import cbor from 'cbor';
 import blake from 'blakejs';
+import { PublicKey, Ed25519Signature } from '@emurgo/cardano-serialization-lib-nodejs';
 
 const cborDecode = cbor.decode || cbor.default?.decode;
+const cborEncode = cbor.encode || cbor.default?.encode;
 
 export class CoseWitnessError extends Error {
   constructor(message, { code } = {}) {
@@ -69,10 +71,13 @@ export function publicKeyFromCoseKey(coseKeyHex) {
 }
 
 /**
- * Extract the raw ed25519 signature from a COSE_Sign1 hex.
- * COSE_Sign1 is a 4-element CBOR array: [protected, unprotected, payload, signature].
+ * Decode a COSE_Sign1 hex into its four CBOR elements:
+ *   [ protected (bstr), unprotected (map), payload (bstr), signature (bstr) ]
+ * `protected` and `signature` and `payload` come back as Buffers; the
+ * unprotected header is normalized to a Map (the cbor lib returns either a
+ * Map or a plain object depending on the key types).
  */
-export function signatureFromCoseSign1(coseSign1Hex) {
+export function decodeCoseSign1(coseSign1Hex) {
   if (!coseSign1Hex) throw new CoseWitnessError('coseSign1Hex required', { code: 'BAD_INPUT' });
   let arr;
   try {
@@ -87,13 +92,118 @@ export function signatureFromCoseSign1(coseSign1Hex) {
       code: 'BAD_COSE_SIGN1',
     });
   }
-  const sig = arr[3];
-  if (!sig) {
+  let unprotected = arr[1];
+  if (!(unprotected instanceof Map) && unprotected && typeof unprotected === 'object') {
+    unprotected = new Map(Object.entries(unprotected));
+  }
+  if (!(unprotected instanceof Map)) unprotected = new Map();
+  return {
+    protectedHeader: arr[0] != null ? Buffer.from(arr[0]) : Buffer.alloc(0),
+    unprotected,
+    payload: arr[2] != null ? Buffer.from(arr[2]) : Buffer.alloc(0),
+    signature: arr[3],
+  };
+}
+
+/**
+ * Extract the raw ed25519 signature from a COSE_Sign1 hex.
+ */
+export function signatureFromCoseSign1(coseSign1Hex) {
+  const { signature } = decodeCoseSign1(coseSign1Hex);
+  if (!signature) {
     throw new CoseWitnessError('COSE_Sign1 signature element is empty', {
       code: 'BAD_COSE_SIGN1',
     });
   }
-  return Buffer.from(sig).toString('hex');
+  return Buffer.from(signature).toString('hex');
+}
+
+/**
+ * Extract the signed payload (element 3) from a COSE_Sign1 hex as a Buffer.
+ * For an Ekklesia vote this is the UTF-8 bytes of the 64-char merkleRoot hex
+ * string the voter signs (CIP-8 `hashed:false`), or its blake2b_224 digest
+ * when a wallet signs with the `hashed:true` header.
+ */
+export function payloadFromCoseSign1(coseSign1Hex) {
+  return decodeCoseSign1(coseSign1Hex).payload;
+}
+
+/**
+ * Reconstruct the COSE Sig_structure that an Ed25519 key actually signs and
+ * verify the witness's signature over it. Mirrors the CIP-8/CIP-30
+ * construction used by @lerna-labs/ekklesia-helpers `verifySignature`:
+ *
+ *   Sig_structure = [ "Signature1", protected_header_bytes, external_aad(""), payload ]
+ *
+ * @param {{coseSign1Hex:string, coseKeyHex?:string, publicKey?:string}} witness
+ * @returns {boolean} true iff the signature is a valid Ed25519 signature over
+ *   the COSE_Sign1's own payload by the witness's public key.
+ */
+export function coseSignatureValid(witness) {
+  if (!witness?.coseSign1Hex) {
+    throw new CoseWitnessError('witness.coseSign1Hex required', { code: 'BAD_INPUT' });
+  }
+  const publicKeyHex =
+    witness.publicKey || (witness.coseKeyHex ? publicKeyFromCoseKey(witness.coseKeyHex) : null);
+  if (!publicKeyHex) {
+    throw new CoseWitnessError('witness.publicKey or coseKeyHex required', { code: 'BAD_INPUT' });
+  }
+  const { protectedHeader, payload, signature } = decodeCoseSign1(witness.coseSign1Hex);
+  if (!signature) {
+    throw new CoseWitnessError('COSE_Sign1 signature element is empty', { code: 'BAD_COSE_SIGN1' });
+  }
+  const sigStructure = ['Signature1', protectedHeader, Buffer.alloc(0), payload];
+  const signedBytes = cborEncode(sigStructure);
+  let pub;
+  let sig;
+  try {
+    pub = PublicKey.from_hex(publicKeyHex);
+    sig = Ed25519Signature.from_hex(Buffer.from(signature).toString('hex'));
+  } catch (err) {
+    throw new CoseWitnessError(`invalid COSE key/signature encoding: ${err.message}`, {
+      code: 'BAD_COSE_SIGN1',
+    });
+  }
+  return pub.verify(Uint8Array.from(signedBytes), sig);
+}
+
+/**
+ * Full witness verification against a known merkleRoot: confirm the witness
+ * signed THIS vote's merkleRoot and nothing else.
+ *
+ * Two independent checks, both required (this is the gap the audit flagged —
+ * the middleware counted witnesses on key membership alone, and the broker
+ * historically served the *evidence voteHash* as the signing target, so
+ * cosigners signed the wrong message):
+ *
+ *   1. message_matches — the COSE_Sign1 payload equals the bytes the voter is
+ *      supposed to sign: the UTF-8 bytes of the `merkleRoot` hex string
+ *      (or, for a `hashed:true` witness, their blake2b_224 digest).
+ *   2. validates       — the Ed25519 signature is cryptographically valid over
+ *      the COSE Sig_structure.
+ *
+ * @param {object} witness      normalized witness ({ coseSign1Hex, coseKeyHex, publicKey, ... })
+ * @param {string} merkleRootHex the 64-char hex string the voter signs
+ * @returns {{ ok: boolean, reason: string|null }}
+ */
+export function verifyWitnessAgainstMerkleRoot(witness, merkleRootHex) {
+  if (!merkleRootHex || typeof merkleRootHex !== 'string') {
+    throw new CoseWitnessError('merkleRootHex required', { code: 'BAD_INPUT' });
+  }
+  const decoded = decodeCoseSign1(witness.coseSign1Hex);
+  const expected = Buffer.from(merkleRootHex, 'utf8');
+  const hashed = decoded.unprotected.get('hashed') === true;
+  const expectedSigned = hashed ? Buffer.from(blake.blake2b(expected, null, 28)) : expected;
+  if (!decoded.payload.equals(expectedSigned)) {
+    return {
+      ok: false,
+      reason: "SIGNATURE_MESSAGE_MISMATCH: COSE payload is not this vote's merkleRoot",
+    };
+  }
+  if (!coseSignatureValid(witness)) {
+    return { ok: false, reason: 'SIGNATURE_INVALID: Ed25519 signature does not verify' };
+  }
+  return { ok: true, reason: null };
 }
 
 /**

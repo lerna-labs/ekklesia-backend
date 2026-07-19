@@ -250,6 +250,19 @@ const proposalSchema = new Schema(
 // Indexes for faster queries
 proposalSchema.index({ ballotId: 1 });
 proposalSchema.index({ title: 1 });
+// Dual-id resolution: lets every proposal route accept the upstream
+// proposals-module identifier in place of the canonical Mongo _id.
+// Sparse — only set on imported proposals. The compound index covers
+// the scoped path (/ballot/:bid/.../:pid) so the resolver doesn't
+// have to scan all proposals when a parent ballot is in scope.
+proposalSchema.index(
+  { 'externalProposal.id': 1 },
+  { sparse: true, name: 'externalProposalId_lookup' },
+);
+proposalSchema.index(
+  { ballotId: 1, 'externalProposal.id': 1 },
+  { sparse: true, name: 'ballot_externalProposalId_lookup' },
+);
 
 const Proposal = mongoose.model('Proposal', proposalSchema);
 export { Proposal };

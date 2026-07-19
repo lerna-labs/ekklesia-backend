@@ -218,6 +218,56 @@ runDescribe('VotePackage lifecycle (mongo)', () => {
     expect(nonce2).toBe(nonce1);
   });
 
+  // --------------------------------------------------------------
+  // Floor: reserveNext recovers when UserCache is wiped after a
+  // successful submission. This is the regression that produced the
+  // production "draft returns 1, Hydra expects N+1" reports.
+  // --------------------------------------------------------------
+
+  maybe(
+    'reserveNext floors at max(confirmed package nonce) + 1 when UserCache is wiped',
+    async () => {
+      // Seed the history Hydra would see: three earlier votes, all
+      // hydra-confirmed, top nonce = 3.
+      for (const n of [1, 2, 3]) {
+        await VotePackage.create({
+          ballotId: BALLOT_ID,
+          userId: USER_ID,
+          signingPayload: { ballotId: BALLOT_ID.toString(), nonce: n, votes: [] },
+          nonce: n,
+          status: 'hydra-confirmed',
+          confirmedAt: new Date(),
+          lastActivityAt: new Date(),
+        });
+      }
+      // Simulate the operator action that introduced the bug — wipe the
+      // UserCache row outright. Pre-fix reserveNext would now return 1.
+      await UserCache.deleteMany({ userId: USER_ID, ballotId: BALLOT_ID });
+      expect(await nonceManager.peekCurrent({ userId: USER_ID, ballotId: BALLOT_ID })).toBeNull();
+
+      const reserved = await nonceManager.reserveNext({ userId: USER_ID, ballotId: BALLOT_ID });
+      expect(reserved).toBe(4); // 3 + 1, not 1
+      expect(await nonceManager.peekCurrent({ userId: USER_ID, ballotId: BALLOT_ID })).toBe(4);
+    },
+  );
+
+  maybe('reserveNext floor ignores non-confirmed packages', async () => {
+    // A failed/abandoned package's nonce should NOT pull the floor up —
+    // those reservations are explicitly rolled back by release.
+    await VotePackage.create({
+      ballotId: BALLOT_ID,
+      userId: USER_ID,
+      signingPayload: { ballotId: BALLOT_ID.toString(), nonce: 5, votes: [] },
+      nonce: 5,
+      status: 'failed',
+      lastActivityAt: new Date(),
+    });
+    await UserCache.deleteMany({ userId: USER_ID, ballotId: BALLOT_ID });
+
+    const reserved = await nonceManager.reserveNext({ userId: USER_ID, ballotId: BALLOT_ID });
+    expect(reserved).toBe(1); // floor stays 0 because nothing confirmed
+  });
+
   maybe('release scoped correctly across ballots (no cross-ballot bleed)', async () => {
     // Two ballots for the same voter; abandoning one must not move
     // the nonce on the other.

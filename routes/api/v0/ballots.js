@@ -733,7 +733,7 @@ router.get('/:ballotId/proposals/', aggregationLimiter, getBallot, async (req, r
       },
       // Only include user-specific fields when a user is logged in
       ...(userId && {
-        voterVote: '$userVote.vote',
+        voterVote: { $ifNull: ['$userVote.submittedVote', '$userVote.vote'] },
         hasVoted: 1,
       }),
     },

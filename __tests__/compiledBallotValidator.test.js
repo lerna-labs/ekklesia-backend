@@ -64,6 +64,26 @@ describe('compiledBallot.validateCompiledBallot', () => {
     expect(r).toEqual({ ok: true, errors: [] });
   });
 
+  test('accepts a valid resultsCalculationMode', () => {
+    const p = baseValid();
+    p.ballot.resultsCalculationMode = 'participation';
+    expect(validateCompiledBallot(p)).toEqual({ ok: true, errors: [] });
+  });
+
+  test('omitting resultsCalculationMode is fine (defaults later to standard)', () => {
+    const p = baseValid();
+    delete p.ballot.resultsCalculationMode;
+    expect(validateCompiledBallot(p).ok).toBe(true);
+  });
+
+  test('rejects an unknown resultsCalculationMode', () => {
+    const p = baseValid();
+    p.ballot.resultsCalculationMode = 'quadratic';
+    const r = validateCompiledBallot(p);
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.path === 'ballot.resultsCalculationMode')).toBe(true);
+  });
+
   test('rejects wrong schemaVersion', () => {
     const p = baseValid();
     p.schemaVersion = '2';
