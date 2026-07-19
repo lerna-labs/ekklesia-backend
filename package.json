@@ -9,7 +9,11 @@
     "backup:prod": "NODE_ENV=production node backup/backup.js",
     "test": "node --experimental-vm-modules ./node_modules/.bin/jest",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "changeset:tag": "node scripts/tag-release.mjs",
+    "changeset:snapshot": "changeset version --snapshot rc"
   },
   "type": "module",
   "keywords": [],
@@ -45,6 +49,7 @@
   "devDependencies": {
     "@babel/core": "^7.28.6",
     "@babel/preset-env": "^7.28.6",
+    "@changesets/cli": "^2.31.1",
     "@eslint/compat": "^2.1.0",
     "@eslint/js": "^10.0.1",
     "babel-jest": "^30.2.0",
