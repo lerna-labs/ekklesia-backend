@@ -47,7 +47,7 @@
     "merkletreejs": "^0.6.0",
     "mongoose": "^9.3.0",
     "satori": "^0.12.2",
-    "validator": "^13.15.26"
+    "validator": "^13.15.35"
   },
   "devDependencies": {
     "@babel/core": "^7.28.6",
