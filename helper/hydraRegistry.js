@@ -18,8 +18,15 @@
 //                                  → HYDRA_API_KEY_HTTP_10_0_0_5_7001
 //
 // There is intentionally no global default API key — every endpoint must
-// have its own variable. A missing var fails fast with NO_API_KEY rather
-// than silently authenticating against the wrong head.
+// have its own variable. That variable set doubles as the allowlist of
+// configured Hydra instances: every endpoint this module hands back is
+// validated and canonicalized (see `allowedOrigin` below), then confirmed
+// to have a matching HYDRA_API_KEY_<SLUG> before it is ever used to build
+// an outbound URL. A caller-supplied endpoint (e.g. the admin /prepare
+// route, which lets an admin pick the instance on first prepare) is only
+// ever used if the operator has already provisioned a key for it — a
+// missing or non-matching var fails fast with ENDPOINT_NOT_ALLOWED rather
+// than reaching an unconfigured host.
 
 import { Ballot } from '../schema/Ballot.js';
 
@@ -42,6 +49,56 @@ function resolveApiKey(endpoint) {
   return process.env[envKeyForEndpoint(endpoint)] || null;
 }
 
+const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
+
+/**
+ * Reduce a caller-supplied endpoint down to a validated origin
+ * (`<protocol>//<host>`, no userinfo, path, query or fragment) and confirm
+ * it is one of the operator's configured Hydra instances, before anything
+ * derived from it is used to build an outbound URL.
+ *
+ * The origin is canonicalized with `new URL()` rather than passed through
+ * verbatim, so the value that later reaches `hydraClient` can never carry
+ * an unexpected scheme, host, port, or path — only the exact origin an
+ * operator has already provisioned an API key for.
+ *
+ * @param {string} rawEndpoint
+ * @returns {string} the canonical, allowlisted origin
+ */
+function allowedOrigin(rawEndpoint) {
+  let parsed;
+  try {
+    parsed = new URL(rawEndpoint);
+  } catch {
+    throw new HydraRegistryError(`Invalid Hydra endpoint: ${rawEndpoint}`, {
+      code: 'INVALID_ENDPOINT',
+    });
+  }
+
+  const isRootPath = parsed.pathname === '' || parsed.pathname === '/';
+  if (
+    !ALLOWED_PROTOCOLS.has(parsed.protocol) ||
+    parsed.username ||
+    parsed.password ||
+    !isRootPath ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new HydraRegistryError(`Invalid Hydra endpoint: ${rawEndpoint}`, {
+      code: 'INVALID_ENDPOINT',
+    });
+  }
+
+  const origin = `${parsed.protocol}//${parsed.host}`;
+  if (!resolveApiKey(origin)) {
+    throw new HydraRegistryError(
+      `Hydra endpoint ${origin} is not a configured instance — set ${envKeyForEndpoint(origin)} in env`,
+      { code: 'ENDPOINT_NOT_ALLOWED' },
+    );
+  }
+  return origin;
+}
+
 /**
  * Resolve the Hydra endpoint + API key for a given ballot.
  * @param {string} ballotId
@@ -52,35 +109,28 @@ export async function resolveByBallotId(ballotId) {
   if (!ballot)
     throw new HydraRegistryError(`Ballot ${ballotId} not found`, { code: 'BALLOT_NOT_FOUND' });
 
-  const endpoint = ballot.hydraEndpoint || process.env.HYDRA_DEFAULT_ENDPOINT;
-  if (!endpoint) {
+  const rawEndpoint = ballot.hydraEndpoint || process.env.HYDRA_DEFAULT_ENDPOINT;
+  if (!rawEndpoint) {
     throw new HydraRegistryError(
       `Ballot ${ballotId} has no hydraEndpoint and HYDRA_DEFAULT_ENDPOINT is not set`,
       { code: 'NO_ENDPOINT' },
     );
   }
+  const endpoint = allowedOrigin(rawEndpoint);
   const apiKey = resolveApiKey(endpoint);
-  if (!apiKey) {
-    throw new HydraRegistryError(
-      `No API key configured for endpoint ${endpoint} — set ${envKeyForEndpoint(endpoint)} in env`,
-      { code: 'NO_API_KEY' },
-    );
-  }
   return { endpoint, apiKey, ballot };
 }
 
 /**
  * Resolve an explicit endpoint (used during /prepare before the ballot has
- * been associated with an instance).
+ * been associated with an instance). `endpoint` may be caller-supplied
+ * (an admin picking the Hydra instance on first prepare), so it is
+ * validated against the configured instance allowlist before use — see
+ * `allowedOrigin`.
  */
 export function resolveByEndpoint(endpoint) {
   if (!endpoint) throw new HydraRegistryError('endpoint required', { code: 'NO_ENDPOINT' });
-  const apiKey = resolveApiKey(endpoint);
-  if (!apiKey) {
-    throw new HydraRegistryError(
-      `No API key configured for endpoint ${endpoint} — set ${envKeyForEndpoint(endpoint)} in env`,
-      { code: 'NO_API_KEY' },
-    );
-  }
-  return { endpoint, apiKey };
+  const origin = allowedOrigin(endpoint);
+  const apiKey = resolveApiKey(origin);
+  return { endpoint: origin, apiKey };
 }
