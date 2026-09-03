@@ -23,6 +23,14 @@ router.get('/', async (req, res) => {
   const filter = {};
 
   if (search) {
+    // Express parses a repeated query key (?search=a&search=b) as an
+    // array; reject that shape outright rather than letting the string
+    // methods below run against it.
+    if (typeof search !== 'string') {
+      return res
+        .status(400)
+        .json({ status: 'error', message: 'search must be a single string value' });
+    }
     if (!validator.isLength(search, { min: 1, max: 100 })) {
       return res.status(400).json({ status: 'error', message: 'search 1-100 chars' });
     }

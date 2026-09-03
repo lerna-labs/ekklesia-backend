@@ -37,7 +37,7 @@ const API_URL = process.env.API_URL;
  *   OR
  *   - status: "msg"
  *   - message: "No voters found" (if no voters match criteria)
- * @returns {Object} 400 - Error if query parameters are invalid (page, limit, sort, or direction)
+ * @returns {Object} 400 - Error if query parameters are invalid (page, limit, sort, direction, or search)
  * @returns {Object} 500 - Server error while fetching voter list
  */
 router.get('/', aggregationLimiter, cacheControl(300), async (req, res) => {
@@ -82,6 +82,16 @@ router.get('/', aggregationLimiter, cacheControl(300), async (req, res) => {
     return res.status(400).json({
       status: 'error',
       message: 'Invalid direction parameter, must be asc or desc',
+    });
+  }
+
+  // Express parses a repeated query key (?search=a&search=b) as an
+  // array; reject that shape outright rather than letting the string
+  // methods below run against it.
+  if (typeof search !== 'string') {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid search parameter, must be a string',
     });
   }
 
