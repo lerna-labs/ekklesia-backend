@@ -4,6 +4,11 @@
 // env so secrets stay out of Mongo.
 //
 // Env:
+//   HYDRA_ALLOWED_ENDPOINTS   — comma-separated list of the Hydra instance
+//                               origins this deployment may call. This is
+//                               the allowlist. When unset it falls back to
+//                               HYDRA_DEFAULT_ENDPOINT alone, which covers
+//                               a single-instance deployment.
 //   HYDRA_DEFAULT_ENDPOINT    — fallback endpoint for ballots without one
 //                               stamped yet (admin /prepare uses this on
 //                               first call, before the ballot has been
@@ -18,15 +23,18 @@
 //                                  → HYDRA_API_KEY_HTTP_10_0_0_5_7001
 //
 // There is intentionally no global default API key — every endpoint must
-// have its own variable. That variable set doubles as the allowlist of
-// configured Hydra instances: every endpoint this module hands back is
-// validated and canonicalized (see `allowedOrigin` below), then confirmed
-// to have a matching HYDRA_API_KEY_<SLUG> before it is ever used to build
-// an outbound URL. A caller-supplied endpoint (e.g. the admin /prepare
-// route, which lets an admin pick the instance on first prepare) is only
-// ever used if the operator has already provisioned a key for it — a
-// missing or non-matching var fails fast with ENDPOINT_NOT_ALLOWED rather
-// than reaching an unconfigured host.
+// have its own variable.
+//
+// A caller-supplied endpoint (e.g. the admin /prepare route, which lets an
+// admin pick the instance on first prepare) never reaches an outbound URL.
+// It is canonicalized and used to look up a match in HYDRA_ALLOWED_ENDPOINTS,
+// and it is the configured entry that is handed back, not the caller's own
+// string. Selecting from configuration rather than validating and re-emitting
+// input means the value that was checked and the value that is used are the
+// same object, so no later difference in canonicalization can open a gap
+// between them. A miss fails fast with ENDPOINT_NOT_ALLOWED rather than
+// reaching an unconfigured host, and an allowlisted endpoint with no
+// provisioned key fails with ENDPOINT_NOT_CONFIGURED.
 
 import { Ballot } from '../schema/Ballot.js';
 
@@ -52,27 +60,25 @@ function resolveApiKey(endpoint) {
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
 
 /**
- * Reduce a caller-supplied endpoint down to a validated origin
- * (`<protocol>//<host>`, no userinfo, path, query or fragment) and confirm
- * it is one of the operator's configured Hydra instances, before anything
- * derived from it is used to build an outbound URL.
+ * Reduce an endpoint to `<protocol>//<host>`, rejecting any value carrying
+ * userinfo, a path, a query, a fragment, or a scheme outside http(s).
  *
- * The origin is canonicalized with `new URL()` rather than passed through
- * verbatim, so the value that later reaches `hydraClient` can never carry
- * an unexpected scheme, host, port, or path — only the exact origin an
- * operator has already provisioned an API key for.
+ * The result is used only to compare a caller's value against the configured
+ * allowlist, and to build that allowlist out of operator configuration. It is
+ * never returned to a caller. A string reassembled from request input is not
+ * the string that should reach an outbound URL, however carefully it was
+ * checked on the way through.
  *
  * @param {string} rawEndpoint
- * @returns {string} the canonical, allowlisted origin
+ * @param {string} code error code to raise when the value will not canonicalize
+ * @returns {string} the canonical `<protocol>//<host>`
  */
-function allowedOrigin(rawEndpoint) {
+function canonicalOrigin(rawEndpoint, code) {
   let parsed;
   try {
     parsed = new URL(rawEndpoint);
   } catch {
-    throw new HydraRegistryError(`Invalid Hydra endpoint: ${rawEndpoint}`, {
-      code: 'INVALID_ENDPOINT',
-    });
+    throw new HydraRegistryError(`Invalid Hydra endpoint: ${rawEndpoint}`, { code });
   }
 
   const isRootPath = parsed.pathname === '' || parsed.pathname === '/';
@@ -84,16 +90,63 @@ function allowedOrigin(rawEndpoint) {
     parsed.search ||
     parsed.hash
   ) {
-    throw new HydraRegistryError(`Invalid Hydra endpoint: ${rawEndpoint}`, {
-      code: 'INVALID_ENDPOINT',
-    });
+    throw new HydraRegistryError(`Invalid Hydra endpoint: ${rawEndpoint}`, { code });
   }
 
-  const origin = `${parsed.protocol}//${parsed.host}`;
+  return `${parsed.protocol}//${parsed.host}`;
+}
+
+/**
+ * The operator's configured Hydra instances, canonicalized.
+ *
+ * Read on every call rather than cached at import, so a process that reloads
+ * its environment does not keep serving an allowlist the operator has already
+ * changed.
+ *
+ * @returns {string[]} canonical origins, in configuration order
+ */
+function configuredOrigins() {
+  const raw = process.env.HYDRA_ALLOWED_ENDPOINTS || process.env.HYDRA_DEFAULT_ENDPOINT || '';
+  const origins = [];
+  for (const entry of raw.split(',')) {
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+    const origin = canonicalOrigin(trimmed, 'INVALID_ALLOWLIST_ENTRY');
+    if (!origins.includes(origin)) origins.push(origin);
+  }
+  return origins;
+}
+
+/**
+ * Resolve a caller-supplied endpoint to one of the operator's configured
+ * Hydra instances.
+ *
+ * What comes back is the entry read out of configuration, not the caller's
+ * value re-emitted after a check. The caller's value only selects which
+ * configured instance was meant. Nothing derived from a request reaches the
+ * outbound URL, so a canonicalization difference between the check and the
+ * later use cannot open a gap between them.
+ *
+ * @param {string} rawEndpoint
+ * @returns {string} the configured origin this endpoint selects
+ */
+function allowedOrigin(rawEndpoint) {
+  const candidate = canonicalOrigin(rawEndpoint, 'INVALID_ENDPOINT');
+  const allowed = configuredOrigins();
+
+  const index = allowed.indexOf(candidate);
+  if (index === -1) {
+    throw new HydraRegistryError(
+      `Hydra endpoint ${candidate} is not a configured instance. Add it to HYDRA_ALLOWED_ENDPOINTS.`,
+      { code: 'ENDPOINT_NOT_ALLOWED' },
+    );
+  }
+
+  const origin = allowed[index];
   if (!resolveApiKey(origin)) {
     throw new HydraRegistryError(
-      `Hydra endpoint ${origin} is not a configured instance — set ${envKeyForEndpoint(origin)} in env`,
-      { code: 'ENDPOINT_NOT_ALLOWED' },
+      `Hydra endpoint ${origin} has no API key. Set ${envKeyForEndpoint(origin)} in env.`,
+      { code: 'ENDPOINT_NOT_CONFIGURED' },
     );
   }
   return origin;
