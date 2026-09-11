@@ -1,7 +1,7 @@
 /**
  * Frontend build version, as reported by the public health endpoint.
  *
- * This backend does not always ship co-located with the frontend build —
+ * This backend does not always ship co-located with the frontend build:
  * the frontend is commonly its own container or served from a CDN, so
  * `public/version.json` legitimately does not exist under this app. That
  * is the normal case, not a failure, so it is not logged. A file that is
@@ -17,11 +17,15 @@ import { dirname, join } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const versionFrontendPath = join(__dirname, '../public/version.json');
+const defaultVersionFrontendPath = join(__dirname, '../public/version.json');
 
 let frontendVersionCache = null;
 
-export async function loadFrontendVersion() {
+/**
+ * @param {string} [versionFrontendPath] override for the file to read,
+ *   used by tests so they never touch this repo's real `public/` directory
+ */
+export async function loadFrontendVersion(versionFrontendPath = defaultVersionFrontendPath) {
   if (frontendVersionCache !== null) return frontendVersionCache;
 
   try {
