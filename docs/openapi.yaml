@@ -22,8 +22,8 @@ info:
     ## Authentication
 
     - Voter sessions: JWT via HTTP-only cookie or Authorization header.
-    - Admin (`/api/v1/admin/*`): same JWT, plus `role === "admin"` claim
-      or userId listed in `ADMIN_USER_IDS` env.
+    - Admin (`/api/v1/admin/*`): same JWT, plus userId listed in the
+      `ADMIN_USER_IDS` env.
     - Public (`/api/v1/public/*`): API key via `Authorization: Bearer <key>`
       or `x-api-key`. Keys are scoped (`read:ballots`, `read:results`) and
       rate-limited per key.
