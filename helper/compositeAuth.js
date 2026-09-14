@@ -30,7 +30,7 @@ export function adminOrScope(scope) {
   return async (req, res, next) => {
     // 1. Admin JWT path.
     const token = verifyToken(req);
-    if (token.status === 'success' && userIsAdmin({ userId: token.userId, role: token.role })) {
+    if (token.status === 'success' && userIsAdmin({ userId: token.userId })) {
       req.auth = { kind: 'admin', userId: token.userId };
       return next();
     }

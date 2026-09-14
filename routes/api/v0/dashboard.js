@@ -813,7 +813,20 @@ router.put('/:ballotId/checkout/multisig', isAuthenticated, getBallot, async (re
     scriptAddress,
     transaction.multiSig,
   );
-  if (!multisigComplete) {
+  if (multisigComplete?.error) {
+    console.error(
+      'validateScriptSignatures failed',
+      ballotId.toString(),
+      userId,
+      scriptAddress,
+      multisigComplete.error,
+    );
+    return res.status(502).json({
+      status: 'error',
+      message: 'Unable to verify multisig signatures, try again shortly',
+    });
+  }
+  if (multisigComplete !== true) {
     console.log('Multisig not complete', ballotId.toString(), userId, scriptAddress);
 
     const transactionUpdate = await Transaction.findOneAndUpdate(
