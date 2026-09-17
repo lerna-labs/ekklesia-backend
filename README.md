@@ -1,5 +1,43 @@
 # Ekklesia Voting Backend
 
+## Getting started
+
+Prerequisites: Node.js 20 or later and a running MongoDB instance.
+
+### Install
+
+`@lerna-labs/ekklesia-helpers`, `@lerna-labs/hydra-sdk`, and
+`@lerna-labs/hydra-proof` are private packages on GitHub Packages — export a
+token with `read:packages` scope before installing:
+
+```bash
+export GITHUB_TOKEN="$(gh auth token)"
+npm install
+```
+
+### Configure
+
+Copy `.env.example` to `.env.development` and fill in the values for your
+environment — MongoDB connection, JWT secret, Hydra and Koios endpoints.
+`.env.local.example` is a template for host-specific overrides that survive
+container restarts; it loads after `.env.development` and takes precedence.
+
+### Run
+
+```bash
+npm run start:dev    # nodemon, loads .env.development
+npm run start:prod   # loads .env.production
+```
+
+### Test
+
+```bash
+npm test
+```
+
+The suite needs a reachable MongoDB. Set `MONGODB_URI_TEST` (or
+`MONGODB_URI` in `.env.development`) to point at one.
+
 ## OpenGraph cards (per-ballot / per-proposal social previews)
 
 The backend can inject route-specific `<title>` / `og:*` / `twitter:*`
