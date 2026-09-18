@@ -95,11 +95,9 @@ if (!adminId) {
   console.error('No admin userId — pass --jwtUserId <bech32> or set ADMIN_USER_IDS in .env.local');
   process.exit(1);
 }
-const adminJwt = jwt.sign(
-  { userId: adminId, signType: 'stake', multiSig: false, role: 'admin' },
-  secret,
-  { expiresIn: process.env.JWT_MAX_AGE || '1h' },
-);
+const adminJwt = jwt.sign({ userId: adminId, signType: 'stake', multiSig: false }, secret, {
+  expiresIn: process.env.JWT_MAX_AGE || '1h',
+});
 
 console.log(`[startBallot] POST ${backend}/api/v1/admin/ballots/${ballotId}/start`);
 // /start can take up to 12 min server-side (Hydra waitForHeadOpen 10 min
