@@ -17,7 +17,7 @@ router.get('/', (req, res) => {
   if (result.status !== 'success') {
     return res.status(result.code || 401).json({ status: 'error', message: result.message });
   }
-  if (!userIsAdmin({ userId: result.userId, role: result.role })) {
+  if (!userIsAdmin({ userId: result.userId })) {
     // 404 (not 403) so an attacker can't differentiate "no admin row
     // for this userId" from "admin endpoints don't exist here".
     return res.status(404).json({ status: 'error', message: 'Not found' });

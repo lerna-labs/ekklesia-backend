@@ -45,13 +45,13 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "merkletreejs": "^0.6.0",
-    "mongoose": "^9.3.0",
+    "mongoose": "^9.9.4",
     "satori": "^0.12.2",
     "validator": "^13.15.26"
   },
   "devDependencies": {
-    "@babel/core": "^7.28.6",
-    "@babel/preset-env": "^7.29.2",
+    "@babel/core": "^7.29.7",
+    "@babel/preset-env": "^7.29.7",
     "@changesets/cli": "^2.31.1",
     "@eslint/compat": "^2.1.0",
     "@eslint/js": "^10.0.1",
@@ -62,5 +62,12 @@
     "jest": "^30.3.0",
     "nodemon": "^3.1.9",
     "prettier": "^3.9.5"
+  },
+  "overrides": {
+    "undici": "^6.28.0",
+    "ip-address": "^10.3.1",
+    "picomatch@2": "^2.3.2",
+    "picomatch@4": "^4.0.4",
+    "hyperid": "^4.0.0"
   }
 }

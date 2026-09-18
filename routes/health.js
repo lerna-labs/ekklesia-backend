@@ -4,6 +4,7 @@ const router = Router();
 
 // helper
 import { isDatabaseConnected } from '../helper/dbManager.js';
+import { loadFrontendVersion } from '../helper/frontendVersion.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs/promises';
@@ -20,7 +21,6 @@ import fs from 'fs/promises';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const packageServerPath = join(__dirname, '../package.json');
-const versionFrontendPath = join(__dirname, '../public/version.json');
 
 /**
  * @route GET /api/v0/status
@@ -59,14 +59,7 @@ router.get('/', async (req, res) => {
     console.error(`Failed to read package.json: ${error.message}`);
   }
 
-  let frontendVersion = 'unknown';
-  try {
-    const packageData = await fs.readFile(versionFrontendPath, 'utf8');
-    const packageJson = JSON.parse(packageData);
-    frontendVersion = packageJson || 'unknown';
-  } catch (error) {
-    console.error(`Failed to read frontend/package.json: ${error.message}`);
-  }
+  const frontendVersion = await loadFrontendVersion();
 
   return res.json({
     status: 'operational',
