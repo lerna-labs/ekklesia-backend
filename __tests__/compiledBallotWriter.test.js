@@ -211,4 +211,42 @@ describeFn('compiledBallot.writer (mongo)', () => {
       }),
     ).rejects.toThrow(CompiledBallotWriteError);
   });
+
+  // Regression coverage for CodeQL alerts #7 and #8 (js/sql-injection):
+  // moduleId/externalBallotId feed a Mongo filter directly. An operator
+  // object here (instead of a string) must never reach Ballot.findOne /
+  // findOneAndUpdate.
+  test('rejects an operator object as source.moduleId', async () => {
+    const payload = basePayload(`${EXT_ID_PREFIX}inject-moduleid`);
+    payload.source.moduleId = { $ne: null };
+
+    await expect(
+      writeCompiledBallot(payload, { method: 'upload', importedBy: 'admin-test-3' }),
+    ).rejects.toThrow(CompiledBallotWriteError);
+
+    const matches = await Ballot.find({
+      'proposalSource.externalBallotId': `${EXT_ID_PREFIX}inject-moduleid`,
+    });
+    expect(matches).toHaveLength(0);
+  });
+
+  test('rejects an operator object as source.externalBallotId', async () => {
+    const payload = basePayload(`${EXT_ID_PREFIX}inject-extid`);
+    payload.source.externalBallotId = { $gt: '' };
+
+    await expect(
+      writeCompiledBallot(payload, { method: 'upload', importedBy: 'admin-test-3' }),
+    ).rejects.toThrow(CompiledBallotWriteError);
+  });
+
+  test('a legitimate string source pair still writes normally', async () => {
+    const extId = `${EXT_ID_PREFIX}legit-string`;
+    const res = await writeCompiledBallot(basePayload(extId), {
+      method: 'upload',
+      importedBy: 'admin-test-3',
+    });
+    expect(res.created).toBe(true);
+    const ballot = await Ballot.findById(res.ballotId).lean();
+    expect(ballot.proposalSource.externalBallotId).toBe(extId);
+  });
 });
