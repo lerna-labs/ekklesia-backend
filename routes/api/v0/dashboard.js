@@ -23,6 +23,9 @@ import { createTransaction } from '../../../helper/createTransaction.js';
 import { PublicKey } from '@emurgo/cardano-serialization-lib-nodejs';
 import { isAuthenticated, getBallot } from '../../../helper/middleWare.js';
 import { fetchCalidusKey } from '../../../helper/koios.js';
+import { dashboardLimiter } from '../../../helper/rateLimiters.js';
+
+router.use(dashboardLimiter);
 
 /**
  * @route GET /api/v0/dashboard

@@ -149,3 +149,138 @@ export const getSessionLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Authenticated per-voter bucket for the /api/v0/dashboard surface
+// (own-account summary, ballots-in-progress, pending count, checkout
+// flows). Keyed by userId so one voter's activity can't exhaust another
+// voter's budget on a shared IP. Checkout writes under this router are
+// already frozen (410) by v0Freeze in favor of /api/v1, so in practice
+// this mostly bounds the read endpoints.
+export const dashboardLimiter = rateLimit({
+  windowMs: Number(process.env.DASHBOARD_WINDOW_MS) || 60 * 1000,
+  max: Number(process.env.DASHBOARD_MAX) || 60,
+  keyGenerator: userOrIpKey,
+  message: {
+    status: 'error',
+    message: 'Too many dashboard requests. Slow down.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Write-side limiter for /api/v0/comments (create, like, withdraw, edit).
+// Separate from the router's read bucket so comment authorship, which is
+// the one user-generated-content surface on v0, gets its own, tighter
+// budget instead of sharing headroom with anonymous reads.
+export const commentWriteLimiter = rateLimit({
+  windowMs: Number(process.env.COMMENT_WRITE_WINDOW_MS) || 60 * 1000,
+  max: Number(process.env.COMMENT_WRITE_MAX) || 20,
+  keyGenerator: userOrIpKey,
+  message: {
+    status: 'error',
+    message: 'Too many comment actions. Slow down.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Guards the admin Hydra-ballot-lifecycle surface (/api/v1/admin/ballots,
+// except /import which carries its own ballotImportLimiter). Mounted
+// ahead of the `isAdmin` gate so the JWT/allowlist check itself — a
+// flagged authorization sink — is covered too, not just the handlers
+// after it. IP-keyed because it runs before auth resolves req.auth.
+// 60/min is generous for a human operator driving prepare/start/finalize
+// or polling head-info/queue-status from an admin console.
+export const adminLimiter = rateLimit({
+  windowMs: Number(process.env.ADMIN_WINDOW_MS) || 60 * 1000,
+  max: Number(process.env.ADMIN_MAX) || 60,
+  message: {
+    status: 'error',
+    message: 'Too many admin requests. Slow down.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Guards GET /api/v1/admin/me, the admin-status probe. Separate instance
+// from adminLimiter and getSessionLimiter so this budget isn't shared
+// with either the voter session probe or the heavier admin lifecycle
+// surface — it does its own JWT verification (a flagged authorization
+// sink) and nothing else.
+export const adminAuthLimiter = rateLimit({
+  windowMs: Number(process.env.ADMIN_AUTH_WINDOW_MS) || 60 * 1000,
+  max: Number(process.env.ADMIN_AUTH_MAX) || 60,
+  message: {
+    status: 'error',
+    message: 'Too many admin status checks. Slow down.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Pre-authentication guard for the /api/v1/public/* API-key surface.
+// `requireApiKey` runs a database lookup on every request — including
+// requests with a missing or invalid key — before `publicApiLimiter`
+// (which needs `req.apiKey` to apply a per-key override) ever runs.
+// This sits in front of `requireApiKey` and is IP-keyed so an
+// unauthenticated flood can't drive unbounded lookups. The default is
+// deliberately generous (matches PUBLIC_API_MAX's default) so it acts
+// as a backstop, not the practical ceiling for a legitimate, higher-
+// volume integrator whose per-key override already governs their rate.
+export const apiKeyAuthLimiter = rateLimit({
+  windowMs: Number(process.env.API_KEY_AUTH_WINDOW_MS) || 60 * 1000,
+  max: Number(process.env.API_KEY_AUTH_MAX) || 120,
+  message: {
+    status: 'error',
+    message: 'Too many API key attempts. Slow down.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Guards the dynamic OpenGraph card image routes (server.js). Each miss
+// renders a PNG via Satori + resvg (real CPU cost); hits are served from
+// an in-process LRU. 60/min per IP is generous for real sharing traffic
+// while bounding a scripted flood of distinct cache-busting query strings.
+export const ogImageLimiter = rateLimit({
+  windowMs: Number(process.env.OG_IMAGE_WINDOW_MS) || 60 * 1000,
+  max: Number(process.env.OG_IMAGE_MAX) || 60,
+  message: {
+    status: 'error',
+    message: 'Too many image requests. Slow down.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Guards the SPA catch-all in server.js (`res.sendFile` of index.html for
+// every non-API route). Hit on every page load and client-side
+// navigation, so the default is high — generous enough that a busy tab
+// set or fast in-app navigation never trips it, while still capping a
+// scripted flood.
+export const spaLimiter = rateLimit({
+  windowMs: Number(process.env.SPA_WINDOW_MS) || 60 * 1000,
+  max: Number(process.env.SPA_MAX) || 300,
+  message: {
+    status: 'error',
+    message: 'Too many requests. Slow down.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Guards routes/health.js. That router is mounted at the server root
+// (not under /api), so it was never in reach of the old app-wide
+// /api limiter. Default is generous — uptime monitors and load
+// balancers can legitimately poll every few seconds from more than one
+// location.
+export const healthLimiter = rateLimit({
+  windowMs: Number(process.env.HEALTH_WINDOW_MS) || 60 * 1000,
+  max: Number(process.env.HEALTH_MAX) || 300,
+  message: {
+    status: 'error',
+    message: 'Too many health check requests. Slow down.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});

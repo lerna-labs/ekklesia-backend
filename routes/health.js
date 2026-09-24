@@ -8,6 +8,11 @@ import { loadFrontendVersion } from '../helper/frontendVersion.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs/promises';
+import { healthLimiter } from '../helper/rateLimiters.js';
+
+// Mounted at the server root (not under /api/), so this router was never
+// in reach of any /api-scoped rate limiter.
+router.use(healthLimiter);
 
 // NOTE on Hydra: this endpoint deliberately does NOT report a
 // system-wide "hydra: connected" status. Each ballot can be bound to

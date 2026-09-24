@@ -8,12 +8,17 @@ import validator from 'validator';
 import mongoose from 'mongoose';
 import { listUnified, getUnified } from '../../../../helper/ballotAdapters/index.js';
 import { requireApiKey, requireScope } from '../../../../helper/apiKeyAuth.js';
-import { publicApiLimiter } from '../../../../helper/rateLimiters.js';
+import { publicApiLimiter, apiKeyAuthLimiter } from '../../../../helper/rateLimiters.js';
 import { escapeRegex } from '../../../../helper/escapeRegex.js';
 import { canonicalApiPath, setCanonicalLinkHeader } from '../../../../helper/idResolver.js';
 
 const router = Router();
 
+// requireApiKey does a database lookup on every request, including
+// requests with a missing or invalid key, before publicApiLimiter (which
+// needs req.apiKey for a per-key override) can run. This IP-keyed guard
+// sits ahead of it so that lookup itself can't be flooded.
+router.use(apiKeyAuthLimiter);
 router.use(requireApiKey);
 router.use(publicApiLimiter);
 router.use(requireScope('read:ballots'));
