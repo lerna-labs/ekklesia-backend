@@ -15,7 +15,7 @@ import {
 import cookieParser from 'cookie-parser';
 import { v0Freeze } from './helper/v0Freeze.js';
 import { normalizeQuery } from './helper/normalizeQuery.js';
-import { publicGetLimiter } from './helper/rateLimiters.js';
+import { rootLimiter, baselineLimiter } from './helper/rateLimiters.js';
 import { createOgMetaMiddleware } from './helper/og/ogMeta.js';
 import { ogBallotImage, ogProposalImage } from './helper/og/ogImage.js';
 import { spaCanonicalRedirect } from './helper/spaCanonicalRedirect.js';
@@ -99,13 +99,9 @@ app.use(
     credentials: true, // Important for cookies
   }),
 );
+app.use(baselineLimiter);
 app.use('/api', checkDatabaseConnectionMW); // Check database connection for all API routes
-// Per-IP rate cap on the entire /api surface — anonymous reads are
-// otherwise free, and the aggregation-heavy routes (proposals listing,
-// results, voters) can saturate the connection pool from one shell
-// loop. Mounted before normalizeQuery so a stream of malformed-query
-// 400s is also throttled.
-app.use('/api', publicGetLimiter);
+// Rate limiting is mounted per router so CodeQL can trace it through loadRoutes.
 // Reject array/object-shaped values on known scalar query keys. Without
 // this, an extended-parser request like `?status[$ne]=null` lands in
 // route handlers as an object and crashes on `.toLowerCase()` (or
@@ -146,8 +142,8 @@ async function startServer() {
     // the generic SPA). Gated on OG_CARDS_ENABLED — leave unset to
     // preserve the legacy single-card behavior.
     if (process.env.OG_CARDS_ENABLED === 'true') {
-      app.get('/og/ballot/:ballotId.png', ogBallotImage);
-      app.get('/og/proposal/:proposalId.png', ogProposalImage);
+      app.get('/og/ballot/:ballotId.png', rootLimiter, ogBallotImage);
+      app.get('/og/proposal/:proposalId.png', rootLimiter, ogProposalImage);
 
       const ogMeta = createOgMetaMiddleware({
         indexHtmlPath: join(__dirname, 'public', 'index.html'),
@@ -164,7 +160,7 @@ async function startServer() {
     }
 
     // Handle SPA routing - serve index.html for all non-API routes (Express 5: named wildcard)
-    app.get('/{*splat}', (req, res, next) => {
+    app.get('/{*splat}', rootLimiter, (req, res, next) => {
       // Skip API routes
       if (req.path.startsWith('/api/')) {
         return next();

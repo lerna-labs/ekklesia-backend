@@ -12,6 +12,9 @@ import { Result } from '../../../schema/Result.js';
 import { cacheControl } from '../../../helper/cacheControl.js';
 import { getProposal } from '../../../helper/middleWare.js';
 import { verifyToken } from '../../../helper/verifyToken.js';
+import { publicGetLimiter } from '../../../helper/rateLimiters.js';
+
+router.use(publicGetLimiter);
 
 /**
  * @route GET /api/v0/proposals/:proposalId

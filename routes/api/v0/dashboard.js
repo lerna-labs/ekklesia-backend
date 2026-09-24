@@ -23,6 +23,9 @@ import { createTransaction } from '../../../helper/createTransaction.js';
 import { PublicKey } from '@emurgo/cardano-serialization-lib-nodejs';
 import { isAuthenticated, getBallot } from '../../../helper/middleWare.js';
 import { fetchCalidusKey } from '../../../helper/koios.js';
+import { publicGetLimiter } from '../../../helper/rateLimiters.js';
+
+router.use(publicGetLimiter);
 
 // createVoterTree's getHexRoot() always returns "0x" + 64 lowercase hex chars.
 const MERKLE_ROOT_RE = /^0x[0-9a-f]{64}$/i;
