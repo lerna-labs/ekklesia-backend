@@ -1,5 +1,5 @@
 import express from 'express';
-import helmet from 'helmet';
+import { securityHeaders } from './helper/securityHeaders.js';
 import { loadRoutes } from './helper/loadRoutes.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -65,17 +65,11 @@ app.set('trust proxy', 1);
 
 // Security headers + server-stack disclosure. Helmet defaults cover
 // X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS, and
-// removal of X-Powered-By. CSP is left disabled here because the SPA
-// build emits inline scripts; enable it after building a per-build
-// nonce/hash policy or running Content-Security-Policy-Report-Only.
+// removal of X-Powered-By; CSP is enabled with a small SPA-specific
+// carve-out. See helper/securityHeaders.js for the directive-by-directive
+// rationale.
 app.disable('x-powered-by');
-app.use(
-  helmet({
-    contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false,
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-  }),
-);
+app.use(securityHeaders());
 
 // Middleware
 // Extended query parser so `?filter[key]=value` nests into

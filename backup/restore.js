@@ -158,12 +158,17 @@ Do you want to restore to "${customDatabase}"? (y/n): `,
       }
 
       function proceedWithRestore(sourceDbName, targetDatabase) {
-        // Build the mongorestore command
+        // Build the mongorestore command. Kept as two parallel strings so the
+        // password never flows into anything that gets logged: `mongorestoreCmd`
+        // carries the real credentials for exec(), while `mongorestoreCmdForLog`
+        // is assembled independently with a fixed placeholder in its place.
         let mongorestoreCmd = `mongorestore --host ${customHost} --port ${port}`;
+        let mongorestoreCmdForLog = mongorestoreCmd;
 
         // Add authentication if username and password are provided
         if (username && password) {
           mongorestoreCmd += ` --username ${username} --password ${password} --authenticationDatabase ${authSource}`;
+          mongorestoreCmdForLog += ` --username ${username} --password *** --authenticationDatabase ${authSource}`;
         }
 
         // Get the parent directory of where the BSON files are located (MongoDB dump structure)
@@ -175,14 +180,18 @@ Do you want to restore to "${customDatabase}"? (y/n): `,
             `Restoring from source database "${sourceDbName}" to target database "${targetDatabase}"`,
           );
           // Use the directory structure to properly map the namespaces
-          mongorestoreCmd += ` --nsFrom="${sourceDbName}.*" --nsTo="${targetDatabase}.*" --drop "${dumpDir}"`;
+          const nsSuffix = ` --nsFrom="${sourceDbName}.*" --nsTo="${targetDatabase}.*" --drop "${dumpDir}"`;
+          mongorestoreCmd += nsSuffix;
+          mongorestoreCmdForLog += nsSuffix;
         } else {
           // Use standard approach
-          mongorestoreCmd += ` --db=${targetDatabase} --drop "${dbDir}"`;
+          const dbSuffix = ` --db=${targetDatabase} --drop "${dbDir}"`;
+          mongorestoreCmd += dbSuffix;
+          mongorestoreCmdForLog += dbSuffix;
         }
 
         console.log(`Restoring database ${targetDatabase}...`);
-        console.log(`Using command: ${mongorestoreCmd}`);
+        console.log(`Using command: ${mongorestoreCmdForLog}`);
 
         // Execute the mongorestore command
         exec(mongorestoreCmd, (restoreError, restoreStdout, restoreStderr) => {
