@@ -15,7 +15,7 @@ import {
 import cookieParser from 'cookie-parser';
 import { v0Freeze } from './helper/v0Freeze.js';
 import { normalizeQuery } from './helper/normalizeQuery.js';
-import { rootLimiter } from './helper/rateLimiters.js';
+import { rootLimiter, baselineLimiter } from './helper/rateLimiters.js';
 import { createOgMetaMiddleware } from './helper/og/ogMeta.js';
 import { ogBallotImage, ogProposalImage } from './helper/og/ogImage.js';
 import { spaCanonicalRedirect } from './helper/spaCanonicalRedirect.js';
@@ -98,6 +98,7 @@ app.use(
     credentials: true, // Important for cookies
   }),
 );
+app.use(baselineLimiter);
 app.use('/api', checkDatabaseConnectionMW); // Check database connection for all API routes
 // Rate limiting is mounted per router so CodeQL can trace it through loadRoutes.
 // Reject array/object-shaped values on known scalar query keys. Without

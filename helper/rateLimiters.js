@@ -165,3 +165,15 @@ export const rootLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Baseline per-IP cap applied ahead of every request, on top of the per-router limiters.
+export const baselineLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 1000,
+  message: {
+    status: 'error',
+    message: 'Too many requests. Slow down.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
