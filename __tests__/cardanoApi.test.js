@@ -34,9 +34,15 @@ afterAll(() => {
   global.fetch = realFetch;
 });
 
+// Parses the mocked request URL and compares its actual hostname, instead of a raw substring search.
+function requestHost(url, host) {
+  const { hostname } = new URL(String(url));
+  return hostname === host || hostname.endsWith(`.${host}`);
+}
+
 function koiosOk(body) {
   return {
-    match: (url) => String(url).includes('koios.rest'),
+    match: (url) => requestHost(url, 'koios.rest'),
     response: () =>
       new Response(JSON.stringify(body), {
         status: 200,
@@ -46,19 +52,19 @@ function koiosOk(body) {
 }
 function koios5xx(status = 503) {
   return {
-    match: (url) => String(url).includes('koios.rest'),
+    match: (url) => requestHost(url, 'koios.rest'),
     response: () => new Response('upstream down', { status, statusText: 'Service Unavailable' }),
   };
 }
 function koiosNetworkError() {
   return {
-    match: (url) => String(url).includes('koios.rest'),
+    match: (url) => requestHost(url, 'koios.rest'),
     response: () => Promise.reject(new TypeError('fetch failed')),
   };
 }
 function blockfrostOk(body) {
   return {
-    match: (url) => String(url).includes('blockfrost.io'),
+    match: (url) => requestHost(url, 'blockfrost.io'),
     response: () =>
       new Response(JSON.stringify(body), {
         status: 200,
@@ -127,7 +133,7 @@ describe('cardanoApi — Koios primary, Blockfrost fallback', () => {
   test('Koios 4xx (non-429) surfaces, fallback not invoked', async () => {
     process.env.BLOCKFROST_PROJECT_ID = 'preprodtest123';
     fetchQueue.push({
-      match: (url) => String(url).includes('koios.rest'),
+      match: (url) => requestHost(url, 'koios.rest'),
       response: () => new Response('bad request', { status: 400 }),
     });
     // No blockfrost entry — if fallback fires, fetch throws on empty queue.

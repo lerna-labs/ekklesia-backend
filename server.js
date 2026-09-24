@@ -63,15 +63,16 @@ const PORT = process.env.SERVER_PORT || 3000;
 // hops.
 app.set('trust proxy', 1);
 
-// Security headers + server-stack disclosure. Helmet defaults cover
-// X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS, and
-// removal of X-Powered-By. CSP is left disabled here because the SPA
-// build emits inline scripts; enable it after building a per-build
-// nonce/hash policy or running Content-Security-Policy-Report-Only.
+// CSP: 'unsafe-inline' script-src for the SvelteKit static bootstrap script; https: img-src for admin-supplied option images.
 app.disable('x-powered-by');
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+      },
+    },
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   }),
