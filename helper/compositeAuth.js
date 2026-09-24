@@ -10,7 +10,7 @@
 
 import { verifyToken } from './verifyToken.js';
 import { userIsAdmin } from './adminAuth.js';
-import { hashKey } from './apiKeyAuth.js';
+import { verifyApiKey } from './apiKeyAuth.js';
 import { ApiKey } from '../schema/ApiKey.js';
 
 function extractKey(req) {
@@ -39,7 +39,7 @@ export function adminOrScope(scope) {
     const plain = extractKey(req);
     if (plain) {
       try {
-        const record = await ApiKey.findOne({ keyHash: hashKey(plain), enabled: true });
+        const record = await verifyApiKey(plain);
         if (!record) {
           return res.status(401).json({ status: 'error', message: 'Invalid API key' });
         }
