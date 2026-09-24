@@ -34,10 +34,7 @@ afterAll(() => {
   global.fetch = realFetch;
 });
 
-// Parse the mocked request URL and compare its actual hostname, rather than
-// searching the raw URL string for the host — a substring search matches a
-// host embedded anywhere (path, query string, a longer lookalike domain),
-// not just the host actually being requested.
+// Parses the mocked request URL and compares its actual hostname, instead of a raw substring search.
 function requestHost(url, host) {
   const { hostname } = new URL(String(url));
   return hostname === host || hostname.endsWith(`.${host}`);

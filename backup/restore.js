@@ -158,19 +158,12 @@ Do you want to restore to "${customDatabase}"? (y/n): `,
       }
 
       function proceedWithRestore(sourceDbName, targetDatabase) {
-        // Build the mongorestore command. Kept as two parallel strings so the
-        // password never flows into anything that gets logged: `mongorestoreCmd`
-        // carries the real credentials for exec(), while `mongorestoreCmdForLog`
-        // is assembled independently with a fixed placeholder in its place.
+        // Build the mongorestore command
         let mongorestoreCmd = `mongorestore --host ${customHost} --port ${port}`;
-        let mongorestoreCmdForLog = mongorestoreCmd;
 
-        // Add authentication if username and password are provided. None of
-        // username, password or authSource (all sourced from the environment)
-        // are interpolated into the logged copy, only into the real command.
+        // Add authentication if username and password are provided
         if (username && password) {
           mongorestoreCmd += ` --username ${username} --password ${password} --authenticationDatabase ${authSource}`;
-          mongorestoreCmdForLog += ' --username *** --password *** --authenticationDatabase ***';
         }
 
         // Get the parent directory of where the BSON files are located (MongoDB dump structure)
@@ -182,18 +175,13 @@ Do you want to restore to "${customDatabase}"? (y/n): `,
             `Restoring from source database "${sourceDbName}" to target database "${targetDatabase}"`,
           );
           // Use the directory structure to properly map the namespaces
-          const nsSuffix = ` --nsFrom="${sourceDbName}.*" --nsTo="${targetDatabase}.*" --drop "${dumpDir}"`;
-          mongorestoreCmd += nsSuffix;
-          mongorestoreCmdForLog += nsSuffix;
+          mongorestoreCmd += ` --nsFrom="${sourceDbName}.*" --nsTo="${targetDatabase}.*" --drop "${dumpDir}"`;
         } else {
           // Use standard approach
-          const dbSuffix = ` --db=${targetDatabase} --drop "${dbDir}"`;
-          mongorestoreCmd += dbSuffix;
-          mongorestoreCmdForLog += dbSuffix;
+          mongorestoreCmd += ` --db=${targetDatabase} --drop "${dbDir}"`;
         }
 
         console.log(`Restoring database ${targetDatabase}...`);
-        console.log(`Using command: ${mongorestoreCmdForLog}`);
 
         // Execute the mongorestore command
         exec(mongorestoreCmd, (restoreError, restoreStdout, restoreStderr) => {

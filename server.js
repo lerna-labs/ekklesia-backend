@@ -1,5 +1,5 @@
 import express from 'express';
-import { securityHeaders } from './helper/securityHeaders.js';
+import helmet from 'helmet';
 import { loadRoutes } from './helper/loadRoutes.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -63,13 +63,20 @@ const PORT = process.env.SERVER_PORT || 3000;
 // hops.
 app.set('trust proxy', 1);
 
-// Security headers + server-stack disclosure. Helmet defaults cover
-// X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS, and
-// removal of X-Powered-By; CSP is enabled with a small SPA-specific
-// carve-out. See helper/securityHeaders.js for the directive-by-directive
-// rationale.
+// CSP: 'unsafe-inline' script-src for the SvelteKit static bootstrap script; https: img-src for admin-supplied option images.
 app.disable('x-powered-by');
-app.use(securityHeaders());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  }),
+);
 
 // Middleware
 // Extended query parser so `?filter[key]=value` nests into
