@@ -9,14 +9,9 @@ import { Ballot } from '../../../schema/Ballot.js';
 // helper
 import { isAuthenticated, getProposal } from '../../../helper/middleWare.js';
 import { checkVotingWindow } from '../../../helper/votingWindow.js';
-import { voteWriteLimiter } from '../../../helper/rateLimiters.js';
+import { publicGetLimiter } from '../../../helper/rateLimiters.js';
 
-// This legacy write path is frozen (410) by v0Freeze in server.js before
-// requests ever reach this router — Hydra-backed voting moved to
-// /api/v1/votes. Kept rate-limited anyway so the handler isn't an
-// unguarded write sink on paper, and so it stays safe if the freeze is
-// ever lifted for a legacy ballot.
-router.use(voteWriteLimiter);
+router.use(publicGetLimiter);
 
 /**
  * @route POST /api/v0/vote/:proposalId

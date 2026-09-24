@@ -26,9 +26,6 @@ import {
 
 dayjs.extend(duration);
 
-// Router-wide fallback for any route on this file without its own
-// specific limiter (currently just DELETE /). GET/POST/PUT below carry
-// their own tighter, purpose-built limiters and are unaffected.
 router.use(publicGetLimiter);
 
 // middleware

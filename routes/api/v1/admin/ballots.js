@@ -14,7 +14,7 @@ import { Router } from 'express';
 import { Ballot } from '../../../../schema/Ballot.js';
 import { isAdmin } from '../../../../helper/adminAuth.js';
 import { adminOrScope } from '../../../../helper/compositeAuth.js';
-import { ballotImportLimiter, adminLimiter } from '../../../../helper/rateLimiters.js';
+import { ballotImportLimiter, publicGetLimiter } from '../../../../helper/rateLimiters.js';
 import { validateCompiledBallot } from '../../../../helper/compiledBallot/validator.js';
 import {
   writeCompiledBallot,
@@ -108,9 +108,7 @@ router.post(
   },
 );
 
-// Mounted before isAdmin so the JWT/allowlist check itself — a flagged
-// authorization sink — is covered, not just the handlers after it.
-router.use(adminLimiter);
+router.use(publicGetLimiter);
 router.use(isAdmin);
 
 function handleHydraError(err, res) {

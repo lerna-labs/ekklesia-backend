@@ -14,11 +14,6 @@ import { getProposal } from '../../../helper/middleWare.js';
 import { verifyToken } from '../../../helper/verifyToken.js';
 import { publicGetLimiter } from '../../../helper/rateLimiters.js';
 
-// Same bucket, same default (120/min, env PUBLIC_GET_WINDOW_MS /
-// PUBLIC_GET_MAX) that used to guard this router only via the app-wide
-// mount in server.js. Kept identical here — this is the proposal-page
-// read surface issue #54 flags as already too aggressive, so nothing
-// about the effective limit changes, only where it's applied.
 router.use(publicGetLimiter);
 
 /**

@@ -7,12 +7,10 @@ import { User } from '../../../schema/User.js';
 import { Vote } from '../../../schema/Vote.js';
 import { verifyToken } from '../../../helper/verifyToken.js';
 import { resolveProposal } from '../../../helper/idResolver.js';
-import { publicGetLimiter, commentWriteLimiter } from '../../../helper/rateLimiters.js';
+import { publicGetLimiter } from '../../../helper/rateLimiters.js';
 
 const router = Router();
 
-// Baseline for the read routes (GET /, GET /:commentId, GET /:commentId/replies).
-// The write routes below layer commentWriteLimiter on top of this.
 router.use(publicGetLimiter);
 
 const COMMENT_STATUSES = ['live', 'withdrawnByAdmin'];
@@ -379,7 +377,7 @@ router.get('/', async (req, res) => {
  * API spec §5.5 — Create a comment on a live proposal. Auth required. Before vote feedbackEndDate. Body: proposalId, content, optional parentId.
  * Only authenticated users can create comments; userId is taken exclusively from the verified token, never from the request body.
  */
-router.post('/', commentWriteLimiter, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const tokenResult = verifyToken(req);
     if (tokenResult.status !== 'success' || !tokenResult.userId) {
@@ -590,7 +588,7 @@ router.get('/:commentId/replies', async (req, res) => {
  * POST /comments/:commentId/like
  * API spec §5.7 — Toggle like. 201 when added, 200 when removed. Live comment only; before vote feedbackEndDate.
  */
-router.post('/:commentId/like', commentWriteLimiter, async (req, res) => {
+router.post('/:commentId/like', async (req, res) => {
   try {
     const tokenResult = verifyToken(req);
     if (tokenResult.status !== 'success' || !tokenResult.userId) {
@@ -662,7 +660,7 @@ router.post('/:commentId/like', commentWriteLimiter, async (req, res) => {
  * PUT /comments/:commentId/withdraw
  * API spec §5.8 — Vote admin withdraws a live comment. Body: category (required), comment (optional). Until feedbackEndDate.
  */
-router.put('/:commentId/withdraw', commentWriteLimiter, async (req, res) => {
+router.put('/:commentId/withdraw', async (req, res) => {
   try {
     const tokenResult = verifyToken(req);
     if (tokenResult.status !== 'success' || !tokenResult.userId) {
@@ -831,7 +829,7 @@ router.get('/:commentId', async (req, res) => {
  * PUT /comments/:commentId
  * API spec §5.6 — Update comment content. Author only; within 15 minutes of creation.
  */
-router.put('/:commentId', commentWriteLimiter, async (req, res) => {
+router.put('/:commentId', async (req, res) => {
   try {
     const tokenResult = verifyToken(req);
     if (tokenResult.status !== 'success' || !tokenResult.userId) {

@@ -9,11 +9,11 @@
 import { Router } from 'express';
 import { verifyToken } from '../../../../helper/verifyToken.js';
 import { userIsAdmin } from '../../../../helper/adminAuth.js';
-import { adminAuthLimiter } from '../../../../helper/rateLimiters.js';
+import { publicGetLimiter } from '../../../../helper/rateLimiters.js';
 
 const router = Router();
 
-router.use(adminAuthLimiter);
+router.use(publicGetLimiter);
 
 router.get('/', (req, res) => {
   const result = verifyToken(req);
