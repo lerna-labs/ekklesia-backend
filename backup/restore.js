@@ -165,10 +165,12 @@ Do you want to restore to "${customDatabase}"? (y/n): `,
         let mongorestoreCmd = `mongorestore --host ${customHost} --port ${port}`;
         let mongorestoreCmdForLog = mongorestoreCmd;
 
-        // Add authentication if username and password are provided
+        // Add authentication if username and password are provided. None of
+        // username, password or authSource (all sourced from the environment)
+        // are interpolated into the logged copy, only into the real command.
         if (username && password) {
           mongorestoreCmd += ` --username ${username} --password ${password} --authenticationDatabase ${authSource}`;
-          mongorestoreCmdForLog += ` --username ${username} --password *** --authenticationDatabase ${authSource}`;
+          mongorestoreCmdForLog += ' --username *** --password *** --authenticationDatabase ***';
         }
 
         // Get the parent directory of where the BSON files are located (MongoDB dump structure)
