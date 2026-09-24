@@ -108,8 +108,20 @@ function buildProposalDoc(p, ballotId) {
  * @returns {Promise<{ ballotId: string, created: boolean, proposalsImported: number, schemaVersion: string }>}
  */
 export async function writeCompiledBallot(payload, authCtx) {
-  if (!payload?.source?.moduleId || !payload?.source?.externalBallotId) {
-    throw new CompiledBallotWriteError('source.moduleId and source.externalBallotId required', {
+  const moduleId = payload?.source?.moduleId;
+  const externalBallotId = payload?.source?.externalBallotId;
+  // Enforced here, not just by validateCompiledBallot upstream: this is the
+  // sink that builds the Mongo filter, and it must not trust that every
+  // caller ran the validator first. Rejecting anything but a non-empty
+  // string also keeps an operator object (e.g. `{ $ne: null }`) out of the
+  // filter entirely.
+  if (typeof moduleId !== 'string' || moduleId.length === 0) {
+    throw new CompiledBallotWriteError('source.moduleId must be a non-empty string', {
+      code: 'BAD_INPUT',
+    });
+  }
+  if (typeof externalBallotId !== 'string' || externalBallotId.length === 0) {
+    throw new CompiledBallotWriteError('source.externalBallotId must be a non-empty string', {
       code: 'BAD_INPUT',
     });
   }
@@ -118,8 +130,8 @@ export async function writeCompiledBallot(payload, authCtx) {
   }
 
   const filter = {
-    'proposalSource.moduleId': payload.source.moduleId,
-    'proposalSource.externalBallotId': payload.source.externalBallotId,
+    'proposalSource.moduleId': { $eq: moduleId },
+    'proposalSource.externalBallotId': { $eq: externalBallotId },
   };
 
   // Freeze check first — no transaction needed for the read.

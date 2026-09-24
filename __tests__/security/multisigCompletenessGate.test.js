@@ -14,6 +14,10 @@ import mongoose from 'mongoose';
 const BALLOT_ID = new mongoose.Types.ObjectId();
 const TRANSACTION_ID = new mongoose.Types.ObjectId();
 const USER_ID = 'drep1testuser';
+// createVoterTree's getHexRoot() always returns "0x" + 64 lowercase hex
+// chars; the checkout route now rejects anything else before it reaches
+// Transaction.findOne, so the fixture has to match that shape.
+const MERKLE_ROOT = `0x${'deadbeef'.repeat(8)}`;
 
 await jest.unstable_mockModule('../../helper/verifyToken.js', () => ({
   verifyToken: () => ({
@@ -60,7 +64,7 @@ function freshTransaction() {
     _id: TRANSACTION_ID,
     userId: USER_ID,
     ballotId: BALLOT_ID,
-    merkleRoot: 'deadbeef',
+    merkleRoot: MERKLE_ROOT,
     multiSig: [],
     votes: [{ proposalId: new mongoose.Types.ObjectId(), vote: 'yes' }],
   };
@@ -74,7 +78,7 @@ async function putMultisig() {
       signerAddress: 'drep1testuser',
       signType: 'drep',
       scriptAddress: 'stake_test1scriptaddress',
-      data: 'deadbeef',
+      data: MERKLE_ROOT,
       signature: { publicKey: 'abc', signature: 'def' },
     }),
   });

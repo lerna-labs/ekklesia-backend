@@ -30,6 +30,7 @@
 // authenticated userId matches the package's userId.
 
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import { verifyToken } from '../../../helper/verifyToken.js';
 import { Ballot } from '../../../schema/Ballot.js';
 import { VotePackage } from '../../../schema/VotePackage.js';
@@ -134,6 +135,14 @@ function hydraErrorCode(err) {
   if (code.includes('NONCE')) return ERROR_CODES.NONCE_STALE;
   if (code.includes('REPLAY')) return ERROR_CODES.NONCE_STALE;
   return ERROR_CODES.HYDRA_UPSTREAM;
+}
+
+// A VotePackage id is always a 24-char hex Mongo ObjectId string (it's
+// echoed back from a prior _id.toString()). Rejecting anything else
+// before it reaches a `_id:` filter keeps an operator object (e.g.
+// `{ $ne: null }`) from being interpreted as a query rather than a value.
+function isObjectIdString(v) {
+  return typeof v === 'string' && v.length === 24 && mongoose.Types.ObjectId.isValid(v);
 }
 
 function requireSession(req, res) {
@@ -410,6 +419,11 @@ router.post('/:ballotId/signature', async (req, res) => {
         message: 'packageId and witness required',
       });
   }
+  if (!isObjectIdString(packageId)) {
+    return res
+      .status(400)
+      .json({ status: 'error', code: ERROR_CODES.BAD_INPUT, message: 'Invalid packageId' });
+  }
 
   // CIP-30 `signData` returns only { signature (COSE_Sign1 hex), key (COSE key hex) }.
   // Derive the remaining fields (keyHash, raw pub key, raw ed25519 sig) so
@@ -424,7 +438,7 @@ router.post('/:ballotId/signature', async (req, res) => {
     throw err;
   }
 
-  const pkg = await VotePackage.findOne({ _id: packageId, ballotId: ballot._id });
+  const pkg = await VotePackage.findOne({ _id: { $eq: packageId }, ballotId: ballot._id });
   if (!pkg)
     return res
       .status(404)
@@ -536,7 +550,12 @@ router.post('/:ballotId/submit', async (req, res) => {
   if (!requireVotingOpen(res, ballot)) return;
 
   const { packageId } = req.body || {};
-  const pkg = await VotePackage.findOne({ _id: packageId, ballotId: ballot._id });
+  if (!isObjectIdString(packageId)) {
+    return res
+      .status(400)
+      .json({ status: 'error', code: ERROR_CODES.BAD_INPUT, message: 'Invalid packageId' });
+  }
+  const pkg = await VotePackage.findOne({ _id: { $eq: packageId }, ballotId: ballot._id });
   if (!pkg)
     return res
       .status(404)

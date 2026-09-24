@@ -24,6 +24,12 @@ import { PublicKey } from '@emurgo/cardano-serialization-lib-nodejs';
 import { isAuthenticated, getBallot } from '../../../helper/middleWare.js';
 import { fetchCalidusKey } from '../../../helper/koios.js';
 
+// createVoterTree (helper/createVoterTree.js) hashes votes with SHA-256 via
+// merkletreejs and returns the root through getHexRoot(), which is always
+// "0x" + 64 lowercase hex chars. Used to reject a non-string / malformed
+// `merkleRoot` before it reaches a Mongo filter.
+const MERKLE_ROOT_RE = /^0x[0-9a-f]{64}$/i;
+
 /**
  * @route GET /api/v0/dashboard
  * @description Get authenticated voter stats including last login time, multisig status, and pending votes count
@@ -320,7 +326,7 @@ router.post('/:ballotId/checkout/', isAuthenticated, getBallot, async (req, res)
  *   - Ballot status is not "live"
  *   - signerAddress is missing
  *   - signType is missing
- *   - data (merkleRoot) is missing
+ *   - data (merkleRoot) is missing or not a well-formed hex string
  *   - Address validation fails
  *   - Signer address does not match authenticated userId
  *   - Transaction not found (no transaction with matching userId, ballotId, status="created", and merkleRoot)
@@ -391,13 +397,19 @@ router.put('/:ballotId/checkout', isAuthenticated, getBallot, async (req, res) =
       message: 'Missing merkleRoot in request body',
     });
   }
+  if (typeof merkleRoot !== 'string' || !MERKLE_ROOT_RE.test(merkleRoot)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid merkleRoot in request body',
+    });
+  }
 
   // GET TRANSACTION FROM DB
   const transaction = await Transaction.findOne({
     userId,
     ballotId,
     status: 'created',
-    merkleRoot,
+    merkleRoot: { $eq: merkleRoot },
   });
   if (!transaction) {
     return res.status(400).json({
@@ -684,7 +696,7 @@ router.post('/:ballotId/checkout/multisig', isAuthenticated, getBallot, checkout
  *   - signerAddress is missing
  *   - signType is missing
  *   - scriptAddress is missing
- *   - data (merkleRoot) is missing
+ *   - data (merkleRoot) is missing or not a well-formed hex string
  *   - Address validation fails
  *   - Voter is not validated/allowed to vote on this ballot
  *   - Transaction not found (no transaction with matching userId, ballotId, status in ["created","pending"], and merkleRoot)
@@ -774,13 +786,19 @@ router.put('/:ballotId/checkout/multisig', isAuthenticated, getBallot, async (re
       message: 'Missing merkleRoot in request body',
     });
   }
+  if (typeof merkleRoot !== 'string' || !MERKLE_ROOT_RE.test(merkleRoot)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid merkleRoot in request body',
+    });
+  }
 
   // GET TRANSACTION FROM DB
   const transaction = await Transaction.findOne({
     userId,
     ballotId,
     status: { $in: ['created', 'pending'] },
-    merkleRoot,
+    merkleRoot: { $eq: merkleRoot },
   });
   if (!transaction) {
     return res.status(400).json({
