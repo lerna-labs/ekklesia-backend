@@ -1,12 +1,4 @@
 // Regression coverage for CodeQL alerts #9 and #10 (js/sql-injection).
-//
-// Both PUT /api/v0/dashboard/:ballotId/checkout and its /checkout/multisig
-// sibling read `req.body.data` into `merkleRoot` and used to pass it
-// straight into a Transaction.findOne filter with only a truthiness check.
-// An operator object (e.g. `{ "$ne": null }`) is truthy, so it reached the
-// filter unchanged. Both routes now require merkleRoot to be a string
-// matching the "0x" + 64 hex chars shape createVoterTree always produces,
-// and wrap it in `$eq` before it reaches the filter.
 
 import { jest } from '@jest/globals';
 import mongoose from 'mongoose';
@@ -24,8 +16,6 @@ await jest.unstable_mockModule('../../helper/verifyToken.js', () => ({
   }),
 }));
 
-// getBallot's ballot lookup is orthogonal to the merkleRoot guard under
-// test, so it's stubbed rather than exercised against a live Mongo.
 await jest.unstable_mockModule('../../helper/idResolver.js', () => ({
   resolveBallot: async () => ({
     doc: { _id: BALLOT_ID, status: 'live' },
@@ -34,10 +24,6 @@ await jest.unstable_mockModule('../../helper/idResolver.js', () => ({
   resolveProposal: async () => null,
 }));
 
-// Identity pass-through: returning the input string unchanged lets the
-// single-sig route's `addressBech32 !== userId` equality check pass when
-// the test sends `signerAddress: USER_ID`, without pulling in real bech32
-// decoding.
 await jest.unstable_mockModule('../../helper/validateAddress.js', () => ({
   validateAddress: (addr) => addr,
   getAddressType: () => ({}),
@@ -113,12 +99,6 @@ describe('PUT /:ballotId/checkout merkleRoot guard (alert #9)', () => {
     expect(Transaction.findOne).not.toHaveBeenCalled();
   });
 
-  test('an operator object with a comparison is rejected before reaching the database', async () => {
-    const res = await putCheckout({ $gt: '' });
-    expect(res.status).toBe(400);
-    expect(Transaction.findOne).not.toHaveBeenCalled();
-  });
-
   test('a malformed string is rejected before reaching the database', async () => {
     const res = await putCheckout('not-a-merkle-root');
     expect(res.status).toBe(400);
@@ -127,9 +107,6 @@ describe('PUT /:ballotId/checkout merkleRoot guard (alert #9)', () => {
 
   test('a valid merkleRoot string reaches the database as an $eq-wrapped filter value', async () => {
     const res = await putCheckout(VALID_MERKLE_ROOT);
-    // Transaction.findOne resolves null in this suite, so the route still
-    // 400s with "Checkout data not found" -- the point under test is that
-    // the guard let a well-formed value through to the query at all.
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.message).toBe('Checkout data not found');

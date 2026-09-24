@@ -110,11 +110,7 @@ function buildProposalDoc(p, ballotId) {
 export async function writeCompiledBallot(payload, authCtx) {
   const moduleId = payload?.source?.moduleId;
   const externalBallotId = payload?.source?.externalBallotId;
-  // Enforced here, not just by validateCompiledBallot upstream: this is the
-  // sink that builds the Mongo filter, and it must not trust that every
-  // caller ran the validator first. Rejecting anything but a non-empty
-  // string also keeps an operator object (e.g. `{ $ne: null }`) out of the
-  // filter entirely.
+  // Enforced here, not just relied on from validateCompiledBallot upstream: this is the sink that builds the Mongo filter.
   if (typeof moduleId !== 'string' || moduleId.length === 0) {
     throw new CompiledBallotWriteError('source.moduleId must be a non-empty string', {
       code: 'BAD_INPUT',

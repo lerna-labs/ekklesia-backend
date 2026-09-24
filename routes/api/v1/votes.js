@@ -137,10 +137,7 @@ function hydraErrorCode(err) {
   return ERROR_CODES.HYDRA_UPSTREAM;
 }
 
-// A VotePackage id is always a 24-char hex Mongo ObjectId string (it's
-// echoed back from a prior _id.toString()). Rejecting anything else
-// before it reaches a `_id:` filter keeps an operator object (e.g.
-// `{ $ne: null }`) from being interpreted as a query rather than a value.
+// A VotePackage id is always a 24-char hex Mongo ObjectId string.
 function isObjectIdString(v) {
   return typeof v === 'string' && v.length === 24 && mongoose.Types.ObjectId.isValid(v);
 }

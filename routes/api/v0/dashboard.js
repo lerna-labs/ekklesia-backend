@@ -24,10 +24,7 @@ import { PublicKey } from '@emurgo/cardano-serialization-lib-nodejs';
 import { isAuthenticated, getBallot } from '../../../helper/middleWare.js';
 import { fetchCalidusKey } from '../../../helper/koios.js';
 
-// createVoterTree (helper/createVoterTree.js) hashes votes with SHA-256 via
-// merkletreejs and returns the root through getHexRoot(), which is always
-// "0x" + 64 lowercase hex chars. Used to reject a non-string / malformed
-// `merkleRoot` before it reaches a Mongo filter.
+// createVoterTree's getHexRoot() always returns "0x" + 64 lowercase hex chars.
 const MERKLE_ROOT_RE = /^0x[0-9a-f]{64}$/i;
 
 /**

@@ -1,13 +1,4 @@
 // Regression coverage for CodeQL alerts #11 and #12 (js/sql-injection).
-//
-// POST /:ballotId/signature and POST /:ballotId/submit both read `packageId`
-// from the request body and passed it straight into `VotePackage.findOne({
-// _id: packageId, ... })`. `/signature` at least rejected a missing value;
-// `/submit` didn't check for one at all. Either way, an operator object
-// (e.g. `{ "$ne": null }`) reached the filter unchanged and let a caller
-// match an arbitrary package under the ballot without knowing its real id.
-// Both routes now require packageId to be a 24-char hex ObjectId string
-// before it is used, and wrap it in `$eq`.
 
 import { jest } from '@jest/globals';
 import mongoose from 'mongoose';
@@ -32,8 +23,6 @@ await jest.unstable_mockModule('../../helper/idResolver.js', () => ({
   resolveProposal: async () => null,
 }));
 
-// normalizeWitness does real CBOR/COSE parsing; stubbed so /signature tests
-// isolate the packageId guard from witness-format validation.
 await jest.unstable_mockModule('../../helper/coseWitness.js', () => ({
   normalizeWitness: (w) => w,
   CoseWitnessError: class CoseWitnessError extends Error {},
@@ -102,9 +91,6 @@ describe('POST /:ballotId/signature packageId guard (alert #11)', () => {
 
   test('a valid 24-char ObjectId string reaches the database as an $eq-wrapped filter value', async () => {
     const res = await postSignature(VALID_PACKAGE_ID);
-    // VotePackage.findOne resolves null in this suite, so the route still
-    // 404s -- the point under test is that the guard let a well-formed id
-    // through to the query at all.
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.code).toBe('PACKAGE_NOT_FOUND');
