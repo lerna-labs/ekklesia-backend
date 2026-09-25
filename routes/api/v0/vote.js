@@ -9,6 +9,9 @@ import { Ballot } from '../../../schema/Ballot.js';
 // helper
 import { isAuthenticated, getProposal } from '../../../helper/middleWare.js';
 import { checkVotingWindow } from '../../../helper/votingWindow.js';
+import { publicGetLimiter } from '../../../helper/rateLimiters.js';
+
+router.use(publicGetLimiter);
 
 /**
  * @route POST /api/v0/vote/:proposalId

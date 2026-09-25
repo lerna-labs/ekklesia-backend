@@ -7,6 +7,9 @@ import { Transaction } from '../../../schema/Transaction.js';
 
 // helper
 import { isAuthenticated, getTransaction } from '../../../helper/middleWare.js';
+import { publicGetLimiter } from '../../../helper/rateLimiters.js';
+
+router.use(publicGetLimiter);
 
 /**
  * @route GET /api/v0/transactions

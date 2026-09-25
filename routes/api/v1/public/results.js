@@ -4,12 +4,14 @@
 
 import { Router } from 'express';
 import { requireApiKey, requireScope } from '../../../../helper/apiKeyAuth.js';
-import { publicApiLimiter } from '../../../../helper/rateLimiters.js';
+import { publicApiLimiter, publicGetLimiter } from '../../../../helper/rateLimiters.js';
 import { readBallotResults, readProposalResult } from '../../../../helper/resultReaders.js';
 import { canonicalApiPath, setCanonicalLinkHeader } from '../../../../helper/idResolver.js';
 
 const router = Router();
 
+// Ahead of requireApiKey so the key lookup is limited.
+router.use(publicGetLimiter);
 router.use(requireApiKey);
 router.use(publicApiLimiter);
 router.use(requireScope('read:results'));
