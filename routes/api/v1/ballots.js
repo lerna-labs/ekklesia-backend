@@ -25,8 +25,11 @@ import {
   canonicalApiPath,
   setCanonicalLinkHeader,
 } from '../../../helper/idResolver.js';
+import { publicGetLimiter } from '../../../helper/rateLimiters.js';
 
 const router = Router();
+
+router.use(publicGetLimiter);
 
 function blake2b256Hex(bytes) {
   return Buffer.from(blake.blake2b(bytes, null, 32)).toString('hex');
