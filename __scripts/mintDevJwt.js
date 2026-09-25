@@ -5,6 +5,12 @@
 //
 // DO NOT use in production. This bypasses the signature-based login flow.
 //
+// Admin access has one mechanism: the userId must be on the
+// ADMIN_USER_IDS allowlist. There is no JWT claim that grants it. The
+// --admin flag here is a convenience check, not a grant: it warns when
+// the given --userId isn't on the allowlist, since minting a token for
+// it won't produce an admin session.
+//
 // Usage:
 //   node __scripts/mintDevJwt.js --userId drep1...
 //   node __scripts/mintDevJwt.js --userId drep1... --admin
@@ -62,7 +68,6 @@ const payload = {
   signType: flags.signType || 'stake',
   multiSig: Boolean(flags.multisig || flags.multiSig),
 };
-if (flags.admin) payload.role = 'admin';
 
 const ttl = flags.ttl || process.env.JWT_MAX_AGE || '1h';
 const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: ttl });
@@ -80,16 +85,12 @@ const adminIds = (process.env.ADMIN_USER_IDS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
-if (flags.admin && !payload.role) {
-  // Shouldn't happen — kept for clarity
-  console.warn('Note: --admin did not stamp role claim.');
-}
-if (!flags.admin && adminIds.includes(userId)) {
-  console.log(
-    'note:      userId is on ADMIN_USER_IDS allowlist (admin gate will pass without --admin)',
-  );
+if (adminIds.includes(userId)) {
+  console.log('note:      userId is on ADMIN_USER_IDS allowlist (admin gate will pass)');
 } else if (flags.admin) {
-  console.log('note:      role="admin" claim stamped (admin gate will pass)');
+  console.warn(
+    'warning:   --admin was set but userId is not on ADMIN_USER_IDS; this token will not pass the admin gate',
+  );
 } else {
   console.log('note:      plain-voter token; admin routes will return 403');
 }
