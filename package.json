@@ -64,8 +64,8 @@
     "prettier": "^3.9.5"
   },
   "overrides": {
-    "undici": "^6.28.0",
-    "ip-address": "^10.3.1",
+    "undici": "^6.28.1",
+    "ip-address": "^10.5.1",
     "picomatch@2": "^2.3.2",
     "picomatch@4": "^4.0.4",
     "hyperid": "^4.0.0"
