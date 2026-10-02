@@ -26,8 +26,11 @@ import {
   canonicalApiPath,
   setCanonicalLinkHeader,
 } from '../../../helper/idResolver.js';
+import { publicGetLimiter } from '../../../helper/rateLimiters.js';
 
 const router = Router();
+
+router.use(publicGetLimiter);
 
 router.get('/ballot/:ballotId', async (req, res) => {
   // Accept either canonical _id or upstream externalBallotId.

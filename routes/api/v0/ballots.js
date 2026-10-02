@@ -18,7 +18,9 @@ import {
   calculateWeightedMedian,
 } from '../../../helper/calculateMedians.js';
 import { escapeRegex } from '../../../helper/escapeRegex.js';
-import { aggregationLimiter } from '../../../helper/rateLimiters.js';
+import { aggregationLimiter, publicGetLimiter } from '../../../helper/rateLimiters.js';
+
+router.use(publicGetLimiter);
 
 /**
  * @route GET /api/v0/ballots

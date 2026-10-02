@@ -21,9 +21,12 @@ import {
   nonceRequestLimiter,
   sessionVerificationLimiter,
   getSessionLimiter,
+  publicGetLimiter,
 } from '../../../helper/rateLimiters.js';
 
 dayjs.extend(duration);
+
+router.use(publicGetLimiter);
 
 // middleware
 import { isAuthenticated } from '../../../helper/middleWare.js';

@@ -7,8 +7,11 @@ import { User } from '../../../schema/User.js';
 import { Vote } from '../../../schema/Vote.js';
 import { verifyToken } from '../../../helper/verifyToken.js';
 import { resolveProposal } from '../../../helper/idResolver.js';
+import { publicGetLimiter } from '../../../helper/rateLimiters.js';
 
 const router = Router();
+
+router.use(publicGetLimiter);
 
 const COMMENT_STATUSES = ['live', 'withdrawnByAdmin'];
 

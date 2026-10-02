@@ -149,3 +149,31 @@ export const getSessionLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Guards the surfaces that sit outside /api and so were never in reach
+// of the app-wide limiter: server.js's OG image routes and SPA
+// fallback, and the root-mounted routes/health.js. One shared,
+// hardcoded budget, generous enough for real SPA navigation and
+// monitoring traffic.
+export const rootLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  message: {
+    status: 'error',
+    message: 'Too many requests. Slow down.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Baseline per-IP cap applied ahead of every request, on top of the per-router limiters.
+export const baselineLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 1000,
+  message: {
+    status: 'error',
+    message: 'Too many requests. Slow down.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});

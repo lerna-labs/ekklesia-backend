@@ -9,7 +9,9 @@ import { User } from '../../../schema/User.js';
 import { validateAddress } from '../../../helper/validateAddress.js';
 import { cacheControl } from '../../../helper/cacheControl.js';
 import { projectVoteEntries } from '../../../helper/voterDetailMapper.js';
-import { aggregationLimiter } from '../../../helper/rateLimiters.js';
+import { aggregationLimiter, publicGetLimiter } from '../../../helper/rateLimiters.js';
+
+router.use(publicGetLimiter);
 
 // helper
 const API_URL = process.env.API_URL;

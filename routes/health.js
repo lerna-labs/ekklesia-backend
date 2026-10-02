@@ -8,6 +8,9 @@ import { loadFrontendVersion } from '../helper/frontendVersion.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs/promises';
+import { rootLimiter } from '../helper/rateLimiters.js';
+
+router.use(rootLimiter);
 
 // NOTE on Hydra: this endpoint deliberately does NOT report a
 // system-wide "hydra: connected" status. Each ballot can be bound to

@@ -182,7 +182,6 @@ Do you want to restore to "${customDatabase}"? (y/n): `,
         }
 
         console.log(`Restoring database ${targetDatabase}...`);
-        console.log(`Using command: ${mongorestoreCmd}`);
 
         // Execute the mongorestore command
         exec(mongorestoreCmd, (restoreError, restoreStdout, restoreStderr) => {

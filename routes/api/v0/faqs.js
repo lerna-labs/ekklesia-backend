@@ -9,6 +9,9 @@ import { FAQ } from '../../../schema/FAQ.js';
 import { cacheControl } from '../../../helper/cacheControl.js';
 import { escapeRegex } from '../../../helper/escapeRegex.js';
 import validator from 'validator';
+import { publicGetLimiter } from '../../../helper/rateLimiters.js';
+
+router.use(publicGetLimiter);
 
 /**
  * @route GET /api/v0/faqs
