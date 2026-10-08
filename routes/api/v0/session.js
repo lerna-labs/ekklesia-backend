@@ -16,7 +16,6 @@ import { verifySignature, isPartyToScript } from '../../../helper/verifySignatur
 import { validateAddress, getAddressType } from '../../../helper/validateAddress.js';
 import { getScript, fetchName } from '@lerna-labs/ekklesia-helpers/cardano';
 import { fetchCalidusKey } from '../../../helper/koios.js';
-import { hydraVoterPing } from '../../../helper/hydra.js';
 import {
   nonceRequestLimiter,
   sessionVerificationLimiter,
@@ -440,7 +439,6 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
       );
     }
     setAuthCookie(res, token, expiryDate);
-    hydraVoterPing(validatedScriptAddress);
     console.log('MS: Login successful:', signerAddress, validatedScriptAddress);
     return res.status(200).json({
       token,
@@ -530,7 +528,6 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
     console.error('Error upserting User lastLogin:', error);
   }
   setAuthCookie(res, token, expiryDate);
-  hydraVoterPing(addressBech32);
   console.log('Login successful:', signerAddress);
   return res.status(200).json({
     token,
