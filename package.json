@@ -61,7 +61,8 @@
     "globals": "^17.7.0",
     "jest": "^30.3.0",
     "nodemon": "^3.1.9",
-    "prettier": "^3.9.5"
+    "prettier": "^3.9.5",
+    "supertest": "^7.3.1"
   },
   "overrides": {
     "undici": "^6.28.1",
