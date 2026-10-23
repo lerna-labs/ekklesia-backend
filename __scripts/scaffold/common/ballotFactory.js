@@ -5,7 +5,7 @@
 // runs converge instead of duplicating.
 
 import { Ballot } from '../../../schema/Ballot.js';
-import { Proposal } from '../../../schema/Proposal.js';
+import { Question } from '../../../schema/Question.js';
 import { ensureProposalContentHashes } from '../../../helper/proposalContent.js';
 import {
   describe,
@@ -792,7 +792,7 @@ export async function upsertScaffoldBallot({
 
   // Proposals: upsert-by-title-within-ballot for idempotence.
   for (const p of defaultProposals(ballot._id, title)) {
-    await Proposal.updateOne(
+    await Question.updateOne(
       { ballotId: ballot._id, title: p.title },
       { $set: p },
       { upsert: true },

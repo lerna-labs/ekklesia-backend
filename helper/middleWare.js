@@ -3,7 +3,7 @@ import validator from 'validator';
 
 // schema imports
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { Transaction } from '../schema/Transaction.js';
 
 // helper imports

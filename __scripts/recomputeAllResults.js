@@ -30,7 +30,7 @@
 import process from 'process';
 import { bootstrap, teardown, parseArgs } from './scaffold/common/env.js';
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { tallyProposalProvisional } from '../crons/10minAggregateVotes.js';
 
 const { flags } = parseArgs();
@@ -61,7 +61,7 @@ const ballotCache = new Map();
 const tallies = { updated: 0, skipped: 0, errors: 0 };
 
 for (const ballot of ballots) {
-  const proposals = await Proposal.find({ ballotId: ballot._id })
+  const proposals = await Question.find({ ballotId: ballot._id })
     .select('_id')
     .sort({ position: 1, _id: 1 })
     .lean();

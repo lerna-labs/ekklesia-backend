@@ -30,7 +30,7 @@
 
 import mongoose from 'mongoose';
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 
 const MAX_INPUT_LENGTH = 128;
 
@@ -85,7 +85,7 @@ export async function resolveProposal(input, opts = {}) {
     if (!parent || parent.ambiguous) return parent;
     scope.ballotId = parent.doc._id;
   }
-  const sub = await _resolveByKey(Proposal, PROPOSAL_EXTERNAL_KEY, input, { ...opts, scope });
+  const sub = await _resolveByKey(Question, PROPOSAL_EXTERNAL_KEY, input, { ...opts, scope });
   return sub;
 }
 

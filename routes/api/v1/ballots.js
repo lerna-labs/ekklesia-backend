@@ -12,7 +12,7 @@ import blake from 'blakejs';
 import { escapeRegex } from '../../../helper/escapeRegex.js';
 import { listUnified, getUnified } from '../../../helper/ballotAdapters/index.js';
 import { Ballot } from '../../../schema/Ballot.js';
-import { Proposal } from '../../../schema/Proposal.js';
+import { Question } from '../../../schema/Question.js';
 import { CertifiedSnapshot } from '../../../schema/CertifiedSnapshot.js';
 import {
   buildProposalContentBlob,
@@ -287,7 +287,7 @@ router.get('/:id/archive', async (req, res) => {
       });
     }
     const ballot = bRes.doc;
-    const proposals = await Proposal.find({ ballotId: ballot._id }).lean();
+    const proposals = await Question.find({ ballotId: ballot._id }).lean();
 
     // Canonical ballot summary. Not byte-identical to Hydra's pinned
     // ballot JSON (Hydra adds merkleRoot + ballotIpfsCid, full role-

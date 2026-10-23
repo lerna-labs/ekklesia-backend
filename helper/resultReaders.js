@@ -9,7 +9,7 @@
 // JSON `canonical` field and `Link: rel=canonical` header.
 
 import { Result } from '../schema/Result.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { resolveBallot, resolveProposal } from './idResolver.js';
 
 /**
@@ -41,7 +41,7 @@ export async function readBallotResults(ballotId) {
     };
   }
   const canonicalId = resolved.doc._id;
-  const proposals = await Proposal.find({ ballotId: canonicalId }, { _id: 1 }).lean();
+  const proposals = await Question.find({ ballotId: canonicalId }, { _id: 1 }).lean();
   const ids = proposals.map((p) => p._id);
   const results = await Result.find({ proposalId: { $in: ids } }).lean();
   return {

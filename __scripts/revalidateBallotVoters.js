@@ -36,7 +36,7 @@ import process from 'process';
 import mongoose from 'mongoose';
 import { bootstrap, teardown, parseArgs } from './scaffold/common/env.js';
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { Vote } from '../schema/Vote.js';
 import { UserCache } from '../schema/UserCache.js';
 import { loadValidationScript } from '../helper/loadValidationScript.js';
@@ -123,7 +123,7 @@ if (dryRun) {
     console.log(`  ${userId}`);
   }
   if (recompute) {
-    const proposalCount = await Proposal.countDocuments({ ballotId: ballot._id });
+    const proposalCount = await Question.countDocuments({ ballotId: ballot._id });
     console.log(`[revalidate] would recompute ${proposalCount} proposal(s) after validation`);
   }
   await teardown();
@@ -179,7 +179,7 @@ console.log(
 );
 
 if (recompute) {
-  const proposals = await Proposal.find({ ballotId: ballot._id })
+  const proposals = await Question.find({ ballotId: ballot._id })
     .select('_id')
     .sort({ position: 1, _id: 1 })
     .lean();
