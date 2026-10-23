@@ -12,7 +12,7 @@
 // here than Hydra — divergence would cause silently-accepted drafts
 // that Hydra later rejects at /vote (no user-visible error path).
 
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 
 export class VoteValidationError extends Error {
   constructor(message, { code, path } = {}) {
@@ -254,7 +254,7 @@ function validateLikertGrid(selection, proposal, path) {
  * one call. Returns { ok, errors? } to keep the route handler flat.
  */
 export async function validateVotesForBallot(votes, ballotId) {
-  const proposals = await Proposal.find({ ballotId }).lean();
+  const proposals = await Question.find({ ballotId }).lean();
   try {
     validateVoteSelections(votes, proposals);
     return { ok: true };

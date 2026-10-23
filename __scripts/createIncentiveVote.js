@@ -1,5 +1,5 @@
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { connectToDatabase, disconnectFromDatabase } from '../helper/dbManager.js';
 import process from 'process';
 import { fileURLToPath } from 'url';
@@ -58,7 +58,7 @@ const ballot = new Ballot({
 await ballot.save();
 console.log('Ballot created successfully', ballot._id);
 
-const proposal1 = new Proposal({
+const proposal1 = new Question({
   title: '1) Adopt CIP-50 — Pledge Leverage-Based Staking Rewards',
   ballotId: ballot._id,
   description:
@@ -101,7 +101,7 @@ const proposal1 = new Proposal({
   ],
 });
 
-const proposal2 = new Proposal({
+const proposal2 = new Question({
   title: '2) Initial value of new “L” parameter for CIP-50',
   ballotId: ballot._id,
   description:
@@ -127,7 +127,7 @@ const proposal2 = new Proposal({
   ],
 });
 
-const proposal3 = new Proposal({
+const proposal3 = new Question({
   title: '3) Adopt CIP-163 — Time-Bound Delegation with Dynamic Rewards',
   ballotId: ballot._id,
   description:
@@ -163,7 +163,7 @@ const proposal3 = new Proposal({
   ],
 });
 
-const proposal4 = new Proposal({
+const proposal4 = new Question({
   title: '4) Initial value of new “delegatorInactivity” parameter for CIP-163',
   ballotId: ballot._id,
   description:
@@ -193,7 +193,7 @@ const proposal4 = new Proposal({
   ],
 });
 
-const proposal5 = new Proposal({
+const proposal5 = new Question({
   title: '5) Initial value of new “minPoolMargin” parameter for CIP-23',
   ballotId: ballot._id,
   description:

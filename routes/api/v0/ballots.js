@@ -4,7 +4,7 @@ const router = Router();
 
 // schema import
 import { Ballot } from '../../../schema/Ballot.js';
-import { Proposal } from '../../../schema/Proposal.js';
+import { Question } from '../../../schema/Question.js';
 import { Vote } from '../../../schema/Vote.js';
 
 // helper
@@ -747,7 +747,7 @@ router.get('/:ballotId/proposals/', aggregationLimiter, getBallot, async (req, r
     countPipeline.push({ $count: 'total' });
 
     // Get total count
-    const totalResults = await Proposal.aggregate(countPipeline);
+    const totalResults = await Question.aggregate(countPipeline);
     const total = totalResults.length > 0 ? totalResults[0].total : 0;
 
     // Calculate total pages
@@ -761,7 +761,7 @@ router.get('/:ballotId/proposals/', aggregationLimiter, getBallot, async (req, r
     );
 
     // Fetch the proposals from the database
-    const proposals = await Proposal.aggregate(aggregationPipeline);
+    const proposals = await Question.aggregate(aggregationPipeline);
 
     // Calculate medians for scale voteType proposals
     for (const proposal of proposals) {
