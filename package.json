@@ -69,6 +69,7 @@
     "ip-address": "^10.7.4",
     "picomatch@2": "^2.3.2",
     "picomatch@4": "^4.0.4",
-    "hyperid": "^4.0.0"
+    "hyperid": "^4.0.0",
+    "fflate": "^0.7.5"
   }
 }
