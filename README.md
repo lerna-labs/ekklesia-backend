@@ -152,7 +152,7 @@ External scraper caches still need a manual nudge:
 
 ## Releasing
 
-Merging the Version Packages pull request that the Release Manager opens on `main` bumps the version and updates `CHANGELOG.md`, but tags and publishes nothing. Automation never creates a git tag. A release starts from a signed annotated tag that the maintainer creates and pushes at the version commit on `main`:
+Merging the Version Packages pull request that the Release Manager opens on `main` bumps the version and updates `CHANGELOG.md`, but tags and publishes nothing. Automation never creates a version tag. A release starts from a signed annotated tag that the maintainer creates and pushes at the version commit on `main`:
 
 ```
 git fetch origin main

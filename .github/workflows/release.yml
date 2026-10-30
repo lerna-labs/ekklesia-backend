@@ -10,7 +10,7 @@ name: Release
 # There is no prerelease mode here. Release candidates are ephemeral snapshots
 # built on staging (staging-rc.yml); main only ever cuts clean X.Y.Z versions.
 # Commits and the release PR are attributed to the Ekklesia Release Manager App
-# rather than github-actions[bot]. Automation never creates a tag.
+# rather than github-actions[bot]. Automation never creates a version tag.
 on:
   push:
     branches: [main]
