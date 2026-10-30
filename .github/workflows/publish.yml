@@ -2,7 +2,9 @@ name: Publish release artifact
 
 # Packages the deployable source on a version tag and attaches it to the GitHub
 # Release. Runs only on a version tag (never on a plain push to main), so a
-# release publishes exactly once. "!v*-*" excludes prerelease tags.
+# release publishes exactly once. "!v*-*" excludes prerelease tags. The tag is
+# created and pushed by the maintainer as a signed annotated tag; the verify
+# job refuses anything else before any other job runs.
 on:
   push:
     tags: ["v*", "!v*-*"]
@@ -11,7 +13,20 @@ permissions:
   contents: read
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify the release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/verify-release-tag.sh "$GITHUB_REF_NAME"
+
   publish:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +61,10 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists; skipping."
+            exit 0
+          fi
           version="${GITHUB_REF_NAME#v}"
           notes=$(awk -v v="## ${version}" '$0==v{f=1;next} /^## /{if(f)exit} f' CHANGELOG.md)
           gh release create "${GITHUB_REF_NAME}" \
