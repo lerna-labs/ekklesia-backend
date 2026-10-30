@@ -6,7 +6,7 @@ const { Schema } = mongoose;
  * Represents the voting results for a specific proposal
  *
  * @typedef {Object} Result
- * @property {ObjectId} proposalId - The ID of the proposal these results belong to (references Proposal)
+ * @property {ObjectId} proposalId - The ID of the proposal these results belong to (references Question)
  * @property {Object} results - Object containing the calculated voting results
  * @property {Object} [resultsByGroup] - Optional results per voterGroup: { "<group>": { results: [{ id, label, count, votingPower }], totalVotes } }
  * @property {Date} createdAt - Timestamp when the results were first created (immutable)
@@ -24,7 +24,7 @@ const resultSchema = new Schema(
     proposalId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: 'Proposal',
+      ref: 'Question',
       unique: true,
     },
     results: {

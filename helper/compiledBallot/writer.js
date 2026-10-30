@@ -14,7 +14,7 @@
 import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 import { Ballot } from '../../schema/Ballot.js';
-import { Proposal } from '../../schema/Proposal.js';
+import { Question } from '../../schema/Question.js';
 import { ImportedBallotPayload } from '../../schema/ImportedBallotPayload.js';
 import { ensureProposalContentHashes } from '../proposalContent.js';
 import { SCHEMA_VERSION } from './schema.js';
@@ -157,10 +157,10 @@ export async function writeCompiledBallot(payload, authCtx) {
     ballotId = upserted._id;
     created = existing == null;
 
-    await Proposal.deleteMany({ ballotId }, opts);
+    await Question.deleteMany({ ballotId }, opts);
     const docs = payload.proposals.map((p) => buildProposalDoc(p, ballotId));
     if (docs.length > 0) {
-      await Proposal.insertMany(docs, { ...opts, ordered: true });
+      await Question.insertMany(docs, { ...opts, ordered: true });
     }
 
     await ImportedBallotPayload.create(
