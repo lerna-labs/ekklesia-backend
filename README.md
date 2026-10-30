@@ -154,7 +154,7 @@ External scraper caches still need a manual nudge:
 
 Merging the `chore: release` pull request that the Release Manager opens on `main` bumps the version and updates `CHANGELOG.md`, but tags and publishes nothing. Automation never creates a version tag. A release starts from a signed annotated tag that the maintainer creates and pushes at the version commit on `main`:
 
-```
+```bash
 git fetch origin main
 git tag -s vX.Y.Z -m "vX.Y.Z" <version-commit-sha>
 git push origin vX.Y.Z
