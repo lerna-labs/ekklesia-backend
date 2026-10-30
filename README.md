@@ -152,7 +152,11 @@ External scraper caches still need a manual nudge:
 
 ## Releasing
 
-Merging the `chore: release` pull request that the Release Manager opens on `main` bumps the version and updates `CHANGELOG.md`, but tags and publishes nothing. Automation never creates a version tag. A release starts from a signed annotated tag that the maintainer creates and pushes at the version commit on `main`:
+Merging the `chore: release` pull request that the Release Manager
+opens on `main` bumps the version and updates `CHANGELOG.md`, but tags
+and publishes nothing. Automation never creates a version tag. A
+release starts from a signed annotated tag that the maintainer creates
+and pushes at the version commit on `main`:
 
 ```bash
 git fetch origin main
@@ -160,4 +164,12 @@ git tag -s vX.Y.Z -m "vX.Y.Z" <version-commit-sha>
 git push origin vX.Y.Z
 ```
 
-The tag push runs `publish.yml`, whose first job runs `.github/scripts/verify-release-tag.sh`. Nothing is published unless the tag is an annotated tag object, GitHub reports its signature as verified, the signed tag's commit is the commit that was pushed, that commit is an ancestor of `origin/main`, and the tag is `v` followed by the `package.json` version at that commit. The workflow then packages the source tarball and creates the GitHub Release with the `CHANGELOG.md` section as its notes, skipping creation if the release already exists. `backport-release.yml` runs on the same tag push.
+The tag push runs `publish.yml`, whose first job runs
+`.github/scripts/verify-release-tag.sh`. Nothing is published unless
+the tag is an annotated tag object, GitHub reports its signature as
+verified, the signed tag's commit is the commit that was pushed, that
+commit is an ancestor of `origin/main`, and the tag is `v` followed by
+the `package.json` version at that commit. The workflow then packages
+the source tarball and creates the GitHub Release with the
+`CHANGELOG.md` section as its notes, skipping creation if the release
+already exists. `backport-release.yml` runs on the same tag push.
