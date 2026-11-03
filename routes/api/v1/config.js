@@ -8,8 +8,11 @@
 //
 // All fields are public — no auth required.
 import express from 'express';
+import { publicGetLimiter } from '../../../helper/rateLimiters.js';
 
 const router = express.Router();
+
+router.use(publicGetLimiter);
 
 const DEFAULTS = {
   ipfsGatewayBase: 'https://ipfs.io/ipfs/',

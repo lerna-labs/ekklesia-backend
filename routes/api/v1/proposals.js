@@ -18,7 +18,7 @@
 
 import { Router } from 'express';
 import { Ballot } from '../../../schema/Ballot.js';
-import { Proposal } from '../../../schema/Proposal.js';
+import { Question } from '../../../schema/Question.js';
 import { buildFacetQuery, FacetQueryError } from '../../../helper/facets/queryAdapter.js';
 import {
   resolveBallot,
@@ -26,8 +26,11 @@ import {
   canonicalApiPath,
   setCanonicalLinkHeader,
 } from '../../../helper/idResolver.js';
+import { publicGetLimiter } from '../../../helper/rateLimiters.js';
 
 const router = Router();
+
+router.use(publicGetLimiter);
 
 router.get('/ballot/:ballotId', async (req, res) => {
   // Accept either canonical _id or upstream externalBallotId.
@@ -91,12 +94,12 @@ router.get('/ballot/:ballotId', async (req, res) => {
     ...(searchClause || {}),
   };
   const [data, total] = await Promise.all([
-    Proposal.find(filter)
+    Question.find(filter)
       .sort(queryPlan.sort)
       .skip((page - 1) * limit)
       .limit(limit)
       .lean(),
-    Proposal.countDocuments(filter),
+    Question.countDocuments(filter),
   ]);
 
   const payload = {

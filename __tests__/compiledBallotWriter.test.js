@@ -34,7 +34,7 @@ function getMongoUri() {
 
 import mongoose from 'mongoose';
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { ImportedBallotPayload } from '../schema/ImportedBallotPayload.js';
 import { writeCompiledBallot, CompiledBallotWriteError } from '../helper/compiledBallot/writer.js';
 
@@ -108,7 +108,7 @@ async function cleanup() {
   }).select('_id');
   const ids = ballots.map((b) => b._id);
   if (ids.length) {
-    await Proposal.deleteMany({ ballotId: { $in: ids } });
+    await Question.deleteMany({ ballotId: { $in: ids } });
     await ImportedBallotPayload.deleteMany({ ballotId: { $in: ids } });
     await Ballot.deleteMany({ _id: { $in: ids } });
   }
@@ -143,7 +143,7 @@ describeFn('compiledBallot.writer (mongo)', () => {
     expect(ballot.proposalSource.importMethod).toBe('upload');
     expect(ballot.facets).toHaveLength(1);
 
-    const proposals = await Proposal.find({ ballotId: ballot._id }).lean();
+    const proposals = await Question.find({ ballotId: ballot._id }).lean();
     expect(proposals).toHaveLength(1);
     expect(proposals[0].externalProposal.id).toBe('ext-p1');
 
@@ -188,7 +188,7 @@ describeFn('compiledBallot.writer (mongo)', () => {
     expect(second.created).toBe(false);
     expect(second.ballotId).toBe(first.ballotId);
 
-    const proposals = await Proposal.find({ ballotId: first.ballotId }).lean();
+    const proposals = await Question.find({ ballotId: first.ballotId }).lean();
     expect(proposals).toHaveLength(1);
     expect(proposals[0].externalProposal.id).toBe('ext-p2');
 
@@ -210,5 +210,43 @@ describeFn('compiledBallot.writer (mongo)', () => {
         importedBy: 'admin-test-2',
       }),
     ).rejects.toThrow(CompiledBallotWriteError);
+  });
+
+  // Regression coverage for CodeQL alerts #7 and #8 (js/sql-injection):
+  // moduleId/externalBallotId feed a Mongo filter directly. An operator
+  // object here (instead of a string) must never reach Ballot.findOne /
+  // findOneAndUpdate.
+  test('rejects an operator object as source.moduleId', async () => {
+    const payload = basePayload(`${EXT_ID_PREFIX}inject-moduleid`);
+    payload.source.moduleId = { $ne: null };
+
+    await expect(
+      writeCompiledBallot(payload, { method: 'upload', importedBy: 'admin-test-3' }),
+    ).rejects.toThrow(CompiledBallotWriteError);
+
+    const matches = await Ballot.find({
+      'proposalSource.externalBallotId': `${EXT_ID_PREFIX}inject-moduleid`,
+    });
+    expect(matches).toHaveLength(0);
+  });
+
+  test('rejects an operator object as source.externalBallotId', async () => {
+    const payload = basePayload(`${EXT_ID_PREFIX}inject-extid`);
+    payload.source.externalBallotId = { $gt: '' };
+
+    await expect(
+      writeCompiledBallot(payload, { method: 'upload', importedBy: 'admin-test-3' }),
+    ).rejects.toThrow(CompiledBallotWriteError);
+  });
+
+  test('a legitimate string source pair still writes normally', async () => {
+    const extId = `${EXT_ID_PREFIX}legit-string`;
+    const res = await writeCompiledBallot(basePayload(extId), {
+      method: 'upload',
+      importedBy: 'admin-test-3',
+    });
+    expect(res.created).toBe(true);
+    const ballot = await Ballot.findById(res.ballotId).lean();
+    expect(ballot.proposalSource.externalBallotId).toBe(extId);
   });
 });

@@ -14,7 +14,7 @@ import { Router } from 'express';
 import { Ballot } from '../../../../schema/Ballot.js';
 import { isAdmin } from '../../../../helper/adminAuth.js';
 import { adminOrScope } from '../../../../helper/compositeAuth.js';
-import { ballotImportLimiter } from '../../../../helper/rateLimiters.js';
+import { ballotImportLimiter, publicGetLimiter } from '../../../../helper/rateLimiters.js';
 import { validateCompiledBallot } from '../../../../helper/compiledBallot/validator.js';
 import {
   writeCompiledBallot,
@@ -108,6 +108,7 @@ router.post(
   },
 );
 
+router.use(publicGetLimiter);
 router.use(isAdmin);
 
 function handleHydraError(err, res) {

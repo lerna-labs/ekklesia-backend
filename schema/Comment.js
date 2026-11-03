@@ -18,7 +18,7 @@ const commentSchema = new Schema(
   {
     proposalId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Proposal',
+      ref: 'Question',
       required: true,
     },
     parentId: {

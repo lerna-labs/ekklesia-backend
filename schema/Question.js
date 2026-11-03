@@ -2,10 +2,11 @@ import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /**
- * Proposal Schema
- * Represents a registered proposal for a ballot in the voting system
+ * Question Schema
+ * Represents a registered proposal (ballot question) for a ballot in the voting system.
+ * Stored in the `proposals` collection.
  *
- * @typedef {Object} Proposal
+ * @typedef {Object} Question
  * @property {ObjectId} ballotId - The ID of the ballot this proposal belongs to (references Ballot)
  * @property {String} ipfsHash - IPFS hash of the proposal metadata (optional, null if not stored on IPFS)
  * @property {String} title - The title of the proposal
@@ -190,7 +191,7 @@ const proposalSchema = new Schema(
       default: false,
     },
     // blake2b_256 hex of the canonical per-proposal content blob. Set by
-    // `helper/proposalContent.js:ensureProposalContentHash()` whenever
+    // `helper/proposalContent.js:ensureProposalContentHashes()` whenever
     // the proposal is written/updated. Anchors the voter-facing content
     // (title, summary, rationale, options, images, URLs) so auditors
     // can cryptographically verify the proposal hasn't drifted since
@@ -264,5 +265,7 @@ proposalSchema.index(
   { sparse: true, name: 'ballot_externalProposalId_lookup' },
 );
 
-const Proposal = mongoose.model('Proposal', proposalSchema);
-export { Proposal };
+// The collection name is pinned: Mongoose would otherwise derive `questions`, and
+// the existing data lives in `proposals`.
+const Question = mongoose.model('Question', proposalSchema, 'proposals');
+export { Question };
