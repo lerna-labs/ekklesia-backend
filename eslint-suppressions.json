@@ -67,11 +67,6 @@
       "count": 1
     }
   },
-  "helper/hydra.js": {
-    "no-undef": {
-      "count": 1
-    }
-  },
   "helper/koios.js": {
     "no-useless-assignment": {
       "count": 2

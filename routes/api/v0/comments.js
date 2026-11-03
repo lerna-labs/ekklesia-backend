@@ -2,7 +2,7 @@ import { Router } from 'express';
 import mongoose from 'mongoose';
 import { Comment } from '../../../schema/Comment.js';
 import { CommentLike } from '../../../schema/CommentLike.js';
-import { Proposal } from '../../../schema/Proposal.js';
+import { Question } from '../../../schema/Question.js';
 import { User } from '../../../schema/User.js';
 import { Vote } from '../../../schema/Vote.js';
 import { verifyToken } from '../../../helper/verifyToken.js';
@@ -541,7 +541,7 @@ router.get('/:commentId/replies', async (req, res) => {
     }
 
     const proposal = parentComment.proposalId
-      ? await Proposal.findById(parentComment.proposalId).select('proposerId voteId').lean()
+      ? await Question.findById(parentComment.proposalId).select('proposerId voteId').lean()
       : null;
     const vote = proposal?.voteId
       ? await Vote.findById(proposal.voteId).select('admins').lean()
@@ -615,7 +615,7 @@ router.post('/:commentId/like', async (req, res) => {
     }
 
     const proposal = comment.proposalId
-      ? await Proposal.findById(comment.proposalId).select('status voteId').lean()
+      ? await Question.findById(comment.proposalId).select('status voteId').lean()
       : null;
     if (!proposal || proposal.status !== 'live') {
       return res.status(400).json({ status: 'error', message: 'Only live comments can be liked.' });
@@ -706,7 +706,7 @@ router.put('/:commentId/withdraw', async (req, res) => {
     }
 
     const proposal = comment.proposalId
-      ? await Proposal.findById(comment.proposalId).select('voteId').lean()
+      ? await Question.findById(comment.proposalId).select('voteId').lean()
       : null;
     const vote = proposal?.voteId
       ? await Vote.findById(proposal.voteId).select('admins feedbackEndDate').lean()
@@ -777,7 +777,7 @@ router.get('/:commentId', async (req, res) => {
     }
 
     const proposal = comment.proposalId
-      ? await Proposal.findById(comment.proposalId).select('proposerId voteId').lean()
+      ? await Question.findById(comment.proposalId).select('proposerId voteId').lean()
       : null;
     const vote = proposal?.voteId
       ? await Vote.findById(proposal.voteId).select('admins').lean()

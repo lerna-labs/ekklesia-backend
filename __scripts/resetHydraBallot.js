@@ -30,7 +30,7 @@ import process from 'process';
 import mongoose from 'mongoose';
 import { bootstrap, teardown, parseArgs } from './scaffold/common/env.js';
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { Vote } from '../schema/Vote.js';
 import { VotePackage } from '../schema/VotePackage.js';
 import { UserCache } from '../schema/UserCache.js';
@@ -99,7 +99,7 @@ const caches = await UserCache.updateMany({ ballotId: { $in: ids } }, { $set: { 
 console.log(`[reset] UserCache nonces reset: ${caches.modifiedCount}`);
 
 if (deleteBallot) {
-  const props = await Proposal.deleteMany({ ballotId: { $in: ids } });
+  const props = await Question.deleteMany({ ballotId: { $in: ids } });
   console.log(`[reset] Proposal removed   : ${props.deletedCount}`);
   const bal = await Ballot.deleteMany({ _id: { $in: ids } });
   console.log(`[reset] Ballot removed     : ${bal.deletedCount}`);

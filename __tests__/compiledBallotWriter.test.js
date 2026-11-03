@@ -34,7 +34,7 @@ function getMongoUri() {
 
 import mongoose from 'mongoose';
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { ImportedBallotPayload } from '../schema/ImportedBallotPayload.js';
 import { writeCompiledBallot, CompiledBallotWriteError } from '../helper/compiledBallot/writer.js';
 
@@ -108,7 +108,7 @@ async function cleanup() {
   }).select('_id');
   const ids = ballots.map((b) => b._id);
   if (ids.length) {
-    await Proposal.deleteMany({ ballotId: { $in: ids } });
+    await Question.deleteMany({ ballotId: { $in: ids } });
     await ImportedBallotPayload.deleteMany({ ballotId: { $in: ids } });
     await Ballot.deleteMany({ _id: { $in: ids } });
   }
@@ -143,7 +143,7 @@ describeFn('compiledBallot.writer (mongo)', () => {
     expect(ballot.proposalSource.importMethod).toBe('upload');
     expect(ballot.facets).toHaveLength(1);
 
-    const proposals = await Proposal.find({ ballotId: ballot._id }).lean();
+    const proposals = await Question.find({ ballotId: ballot._id }).lean();
     expect(proposals).toHaveLength(1);
     expect(proposals[0].externalProposal.id).toBe('ext-p1');
 
@@ -188,7 +188,7 @@ describeFn('compiledBallot.writer (mongo)', () => {
     expect(second.created).toBe(false);
     expect(second.ballotId).toBe(first.ballotId);
 
-    const proposals = await Proposal.find({ ballotId: first.ballotId }).lean();
+    const proposals = await Question.find({ ballotId: first.ballotId }).lean();
     expect(proposals).toHaveLength(1);
     expect(proposals[0].externalProposal.id).toBe('ext-p2');
 

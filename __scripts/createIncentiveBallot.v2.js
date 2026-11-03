@@ -82,7 +82,7 @@ import { dirname, join } from 'path';
 import dotenv from 'dotenv';
 
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { connectToDatabase, disconnectFromDatabase } from '../helper/dbManager.js';
 import { loadLocalOverrides } from '../helper/envOverlay.js';
 import { ensureProposalContentHashes } from '../helper/proposalContent.js';
@@ -552,13 +552,13 @@ console.log(`[rss-v2] ballot _id:         ${ballot._id}`);
 // CIWG adjusted question wording. Each of rss-v2-item-{1..5} maps to
 // exactly one Proposal per ballot.
 for (const p of buildProposalDocs(ballot._id)) {
-  await Proposal.updateOne(
+  await Question.updateOne(
     { ballotId: ballot._id, 'externalProposal.id': p.externalProposal.id },
     { $set: p },
     { upsert: !refreshContent },
   );
 }
-const proposalCount = await Proposal.countDocuments({ ballotId: ballot._id });
+const proposalCount = await Question.countDocuments({ ballotId: ballot._id });
 console.log(`[rss-v2] proposals upserted: ${proposalCount}`);
 
 // Stamp contentHash on every proposal. Runs after the upserts so the

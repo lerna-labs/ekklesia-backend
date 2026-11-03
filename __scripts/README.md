@@ -62,7 +62,7 @@ top-level orchestrator stitches them together.
 |---|---|---|
 | `backfillBallotSource.js` | One-shot: stamps `source: "legacy"` on Ballot docs missing the field. Idempotent. | no |
 | `waitForPrepareConfirmation.js` | Polls Koios `/tx_info` for the `/prepare` L1 tx stamped on a Ballot doc and blocks until it lands. Flags: `--ballotId` or `--txHash`, `--pollSec`, `--timeoutSec`. Exits 0 on confirmation, 1 on timeout. | no |
-| `resetHydraBallot.js` | Wipes backend Mongo state for a ballot (VotePackages, Votes, UserCache nonces) and either clears Hydra fields (`--clear`) or deletes the Ballot + Proposals (`--delete`). Scoped: `--ballotId` / `--title` / `--all-hydra` / `--all` (bulk modes require `--confirm`). Pair with `sweepAdminWallet.js` + Hydra restart for a full end-to-end reset. | **yes — edits Mongo** |
+| `resetHydraBallot.js` | Wipes backend Mongo state for a ballot (VotePackages, Votes, UserCache nonces) and either clears Hydra fields (`--clear`) or deletes the Ballot + Questions (`--delete`). Scoped: `--ballotId` / `--title` / `--all-hydra` / `--all` (bulk modes require `--confirm`). Pair with `sweepAdminWallet.js` + Hydra restart for a full end-to-end reset. | **yes — edits Mongo** |
 | `sweepAdminWallet.js` | Calls Hydra `POST /sweep` to consolidate the admin wallet and offload residue tokens to `HYDRA_SWEEP_ADDRESS` (or `--dumpAddress`). Run between test runs or after a failed `/prepare`. Submits a real L1 tx. | no (but submits a tx) |
 | `issueApiKey.js` | Mints a public-API key. Prints plaintext secret ONCE. | no |
 | `mintDevJwt.js` | Dev-only: mints a JWT using `JWT_SECRET`. Dev workflow only. | no |
@@ -76,6 +76,6 @@ top-level orchestrator stitches them together.
 ## Conventions for new scaffolds
 
 - Use `scaffold/common/env.js` for bootstrap + argv parsing. Call `bootstrap()` before touching Mongo and `teardown()` before exit.
-- Use `scaffold/common/ballotFactory.js` for deterministic Ballot/Proposal creation. Extend `VALIDATION_SCRIPTS` and `defaultProposals` there rather than inlining new shapes.
+- Use `scaffold/common/ballotFactory.js` for deterministic Ballot/Question creation. Extend `VALIDATION_SCRIPTS` and `defaultProposals` there rather than inlining new shapes.
 - Pin fixtures in `scaffold/common/fixtures.js` — shared across all scaffolds and Phase-3 tests.
 - Destructive scripts must require `--confirm` and print a 3-second banner before acting.
