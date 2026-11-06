@@ -106,6 +106,9 @@ export function validateAddress(signerAddress, signType) {
       break;
     case 'drep':
       const parts = getAddressType(signerAddress);
+      if (parts.error) {
+        return { error: parts.error };
+      }
       let cip129_prefix, cip105_prefix, isScript;
       switch (parts.hashType) {
         case 'script':
@@ -248,6 +251,9 @@ export function getAddressType(bech32Address) {
         // network byte, so networkId stays null for those.
         networkId = Number.parseInt(keyPrefix, 16) & 0x0f;
         break;
+    }
+    if (type === 'drep' && keyHash.trim().length !== 56) {
+      return { error: 'DRep credential must be 28 bytes' };
     }
     // Ensure no dangling whitespace that could cause downstream issues...
     return {

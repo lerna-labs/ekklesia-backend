@@ -1,3 +1,4 @@
+import { bech32 } from 'bech32';
 import { pubKeyToBech32, validateAddress } from '../validateAddress';
 
 const mainnet_enterprise_key_addr = 'addr1v99r3mwucuhwqyj3vg7gdlyam2xurku0xj6f9qgamh5vefc4jytpq';
@@ -168,6 +169,36 @@ describe('validate DRep IDs', () => {
   test('invalid DRep PubKey', () => {
     const drep_pub_key = '7e0bdd1327bab4be5e209a588e6279cabf29d6174683c14986afb3858793c8';
     expect(validateAddress(drep_pub_key, 'drep')).toEqual({ error: 'Invalid address format' });
+  });
+});
+
+describe('reject DRep IDs whose credential is not 28 bytes', () => {
+  const encode = (prefix, hex) =>
+    bech32.encode(prefix, bech32.toWords(Buffer.from(hex, 'hex')), 256);
+  const key_hash = 'dbb7'.repeat(14);
+  const other_hash = 'ab'.repeat(28);
+  const error = { error: 'DRep credential must be 28 bytes' };
+
+  test.each([
+    ['CIP-129 key header 0x22, two key hashes', 'drep', '22' + key_hash + other_hash],
+    ['CIP-129 script header 0x23, two hashes', 'drep', '23' + key_hash + other_hash],
+    ['CIP-105 key, 27 bytes', 'drep', key_hash.slice(0, 54)],
+    ['CIP-105 script, 56 bytes', 'drep_script', key_hash + other_hash],
+    ['CIP-105 script, 27 bytes', 'drep_script', key_hash.slice(0, 54)],
+  ])('%s', (_label, prefix, body) => {
+    expect(validateAddress(encode(prefix, body), 'drep')).toEqual(error);
+  });
+
+  test('unknown CIP-129 header is an error, not an exception', () => {
+    expect(validateAddress(encode('drep', '24' + key_hash), 'drep')).toEqual({
+      error: 'Not a valid bech32 address',
+    });
+  });
+
+  test('over-long stake address is rejected', () => {
+    expect(validateAddress(encode('stake', 'e1' + key_hash + other_hash), 'stake')).toEqual({
+      error: 'Invalid stake address',
+    });
   });
 });
 
