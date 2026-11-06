@@ -219,6 +219,7 @@ export function getAddressType(bech32Address) {
         break;
       case 'drep_script':
         hashType = 'script';
+        keyHash = body_hex;
         keyPrefix = '23';
         type = 'drep';
         break;

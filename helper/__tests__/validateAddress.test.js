@@ -184,6 +184,7 @@ describe('reject DRep IDs whose credential is not 28 bytes', () => {
     ['CIP-129 script header 0x23, two hashes', 'drep', '23' + key_hash + other_hash],
     ['CIP-105 key, 27 bytes', 'drep', key_hash.slice(0, 54)],
     ['CIP-105 script, 56 bytes', 'drep_script', key_hash + other_hash],
+    ['CIP-105 script, 29 bytes', 'drep_script', '00' + key_hash],
     ['CIP-105 script, 27 bytes', 'drep_script', key_hash.slice(0, 54)],
   ])('%s', (_label, prefix, body) => {
     expect(validateAddress(encode(prefix, body), 'drep')).toEqual(error);
