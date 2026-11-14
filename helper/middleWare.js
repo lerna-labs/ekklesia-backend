@@ -388,13 +388,6 @@ export function validateSessionRequest(req, res, next) {
     });
   }
 
-  if (!getWalletSignerConfig().userTypes.includes(signType)) {
-    return res.status(403).json({
-      status: 'error',
-      message: `Signer type "${signType}" is disabled on this deployment.`,
-    });
-  }
-
   // check if address is drep id and if not cip129, throw error
   if (
     signerAddress.startsWith('drep') &&
@@ -405,6 +398,13 @@ export function validateSessionRequest(req, res, next) {
     return res.status(400).json({
       status: 'error',
       message: 'Please use a CIP129 address',
+    });
+  }
+
+  if (!getWalletSignerConfig().userTypes.includes(signType)) {
+    return res.status(403).json({
+      status: 'error',
+      message: `Signer type "${signType}" is disabled on this deployment.`,
     });
   }
 

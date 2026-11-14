@@ -5,6 +5,7 @@ import { jest } from '@jest/globals';
 
 const DREP_SCRIPT = 'drep1yvtqft3982fwrxaw5p5phd3xnwls0nc3tqdp68kgw8zvu6qn73kqt';
 const DREP_ID = 'drep1ygkeyidfortest';
+const DREP_105 = 'drep1cip105fortest';
 const STAKE_ID = 'stake_test1ufortest';
 
 const ADDR_TYPES = {
@@ -20,7 +21,8 @@ await jest.unstable_mockModule('../idResolver.js', () => ({
   resolveProposal: jest.fn(),
 }));
 await jest.unstable_mockModule('../validateAddress.js', () => ({
-  validateAddress: (addr) => addr,
+  validateAddress: (addr) =>
+    addr === DREP_105 ? { cip105: DREP_105, cip129: 'drep1cip129fortest', isScript: false } : addr,
   getAddressType: (addr) => ADDR_TYPES[addr] || { error: 'Not a valid bech32 address' },
 }));
 await jest.unstable_mockModule('@emurgo/cardano-serialization-lib-nodejs', () => ({
@@ -109,6 +111,13 @@ describe('validateSessionRequest wallet signer settings', () => {
     expect(run({ ...multisigLogin, signType: 'drep' }).next).toHaveBeenCalled();
     process.env.WALLETSIGNER_USER_TYPES = 'stake,drep,addr';
     expect(run(multisigLogin).next).toHaveBeenCalled();
+  });
+
+  test('a CIP-105 DRep ID keeps its 400 when drep is disabled', () => {
+    process.env.WALLETSIGNER_USER_TYPES = 'stake';
+    const { res } = run({ signerAddress: DREP_105, signType: 'drep' });
+    expect(res.statusCode).toBe(400);
+    expect(res.body.message).toMatch(/CIP129/);
   });
 
   test('a payment-address login keeps its 400 whatever the list says', () => {
