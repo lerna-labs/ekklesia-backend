@@ -19,7 +19,7 @@ describe('GET /api/v1/config walletSigner', () => {
     const res = await request(app).get('/api/v1/config');
     expect(res.status).toBe(200);
     expect(res.body.walletSigner).toEqual({
-      userTypes: ['drep', 'stake', 'pool', 'addr'],
+      userTypes: ['drep', 'stake', 'pool'],
       userDefault: 'stake',
       multisig: true,
     });

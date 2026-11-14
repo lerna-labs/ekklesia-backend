@@ -3,11 +3,11 @@ import { getWalletSignerConfig, SIGNER_TYPES } from '../walletSigner.js';
 describe('getWalletSignerConfig', () => {
   test('defaults list every accepted type, stake as default, multisig on', () => {
     expect(getWalletSignerConfig({})).toEqual({
-      userTypes: ['drep', 'stake', 'pool', 'addr'],
+      userTypes: ['drep', 'stake', 'pool'],
       userDefault: 'stake',
       multisig: true,
     });
-    expect(SIGNER_TYPES).toEqual(['drep', 'stake', 'pool', 'addr']);
+    expect(SIGNER_TYPES).toEqual(['drep', 'stake', 'pool']);
   });
 
   test('reads the three settings', () => {
@@ -21,8 +21,8 @@ describe('getWalletSignerConfig', () => {
   });
 
   test('an unknown type names the value', () => {
-    expect(() => getWalletSignerConfig({ WALLETSIGNER_USER_TYPES: 'stake,calidus' })).toThrow(
-      /unknown signer type "calidus"/,
+    expect(() => getWalletSignerConfig({ WALLETSIGNER_USER_TYPES: 'stake,addr' })).toThrow(
+      /unknown signer type "addr"/,
     );
   });
 

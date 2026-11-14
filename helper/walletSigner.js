@@ -4,12 +4,11 @@
 //   WALLETSIGNER_MULTISIG      true | false, whether multisig login is available
 // Unset values reproduce what login accepts without any of them.
 
-// The signer types login accepts: drep, stake and pool on the standalone path,
-// and addr (request signType `addr` or `addr_test`) on the multisig path, which
-// skips the signType gate. The standalone path refuses `addr` with a 400. A
-// `calidus` address cannot open a session (it validates to an object, which a
-// Session userId rejects), so it is not listed.
-export const SIGNER_TYPES = ['drep', 'stake', 'pool', 'addr'];
+// The voter types login accepts: drep, stake and pool. Which key signs a
+// multisig is decided by its script, not by this list, and `addr` is not a
+// voter type. A `calidus` address cannot open a session (it validates to an
+// object, which a Session userId rejects), so it is not listed.
+export const SIGNER_TYPES = ['drep', 'stake', 'pool'];
 const DEFAULT_USER_DEFAULT = 'stake';
 
 /**

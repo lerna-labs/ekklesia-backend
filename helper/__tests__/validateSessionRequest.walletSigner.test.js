@@ -88,8 +88,8 @@ describe('validateSessionRequest wallet signer settings', () => {
     expect(run(stakeLogin).next).toHaveBeenCalled();
   });
 
-  test('WALLETSIGNER_USER_TYPES=stake,addr also refuses a drep script multisig', () => {
-    process.env.WALLETSIGNER_USER_TYPES = 'stake,addr';
+  test('WALLETSIGNER_USER_TYPES=stake also refuses a drep script multisig', () => {
+    process.env.WALLETSIGNER_USER_TYPES = 'stake';
     expect(run(multisigLogin).res.statusCode).toBe(403);
   });
 
@@ -102,15 +102,14 @@ describe('validateSessionRequest wallet signer settings', () => {
     expect(run(stakeLogin).next).toHaveBeenCalled();
   });
 
-  test('a multisig login signed with a payment key needs addr in the list', () => {
-    process.env.WALLETSIGNER_USER_TYPES = 'drep,stake,pool';
-    const denied = run(multisigLogin);
-    expect(denied.res.statusCode).toBe(403);
-    expect(denied.res.body.message).toMatch(/"addr"/);
-    expect(run({ ...multisigLogin, signType: 'addr_test' }).res.statusCode).toBe(403);
-    expect(run({ ...multisigLogin, signType: 'drep' }).next).toHaveBeenCalled();
-    process.env.WALLETSIGNER_USER_TYPES = 'stake,drep,addr';
-    expect(run(multisigLogin).next).toHaveBeenCalled();
+  test('a multisig login signed by a payment key in a drep script passes with only drep enabled', () => {
+    process.env.WALLETSIGNER_USER_TYPES = 'drep';
+    process.env.WALLETSIGNER_USER_DEFAULT = 'drep';
+    for (const signType of ['addr', 'addr_test']) {
+      const { next, req } = run({ ...multisigLogin, signType });
+      expect(next).toHaveBeenCalled();
+      expect(req.signType).toBe('drep');
+    }
   });
 
   test('a CIP-105 DRep ID keeps its 400 when drep is disabled', () => {

@@ -341,15 +341,6 @@ export function validateSessionRequest(req, res, next) {
         message: 'Multisig login is disabled on this deployment.',
       });
     }
-    if (
-      (signType === 'addr' || signType === 'addr_test') &&
-      !walletSigner.userTypes.includes('addr')
-    ) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Signer type "addr" is disabled on this deployment.',
-      });
-    }
     if (!walletSigner.userTypes.includes(scriptParts.type)) {
       return res.status(403).json({
         status: 'error',
