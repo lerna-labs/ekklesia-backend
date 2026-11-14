@@ -9,6 +9,7 @@
 // All fields are public — no auth required.
 import express from 'express';
 import { publicGetLimiter } from '../../../helper/rateLimiters.js';
+import { getWalletSignerConfig } from '../../../helper/walletSigner.js';
 
 const router = express.Router();
 
@@ -27,6 +28,7 @@ router.get('/', (req, res) => {
     explorerTxBase: process.env.EXPLORER_TX_BASE || DEFAULTS.explorerTxBase,
     explorerAddressBase: process.env.EXPLORER_ADDRESS_BASE || DEFAULTS.explorerAddressBase,
     network: process.env.CARDANO_NETWORK || DEFAULTS.network,
+    walletSigner: getWalletSignerConfig(),
   });
 });
 

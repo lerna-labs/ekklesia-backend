@@ -19,6 +19,7 @@ import { rootLimiter, baselineLimiter } from './helper/rateLimiters.js';
 import { createOgMetaMiddleware } from './helper/og/ogMeta.js';
 import { ogBallotImage, ogProposalImage } from './helper/og/ogImage.js';
 import { spaCanonicalRedirect } from './helper/spaCanonicalRedirect.js';
+import { getWalletSignerConfig } from './helper/walletSigner.js';
 
 // Initialize console with timestamps
 initializeConsole();
@@ -48,6 +49,13 @@ if (!process.env.JWT_SECRET) {
 }
 if (process.env.JWT_SECRET.length < 32) {
   console.error('JWT_SECRET must be at least 32 characters (use `openssl rand -hex 32`)');
+  process.exit(1);
+}
+
+try {
+  getWalletSignerConfig();
+} catch (error) {
+  console.error(error.message);
   process.exit(1);
 }
 
