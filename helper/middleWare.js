@@ -3,7 +3,7 @@ import validator from 'validator';
 
 // schema imports
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { Transaction } from '../schema/Transaction.js';
 
 // helper imports
@@ -11,6 +11,7 @@ import { verifyToken } from '../helper/verifyToken.js';
 import { validateAddress, getAddressType } from '../helper/validateAddress.js';
 import { resolveBallot, resolveProposal } from '../helper/idResolver.js';
 import { PublicKey } from '@emurgo/cardano-serialization-lib-nodejs';
+import { getWalletSignerConfig } from '../helper/walletSigner.js';
 
 /**
  * Middleware to verify user authentication token
@@ -333,6 +334,19 @@ export function validateSessionRequest(req, res, next) {
           `${scriptParts.networkId}, this service expects ${expectedNetwork}).`,
       });
     }
+    const walletSigner = getWalletSignerConfig();
+    if (!walletSigner.multisig) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Multisig login is disabled on this deployment.',
+      });
+    }
+    if (!walletSigner.userTypes.includes(scriptParts.type)) {
+      return res.status(403).json({
+        status: 'error',
+        message: `Signer type "${scriptParts.type}" is disabled on this deployment.`,
+      });
+    }
     req.isScript = true;
     req.signType = scriptParts.type;
     req.signerAddress = signerAddress.trim();
@@ -375,6 +389,13 @@ export function validateSessionRequest(req, res, next) {
     return res.status(400).json({
       status: 'error',
       message: 'Please use a CIP129 address',
+    });
+  }
+
+  if (!getWalletSignerConfig().userTypes.includes(signType)) {
+    return res.status(403).json({
+      status: 'error',
+      message: `Signer type "${signType}" is disabled on this deployment.`,
     });
   }
 

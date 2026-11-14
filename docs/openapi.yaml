@@ -1207,6 +1207,10 @@ paths:
                     (scriptAddress present) signType is not gated — a member's
                     wallet may sign with any credential, including a payment
                     address — and is normalized to 'drep' for the session.
+                    A login gets a 403 when its voter type (on the multisig path,
+                    the type of the script address) is not in
+                    WALLETSIGNER_USER_TYPES, or when it is a multisig login and
+                    WALLETSIGNER_MULTISIG is false.
                 scriptAddress:
                   type: string
                   description: >
@@ -1284,6 +1288,10 @@ paths:
                     'addr' is rejected). On the multisig path (scriptAddress
                     present) signType is not gated and the signer may present any
                     credential; the script verifies party membership by key hash.
+                    A login gets a 403 when its voter type (on the multisig path,
+                    the type of the script address) is not in
+                    WALLETSIGNER_USER_TYPES, or when it is a multisig login and
+                    WALLETSIGNER_MULTISIG is false.
                 scriptAddress:
                   type: string
                   description: >
@@ -1309,6 +1317,8 @@ paths:
                     type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     delete:
       tags:
         - Session

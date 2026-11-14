@@ -34,7 +34,7 @@ function getMongoUri() {
 
 import mongoose from 'mongoose';
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { Vote } from '../schema/Vote.js';
 import { UserCache } from '../schema/UserCache.js';
 import { Result } from '../schema/Result.js';
@@ -127,7 +127,7 @@ runDescribe('aggregateVotes grouped results', () => {
         title: new RegExp('^' + BALLOT_TITLE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + runId),
       }).lean();
       const ballotIds = ballots.map((b) => b._id);
-      const proposals = await Proposal.find({ ballotId: { $in: ballotIds } }).lean();
+      const proposals = await Question.find({ ballotId: { $in: ballotIds } }).lean();
       const proposalIds = proposals.map((p) => p._id);
 
       if (proposalIds.length > 0) {
@@ -136,7 +136,7 @@ runDescribe('aggregateVotes grouped results', () => {
       }
       if (ballotIds.length > 0) {
         await UserCache.deleteMany({ ballotId: { $in: ballotIds } });
-        await Proposal.deleteMany({ ballotId: { $in: ballotIds } });
+        await Question.deleteMany({ ballotId: { $in: ballotIds } });
         await Ballot.deleteMany({ _id: { $in: ballotIds } });
       }
     } finally {
@@ -153,7 +153,7 @@ runDescribe('aggregateVotes grouped results', () => {
 
   maybeTest('two groups (drep/pool): overall and resultsByGroup', async () => {
     const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId));
-    const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
+    const proposal = await Question.create(makeProposal(ballot._id, { abstainAllowed: false }));
 
     const drepVoters = [10, 20, 30, 40, 50].map((power, i) => ({
       userId: `voter-drep-${i + 1}`,
@@ -234,7 +234,7 @@ runDescribe('aggregateVotes grouped results', () => {
 
   maybeTest('abstain vote: abstain in results and in drep group', async () => {
     const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + ' abstain'));
-    const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: true }));
+    const proposal = await Question.create(makeProposal(ballot._id, { abstainAllowed: true }));
 
     const drepVoters = [10, 20, 30, 40, 50].map((power, i) => ({
       userId: `voter-drep-${i + 1}`,
@@ -298,7 +298,7 @@ runDescribe('aggregateVotes grouped results', () => {
 
   maybeTest('stake group: voter in stake group appears in stake bucket', async () => {
     const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + ' default'));
-    const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
+    const proposal = await Question.create(makeProposal(ballot._id, { abstainAllowed: false }));
 
     const drepVoters = [10, 20, 30, 40, 50].map((power, i) => ({
       userId: `voter-drep-${i + 1}`,
@@ -403,7 +403,7 @@ runDescribe('aggregateVotes grouped results', () => {
   //   ballotParticipation.voterCount.drep:   5→4
   maybeTest('excluded vote: excludedAt drops the row from every derivation surface', async () => {
     const ballot = await Ballot.create(makeBallot(BALLOT_TITLE_PREFIX + runId + ' excluded'));
-    const proposal = await Proposal.create(makeProposal(ballot._id, { abstainAllowed: false }));
+    const proposal = await Question.create(makeProposal(ballot._id, { abstainAllowed: false }));
 
     const drepVoters = [10, 20, 30, 40, 50].map((power, i) => ({
       userId: `voter-drep-excl-${i + 1}`,

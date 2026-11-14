@@ -37,7 +37,7 @@ import { allocateBallotPower } from './common/votingPowerDistribution.js';
 const ALL_VOTERS = [...VOTERS, ...SYNTHETIC_VOTERS];
 import { User } from '../../schema/User.js';
 import { UserCache } from '../../schema/UserCache.js';
-import { Proposal } from '../../schema/Proposal.js';
+import { Question } from '../../schema/Question.js';
 import { Ballot } from '../../schema/Ballot.js';
 import { Vote } from '../../schema/Vote.js';
 import { Result } from '../../schema/Result.js';
@@ -111,7 +111,7 @@ if (stale.length > 0) {
     Vote.deleteMany({ ballotId: { $in: ids } }),
     Result.deleteMany({ ballotId: { $in: ids } }),
     UserCache.deleteMany({ ballotId: { $in: ids } }),
-    Proposal.deleteMany({ ballotId: { $in: ids } }),
+    Question.deleteMany({ ballotId: { $in: ids } }),
   ]);
   await Ballot.deleteMany({ _id: { $in: ids } });
   for (const b of stale) {
@@ -287,7 +287,7 @@ if (skipVotes) {
   let totalVotes = 0;
   for (const { ballot, spec } of allBallots) {
     if (spec.state === 'upcoming') continue;
-    const proposals = await Proposal.find({ ballotId: ballot._id }).lean();
+    const proposals = await Question.find({ ballotId: ballot._id }).lean();
     const eligibleGroups = new Set(VALIDATION_SCRIPTS[spec.flavor].eligibleGroups);
     // Look up each voter's per-ballot power from UserCache so the
     // rollup matches what /api endpoints will compute via $lookup.

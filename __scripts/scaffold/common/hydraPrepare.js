@@ -8,7 +8,7 @@
 // See ~/ekklesia/hydra/src/types.ts (BallotDefinition, BallotQuestion,
 // EkklesiaBallotExtension) — the source of truth for this shape.
 
-import { Proposal } from '../../../schema/Proposal.js';
+import { Question } from '../../../schema/Question.js';
 import { epochForDate } from '../../../helper/cardanoEpochs.js';
 
 /**
@@ -249,7 +249,7 @@ function acceptedCredentialsFor(ballot) {
  *   seed/collateral. See HYDRA_DEDICATED_FUEL_WALLET.md TRD.
  */
 export async function buildPrepareBody(ballot, opts = {}) {
-  const proposals = await Proposal.find({ ballotId: ballot._id }).lean();
+  const proposals = await Question.find({ ballotId: ballot._id }).lean();
   if (proposals.length === 0) {
     throw new Error(`Ballot ${ballot._id} has no proposals to publish`);
   }

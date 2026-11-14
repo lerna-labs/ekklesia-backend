@@ -1,6 +1,6 @@
 import { Vote } from '../schema/Vote.js';
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 
 // !! NEEDS REWRITE !!
 // returns all votes for a given userId, ballotId, or voteType = pending
@@ -55,7 +55,7 @@ export async function getVotes(
   // create array of individual proposalIds
   const proposalIds = votes.map((vote) => vote.proposalId);
   // get all proposals for the votes
-  const proposals = await Proposal.find({
+  const proposals = await Question.find({
     _id: { $in: proposalIds },
   })
     .select('_id title ballotId voteOptions') // NOTE: This returned data and voteOptions before, but why
@@ -172,7 +172,7 @@ export async function getSubmittedVotes(userId) {
   // create array of individual proposalIds of all votes
   const proposalIds = [...new Set(votes.map((vote) => vote.proposalId))];
   // get all proposals for the votes
-  const proposals = await Proposal.find({
+  const proposals = await Question.find({
     _id: { $in: proposalIds },
   })
     .select('_id title ballotId data voteOptions')
