@@ -124,7 +124,14 @@ async function startServer() {
     await connectToDatabase();
 
     // Load all routes from the routes directory
-    await loadRoutes(join(__dirname, 'routes'), app);
+    // A route file that fails to import rejects here. Exit non-zero so the
+    // process manager restarts it and a deployment health check sees the failure.
+    try {
+      await loadRoutes(join(__dirname, 'routes'), app);
+    } catch (error) {
+      console.error(`Failed to load routes: ${error.message}`);
+      process.exit(1);
+    }
 
     // Serve static files from the public directory (SvelteKit assets)
     app.use(express.static(join(__dirname, 'public')));

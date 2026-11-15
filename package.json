@@ -25,7 +25,7 @@
   "description": "Ekklesia Voting Backend",
   "dependencies": {
     "@emurgo/cardano-serialization-lib-nodejs": "^15.0.3",
-    "@lerna-labs/ekklesia-helpers": "^1.1.0",
+    "@lerna-labs/ekklesia-helpers": "^2.1.0",
     "@meshsdk/common": "^1.9.0-beta.101",
     "@meshsdk/core": "^1.9.0-beta.101",
     "@resvg/resvg-js": "^2.6.2",
