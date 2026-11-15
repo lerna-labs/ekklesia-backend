@@ -71,11 +71,8 @@ export async function validateVoter(userId, ballotId) {
       return validated;
     }
 
-    // Koios `/drep_info` returns `drep_status: "registered" | "retired" | "unregistered"`.
-    // Older versions returned a boolean `registered` — accept both for
-    // resilience across Koios upgrades.
-    const isRegistered =
-      voterInfo[0].drep_status === 'registered' || voterInfo[0].registered === true;
+    // Koios `/drep_info` returns `drep_status: "registered" | "not_registered" | "deregistered"`.
+    const isRegistered = voterInfo[0].drep_status === 'registered';
     if (isRegistered) {
       console.log('Voter is registered DRep:', userId);
       validated = true;

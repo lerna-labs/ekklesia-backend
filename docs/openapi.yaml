@@ -1267,6 +1267,10 @@ paths:
         "Signature verification failed" for a malformed or wrong-content
         signature. A stake-script address whose network id doesn't match the
         service is rejected up front by both POST and PUT.
+
+        A drep login, or a multisig login whose script address is a drep
+        script, is refused with 403 when the DRep is not registered. A
+        registered DRep that is inactive can still log in.
       operationId: verifySignature
       requestBody:
         required: true
