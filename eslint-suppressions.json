@@ -77,17 +77,6 @@
       "count": 1
     }
   },
-  "helper/validateAddress.js": {
-    "no-case-declarations": {
-      "count": 15
-    },
-    "no-useless-assignment": {
-      "count": 1
-    },
-    "no-useless-catch": {
-      "count": 1
-    }
-  },
   "routes/api/v0/ballots.js": {
     "no-dupe-keys": {
       "count": 2

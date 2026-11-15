@@ -1,0 +1,5 @@
+---
+"ekklesia-backend": patch
+---
+
+`PUT /api/v0/session` now refuses a DRep login, standalone or multisig with a drep script address, when the DRep is not registered, answering 403 once the signature has verified. A registered DRep that is inactive can still log in. When the chain data provider fails during the registration check the route answers 503 with `Retry-After` where the provider gave one, never 403. The Calidus key lookup on the pool nonce request (`POST /api/v0/session`) and on checkout (`POST /api/v0/dashboard/:ballotId/checkout`) now uses `@lerna-labs/ekklesia-helpers`. A pool with no Calidus key still answers 400 `Pool not found or no calidus key registered`, and a provider failure answers 503 instead of the same 400. Address validation (`helper/validateAddress.js`) now re-exports the helpers implementation, which also rejects a pool ID that is not 28 bytes and a Calidus ID or stake address that is not 29 bytes. The unused Koios functions `fetchDrepName`, `validateDrep`, `fetchHandle`, `getScript` and `fetchCalidusKey` are removed from `helper/koios.js`. The DRep voter validation no longer reads the `registered` field Koios stopped returning.
