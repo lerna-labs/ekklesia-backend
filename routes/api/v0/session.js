@@ -334,8 +334,8 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
     }
     // isPartyToScript returns `true` on success, `false` when a script
     // member's key signed the wrong content, or `{ error }` for every
-    // other failure except a provider failure, which it throws. The legacy code flattened all of these into one
-    // misleading "does not belong to the MultiSig" message, so a script
+    // other failure except a provider failure, which it throws. The
+    // legacy code flattened all of these into one misleading "does not belong to the MultiSig" message, so a script
     // that simply isn't on chain looked like a membership rejection.
     // Disambiguate the cases the caller can actually act on.
     if (isParty !== true) {

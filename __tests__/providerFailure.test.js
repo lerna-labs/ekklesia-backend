@@ -57,12 +57,11 @@ afterAll(async () => {
 });
 
 let errorSpy;
-let warnSpy;
 
 beforeEach(() => {
   jest.clearAllMocks();
   errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-  warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(UserCache, 'findOne').mockResolvedValue({ validated: true });
   jest.spyOn(Transaction, 'findOne').mockResolvedValue({ merkleRoot: MERKLE_ROOT, votes: [] });
 });
@@ -128,9 +127,9 @@ describe('provider failures on PUT /:ballotId/checkout', () => {
     const text = await res.text();
     expect(text).not.toContain(PROVIDER_MESSAGE);
     expect(JSON.parse(text).message).toBe(PROVIDER_UNAVAILABLE_MESSAGE);
-    expect(warnSpy).not.toHaveBeenCalledWith(
-      expect.stringContaining(PROVIDER_CREDENTIAL_ALERT_TAG),
-    );
+    expect(
+      errorSpy.mock.calls.some(([line]) => String(line).includes(PROVIDER_CREDENTIAL_ALERT_TAG)),
+    ).toBe(false);
   });
 });
 

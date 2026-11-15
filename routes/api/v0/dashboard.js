@@ -839,11 +839,17 @@ router.put('/:ballotId/checkout/multisig', isAuthenticated, getBallot, async (re
   req.body.signature.signedAt = new Date();
   transaction.multiSig.push(req.body.signature);
   // check if multisig is complete
-  const multisigComplete = await validateScriptSignatures(
-    stringToHex(transaction.merkleRoot),
-    scriptAddress,
-    transaction.multiSig,
-  );
+  let multisigComplete;
+  try {
+    multisigComplete = await validateScriptSignatures(
+      stringToHex(transaction.merkleRoot),
+      scriptAddress,
+      transaction.multiSig,
+    );
+  } catch (error) {
+    if (respondToProviderFailure(res, error, 'Multisig completeness check')) return;
+    throw error;
+  }
   if (multisigComplete?.error) {
     console.error(
       'validateScriptSignatures failed',

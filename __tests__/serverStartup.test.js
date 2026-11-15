@@ -21,7 +21,9 @@ await jest.unstable_mockModule('../helper/envOverlay.js', () => ({
 describe('server startup', () => {
   test('exits non-zero when route loading fails', async () => {
     process.env.JWT_SECRET = 'x'.repeat(40);
-    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => {});
+    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit');
+    });
     jest.spyOn(console, 'error').mockImplementation(() => {});
 
     await import('../server.js');
