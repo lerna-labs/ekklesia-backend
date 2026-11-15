@@ -23,6 +23,7 @@ import { createTransaction } from '../../../helper/createTransaction.js';
 import { PublicKey } from '@emurgo/cardano-serialization-lib-nodejs';
 import { isAuthenticated, getBallot } from '../../../helper/middleWare.js';
 import { fetchCalidusKey } from '../../../helper/koios.js';
+import { respondToProviderFailure } from '../../../helper/providerFailure.js';
 import { publicGetLimiter } from '../../../helper/rateLimiters.js';
 
 router.use(publicGetLimiter);
@@ -419,11 +420,17 @@ router.put('/:ballotId/checkout', isAuthenticated, getBallot, async (req, res) =
   }
 
   // VERIFY SIGNATURE
-  const signatureVerification = await verifySignature(
-    stringToHex(transaction.merkleRoot),
-    userId,
-    req.body.signature,
-  );
+  let signatureVerification;
+  try {
+    signatureVerification = await verifySignature(
+      stringToHex(transaction.merkleRoot),
+      userId,
+      req.body.signature,
+    );
+  } catch (error) {
+    if (respondToProviderFailure(res, error, 'Checkout signature verification')) return;
+    throw error;
+  }
 
   if (signatureVerification.error || !signatureVerification) {
     return res.status(400).json({
@@ -809,11 +816,17 @@ router.put('/:ballotId/checkout/multisig', isAuthenticated, getBallot, async (re
 
   // VERIFY SIGNATURE
   // check if party to script and verify signature
-  const isParty = await isPartyToScript(
-    stringToHex(transaction.merkleRoot),
-    userId,
-    req.body.signature,
-  );
+  let isParty;
+  try {
+    isParty = await isPartyToScript(
+      stringToHex(transaction.merkleRoot),
+      userId,
+      req.body.signature,
+    );
+  } catch (error) {
+    if (respondToProviderFailure(res, error, 'Multisig signature check')) return;
+    throw error;
+  }
   if (!isParty || isParty.error) {
     console.error('isPartyToScript verification failed', signerAddress, userId, isParty);
     return res.status(403).json({
@@ -826,11 +839,17 @@ router.put('/:ballotId/checkout/multisig', isAuthenticated, getBallot, async (re
   req.body.signature.signedAt = new Date();
   transaction.multiSig.push(req.body.signature);
   // check if multisig is complete
-  const multisigComplete = await validateScriptSignatures(
-    stringToHex(transaction.merkleRoot),
-    scriptAddress,
-    transaction.multiSig,
-  );
+  let multisigComplete;
+  try {
+    multisigComplete = await validateScriptSignatures(
+      stringToHex(transaction.merkleRoot),
+      scriptAddress,
+      transaction.multiSig,
+    );
+  } catch (error) {
+    if (respondToProviderFailure(res, error, 'Multisig completeness check')) return;
+    throw error;
+  }
   if (multisigComplete?.error) {
     console.error(
       'validateScriptSignatures failed',

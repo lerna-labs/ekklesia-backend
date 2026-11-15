@@ -16,6 +16,7 @@ import { verifySignature, isPartyToScript } from '../../../helper/verifySignatur
 import { validateAddress, getAddressType } from '../../../helper/validateAddress.js';
 import { getScript, fetchName } from '@lerna-labs/ekklesia-helpers/cardano';
 import { fetchCalidusKey } from '../../../helper/koios.js';
+import { respondToProviderFailure } from '../../../helper/providerFailure.js';
 import {
   nonceRequestLimiter,
   sessionVerificationLimiter,
@@ -324,12 +325,19 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
       return res.status(400).json({ status: 'error', message: AUTH_ERROR_MESSAGE });
     }
 
-    const isParty = await isPartyToScript(nonceData.nonce, validatedScriptAddress, signature);
+    let isParty;
+    try {
+      isParty = await isPartyToScript(nonceData.nonce, validatedScriptAddress, signature);
+    } catch (error) {
+      if (respondToProviderFailure(res, error, 'MS: isPartyToScript')) return;
+      throw error;
+    }
     // isPartyToScript returns `true` on success, `false` when a script
     // member's key signed the wrong content, or `{ error }` for every
-    // other failure. The legacy code flattened all of these into one
-    // misleading "does not belong to the MultiSig" message, so a script
-    // that simply isn't on chain looked like a membership rejection.
+    // other failure except a provider failure, which it throws. The
+    // legacy code flattened all of these into one misleading "does not
+    // belong to the MultiSig" message, so a script that simply isn't on
+    // chain looked like a membership rejection.
     // Disambiguate the cases the caller can actually act on.
     if (isParty !== true) {
       const reason = isParty && isParty.error ? isParty.error : 'signature invalid';
@@ -343,8 +351,7 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
 
       // The script hash didn't resolve on our network — almost always a
       // native script that was never published on chain, or an address
-      // from a different network. (getScript also returns falsy on a
-      // transient upstream error, hence the soft wording.)
+      // from a different network.
       if (reason === 'Script not found') {
         return res.status(400).json({
           status: 'error',
@@ -473,6 +480,7 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
   try {
     signatureVerification = await verifySignature(nonceData.nonce, signerAddress, signature);
   } catch (error) {
+    if (respondToProviderFailure(res, error, 'Signature verification')) return;
     console.error('Signature verification error', error);
     return res.status(400).json({ status: 'error', message: AUTH_ERROR_MESSAGE });
   }
