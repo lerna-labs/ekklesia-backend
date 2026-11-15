@@ -14,8 +14,12 @@ import duration from 'dayjs/plugin/duration.js';
 import { generateNonce } from '@meshsdk/core';
 import { verifySignature, isPartyToScript } from '../../../helper/verifySignature.js';
 import { validateAddress, getAddressType } from '../../../helper/validateAddress.js';
-import { getScript, fetchName } from '@lerna-labs/ekklesia-helpers/cardano';
-import { fetchCalidusKey } from '../../../helper/koios.js';
+import {
+  getScript,
+  fetchName,
+  fetchCalidusKey,
+  validateDrep,
+} from '@lerna-labs/ekklesia-helpers/cardano';
 import { respondToProviderFailure } from '../../../helper/providerFailure.js';
 import {
   nonceRequestLimiter,
@@ -109,6 +113,29 @@ async function clearNoncesForUser(userId) {
     nonce: null,
     createdAt: { $lt: thirtyMinutesAgo },
   });
+}
+
+const DREP_NOT_REGISTERED_MESSAGE = 'This DRep is not registered. Register as a DRep to sign in.';
+
+/**
+ * Checks that a DRep ID is registered. Returns true to continue; returns
+ * false once a response has been sent (403 for an unregistered DRep, 503 for
+ * a provider failure). Any other error propagates to the caller.
+ */
+async function requireRegisteredDrep(res, drepId, context) {
+  let registered;
+  try {
+    registered = await validateDrep(drepId);
+  } catch (error) {
+    if (respondToProviderFailure(res, error, context)) return false;
+    throw error;
+  }
+  if (!registered) {
+    console.warn(`${context}: refusing login, DRep is not registered`, drepId);
+    res.status(403).json({ status: 'error', message: DREP_NOT_REGISTERED_MESSAGE });
+    return false;
+  }
+  return true;
 }
 
 function validateScriptAddress(scriptAddress) {
@@ -258,7 +285,13 @@ router.post('/', nonceRequestLimiter, validateSessionRequest, async (req, res) =
 
   let calidusID;
   if (req.signType === 'pool') {
-    const calidusKey = await fetchCalidusKey(addressBech32);
+    let calidusKey;
+    try {
+      calidusKey = await fetchCalidusKey(addressBech32);
+    } catch (error) {
+      if (respondToProviderFailure(res, error, 'Calidus key lookup')) return;
+      throw error;
+    }
     if (!calidusKey) {
       return res.status(400).json({
         status: 'error',
@@ -379,6 +412,11 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
       });
     }
 
+    if (signType === 'drep') {
+      if (!(await requireRegisteredDrep(res, validatedScriptAddress, 'MS: DRep registration')))
+        return;
+    }
+
     let token;
     try {
       token = jwt.sign(
@@ -486,6 +524,10 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
   }
   if (signatureVerification?.error || !signatureVerification) {
     return res.status(400).json({ status: 'error', message: AUTH_ERROR_MESSAGE });
+  }
+
+  if (signType === 'drep') {
+    if (!(await requireRegisteredDrep(res, addressBech32, 'DRep registration'))) return;
   }
 
   let token;

@@ -22,7 +22,7 @@ import { getVotes, getPendingVoteCount } from '../../../helper/getVotes.js';
 import { createTransaction } from '../../../helper/createTransaction.js';
 import { PublicKey } from '@emurgo/cardano-serialization-lib-nodejs';
 import { isAuthenticated, getBallot } from '../../../helper/middleWare.js';
-import { fetchCalidusKey } from '../../../helper/koios.js';
+import { fetchCalidusKey } from '@lerna-labs/ekklesia-helpers/cardano';
 import { respondToProviderFailure } from '../../../helper/providerFailure.js';
 import { publicGetLimiter } from '../../../helper/rateLimiters.js';
 
@@ -272,7 +272,13 @@ router.post('/:ballotId/checkout/', isAuthenticated, getBallot, async (req, res)
   // check calidus key if signType = pool
   let calidusID;
   if (signType === 'pool') {
-    const calidusKey = await fetchCalidusKey(addressBech32);
+    let calidusKey;
+    try {
+      calidusKey = await fetchCalidusKey(addressBech32);
+    } catch (error) {
+      if (respondToProviderFailure(res, error, 'Calidus key lookup')) return;
+      throw error;
+    }
     if (!calidusKey) {
       return res.status(400).json({
         status: 'error',
