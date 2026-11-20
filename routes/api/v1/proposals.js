@@ -6,6 +6,7 @@
 //   GET /api/v1/proposals/ballot/:ballotId
 //     ?sort=<facetKey>&dir=<asc|desc>
 //     ?filter[<facetKey>]=<csv>
+//     ?thresholdReached=<true|false>   (legacy ballots with a voteThreshold only)
 //     ?page=<n>&limit=<n>   (pagination; default 1 / 25, max 100)
 //
 // Response shape:
@@ -19,6 +20,11 @@
 import { Router } from 'express';
 import { Ballot } from '../../../schema/Ballot.js';
 import { Question } from '../../../schema/Question.js';
+import { Result } from '../../../schema/Result.js';
+import {
+  ballotHasThreshold,
+  computeThresholdReached,
+} from '../../../helper/results/voteThreshold.js';
 import { buildFacetQuery, FacetQueryError } from '../../../helper/facets/queryAdapter.js';
 import {
   resolveBallot,
@@ -35,7 +41,7 @@ router.use(publicGetLimiter);
 router.get('/ballot/:ballotId', async (req, res) => {
   // Accept either canonical _id or upstream externalBallotId.
   const bRes = await resolveBallot(req.params.ballotId, {
-    selectFields: '_id facets',
+    selectFields: '_id facets source voteWeighted voteThreshold',
   });
   if (!bRes) {
     return res.status(404).json({
@@ -93,6 +99,25 @@ router.get('/ballot/:ballotId', async (req, res) => {
     ...queryPlan.filter,
     ...(searchClause || {}),
   };
+
+  const hasThreshold = ballotHasThreshold(ballot);
+  const rawThreshold = req.query.thresholdReached;
+  const thresholdFilter =
+    hasThreshold && (rawThreshold === 'true' || rawThreshold === 'false')
+      ? rawThreshold === 'true'
+      : null;
+  if (thresholdFilter !== null) {
+    const ids = await Question.find(filter).distinct('_id');
+    const results = await Result.find({ proposalId: { $in: ids } })
+      .select('proposalId results')
+      .lean();
+    const byProposal = new Map(results.map((r) => [String(r.proposalId), r]));
+    filter._id = {
+      $in: ids.filter(
+        (id) => computeThresholdReached(byProposal.get(String(id)), ballot) === thresholdFilter,
+      ),
+    };
+  }
   const [data, total] = await Promise.all([
     Question.find(filter)
       .sort(queryPlan.sort)
@@ -102,12 +127,23 @@ router.get('/ballot/:ballotId', async (req, res) => {
     Question.countDocuments(filter),
   ]);
 
+  if (hasThreshold) {
+    const results = await Result.find({ proposalId: { $in: data.map((q) => q._id) } })
+      .select('proposalId results')
+      .lean();
+    const byProposal = new Map(results.map((r) => [String(r.proposalId), r]));
+    for (const q of data) {
+      q.thresholdReached = computeThresholdReached(byProposal.get(String(q._id)), ballot);
+    }
+  }
+
   const payload = {
     status: 'success',
     data,
     pagination: { total, page, limit },
     applied: { ...queryPlan.applied, search: search || null },
   };
+  if (thresholdFilter !== null) payload.applied.thresholdReached = thresholdFilter;
   // When the ballot segment was addressed via externalBallotId, emit
   // the canonical _id URL so SEO + SPA history-replaceState consumers
   // can normalize.
@@ -148,13 +184,19 @@ router.get('/:proposalId', async (req, res) => {
   }
   const proposal = pRes.doc;
   const ballot = await Ballot.findById(proposal.ballotId)
-    .select('_id title facets status source voterType voteWeighted')
+    .select('_id title facets status source voterType voteWeighted voteThreshold')
     .lean();
   const payload = {
     status: 'success',
     data: proposal,
     ballot: ballot || null,
   };
+  if (ballotHasThreshold(ballot)) {
+    const result = await Result.findOne({ proposalId: proposal._id })
+      .select('proposalId results')
+      .lean();
+    payload.data = { ...proposal, thresholdReached: computeThresholdReached(result, ballot) };
+  }
   if (pRes.source === 'external') {
     payload.canonical = canonicalApiPath('proposal', String(proposal._id));
     setCanonicalLinkHeader(res, payload.canonical);

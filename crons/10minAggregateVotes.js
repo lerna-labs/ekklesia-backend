@@ -72,6 +72,8 @@ export async function aggregateVotes() {
  * Skips:
  *   - missing proposal/ballot
  *   - Hydra ballots with provisionalResultsEnabled === false (no Vote mirror)
+ *   - closed legacy ballots (a missing source counts as legacy), unless
+ *     opts.force is true
  *   - proposals with an existing Result.source === "final" or "certified"
  *     (authoritative tallies anchored on-chain or to an authority snapshot)
  *
@@ -83,6 +85,9 @@ export async function aggregateVotes() {
  *                                               When set, skip if no Vote rows
  *                                               for this proposal fall in the
  *                                               window. Used by the cron.
+ * @param {boolean} [opts.force]                 Tally a closed legacy ballot
+ *                                               anyway, rewriting its stored
+ *                                               Result.
  * @param {boolean} [opts.dryRun]                Compute the tally and log a
  *                                               summary, but skip the
  *                                               Result.updateOne write.
@@ -107,6 +112,15 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
   const ballot = ballotCache.get(ballotKey);
   if (!ballot) {
     console.warn(`Ballot missing for proposal ${proposalId} — skipping`);
+    return 'skipped';
+  }
+
+  if (
+    (ballot.source ?? 'legacy') === 'legacy' &&
+    ballot.status === 'closed' &&
+    opts.force !== true
+  ) {
+    console.log(`Skipping proposal ${proposalId}: closed legacy ballot`);
     return 'skipped';
   }
 

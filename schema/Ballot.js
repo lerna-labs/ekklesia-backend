@@ -25,6 +25,7 @@ const { Schema } = mongoose;
  * @property {String} rollupScript - Script used to calculate voting results (default: rollupBallot.js)
  * @property {String} startupScript - Script used to start the ballot (default: startupBallot.js)
  * @property {Date} startupAt - Timestamp when the ballot was started (optional, null if not started)
+ * @property {Number} voteThreshold - Optional pass threshold as a fraction between 0 and 1 (null means no threshold)
  * @property {String} status - Current ballot status: "upcoming", "live", or "closed" (default: "upcoming")
  * @property {Date} createdAt - Timestamp when the ballot was created (immutable)
  * @property {Date} updatedAt - Timestamp when the ballot was last updated
@@ -176,6 +177,12 @@ const ballotSchema = new Schema(
       type: Date,
       required: false,
       default: null,
+    },
+    voteThreshold: {
+      type: Number,
+      default: null,
+      min: 0,
+      max: 1,
     },
     status: {
       type: String,
