@@ -787,10 +787,8 @@ paths:
       description: |
         Returns the full Proposal document plus a slim parent-ballot
         projection (`_id`, `title`, `facets`, `status`, `source`,
-        `voterType`, `voteWeighted`, `voteThreshold`) so the detail page
-        can render facet labels without a second roundtrip. When the parent
-        ballot is a legacy ballot with a numeric `voteThreshold`, `data`
-        also carries `thresholdReached`.
+        `voterType`, `voteWeighted`) so the detail page can render
+        facet labels without a second roundtrip.
       parameters:
         - $ref: '#/components/parameters/ProposalIdOrExternalAsProposalId'
       responses:
@@ -802,18 +800,7 @@ paths:
                 type: object
                 properties:
                   status: { type: string, example: 'success' }
-                  data:
-                    type: object
-                    description: Full Proposal document.
-                    properties:
-                      thresholdReached:
-                        type: boolean
-                        description: >
-                          Present only for a legacy ballot with a numeric
-                          `voteThreshold`. True when yes / (yes + no) is
-                          strictly greater than the threshold, using voting
-                          power on weighted ballots and counts otherwise.
-                          Abstain is excluded. False when there is no result.
+                  data: { type: object, description: Full Proposal document. }
                   ballot:
                     nullable: true
                     type: object
@@ -828,7 +815,6 @@ paths:
                       source: { type: string, enum: [legacy, hydra] }
                       voterType: { type: string }
                       voteWeighted: { type: boolean }
-                      voteThreshold: { type: number, nullable: true }
         '404':
           description: Proposal not found
           content:
@@ -871,13 +857,6 @@ paths:
             type: object
             additionalProperties: { type: string }
         - in: query
-          name: thresholdReached
-          description: >
-            Filters proposals by `thresholdReached` before pagination.
-            Applies only to a legacy ballot with a numeric `voteThreshold`;
-            ignored for any other ballot.
-          schema: { type: string, enum: ['true', 'false'] }
-        - in: query
           name: page
           schema: { type: integer, minimum: 1, default: 1 }
         - in: query
@@ -892,14 +871,7 @@ paths:
                 type: object
                 properties:
                   status: { type: string, example: 'success' }
-                  data:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        thresholdReached:
-                          type: boolean
-                          description: Present only for a legacy ballot with a numeric `voteThreshold`.
+                  data: { type: array, items: { type: object } }
                   pagination:
                     type: object
                     properties:
@@ -909,7 +881,6 @@ paths:
                   applied:
                     type: object
                     properties:
-                      thresholdReached: { type: boolean }
                       filters:
                         type: object
                         additionalProperties:
@@ -1534,15 +1505,6 @@ components:
         votePeriodStart: { type: string, format: date-time }
         votePeriodEnd: { type: string, format: date-time }
         voteFilters: { type: boolean }
-        voteThreshold:
-          type: number
-          minimum: 0
-          maximum: 1
-          nullable: true
-          description: >
-            Optional pass threshold as a fraction between 0 and 1, present on
-            legacy ballots. Null or absent means no threshold. Proposals on a
-            ballot with a threshold carry `thresholdReached`.
         ipfsHash: { type: string, nullable: true }
         proposalCount: { type: integer, nullable: true }
         singleProposal: { type: string, nullable: true }
