@@ -66,13 +66,8 @@ await jest.unstable_mockModule('../__scripts/scaffold/common/env.js', () => ({
   teardown: jest.fn(),
 }));
 
-const {
-  parseBallotArgs,
-  voterGroupForId,
-  planBallotChanges,
-  planUserCacheCopy,
-  repairLegacyBallots,
-} = await import('../__scripts/repairLegacyBallots.js');
+const { parseBallotArgs, planBallotChanges, planUserCacheCopy, repairLegacyBallots } =
+  await import('../__scripts/repairLegacyBallots.js');
 
 beforeEach(() => {
   reset();
@@ -91,13 +86,6 @@ describe('helpers', () => {
       apply: true,
     });
     expect(parseBallotArgs(['--ballot', 'a'])).toEqual({ ballotIds: ['a'], apply: false });
-  });
-
-  test('voter group comes from the identifier prefix', () => {
-    expect(voterGroupForId('drep1abc')).toBe('drep');
-    expect(voterGroupForId('pool1abc')).toBe('pool');
-    expect(voterGroupForId('stake1abc')).toBe('stake');
-    expect(voterGroupForId('addr1abc')).toBeNull();
   });
 
   test('ballot changes list only differing fields', () => {
@@ -119,6 +107,7 @@ describe('helpers', () => {
       { voterId: 'drep1a', ballotId, validated: true, votingPower: 5 },
       { voterId: 'stake1b', ballotId, validated: true, votingPower: 7 },
       { voterId: 'pool1c', ballotId, validated: true, votingPower: 9 },
+      { voterId: 'stake_test1e', ballotId, validated: true, votingPower: 3 },
       { voterId: 'addr1d', ballotId, validated: true, votingPower: 1 },
       { voterId: 'drep1a', ballotId, validated: true, votingPower: 5 },
     ];
@@ -127,7 +116,10 @@ describe('helpers', () => {
       ['pool1c', { validated: true, votingPower: 1, voterGroup: 'pool' }],
     ]);
     const plan = planUserCacheCopy(rows, existing);
-    expect(plan.insert.map((r) => [r.userId, r.voterGroup])).toEqual([['drep1a', 'drep']]);
+    expect(plan.insert.map((r) => [r.userId, r.voterGroup])).toEqual([
+      ['drep1a', 'drep'],
+      ['stake_test1e', 'stake'],
+    ]);
     expect(plan.same).toEqual(['stake1b']);
     expect(plan.differ.map((d) => d.userId)).toEqual(['pool1c']);
     expect(plan.badPrefix).toEqual(['addr1d']);
@@ -157,6 +149,14 @@ describe('repairLegacyBallots', () => {
     expect(out.refused).toBe(true);
     expect(JSON.stringify([db.ballot, db.usercaches, db.comments])).toBe(before);
     expect(tally).not.toHaveBeenCalled();
+  });
+
+  test('a stored null source counts as legacy', async () => {
+    seed();
+    db.ballot.source = null;
+    const out = await run({ apply: true });
+    expect(out.refused).toBe(false);
+    expect(db.ballot.source).toBe('legacy');
   });
 
   test('dry run writes nothing and does not recount', async () => {

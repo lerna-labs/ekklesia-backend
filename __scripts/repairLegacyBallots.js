@@ -32,12 +32,12 @@ import { Vote } from '../schema/Vote.js';
 import { Comment } from '../schema/Comment.js';
 import { UserCache } from '../schema/UserCache.js';
 import { Result } from '../schema/Result.js';
+import { responderRoleFor } from '../helper/voterCredential.js';
 import { tallyProposalProvisional } from '../crons/10minAggregateVotes.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const configDir = join(here, '..', 'config');
 const REPLACEMENT_SCRIPT = 'voterValidationAlwaysFalse.js';
-const GROUP_PREFIXES = { drep1: 'drep', pool1: 'pool', stake1: 'stake' };
 
 export function parseBallotArgs(argv) {
   const ballotIds = [];
@@ -46,11 +46,6 @@ export function parseBallotArgs(argv) {
     else if (argv[i].startsWith('--ballot=')) ballotIds.push(argv[i].slice('--ballot='.length));
   }
   return { ballotIds, apply: argv.includes('--apply') };
-}
-
-export function voterGroupForId(voterId) {
-  const prefix = Object.keys(GROUP_PREFIXES).find((p) => String(voterId).startsWith(p));
-  return prefix ? GROUP_PREFIXES[prefix] : null;
 }
 
 // Returns the ballot fields that differ from the repaired shape, as { field: { from, to } }.
@@ -67,7 +62,7 @@ export function planBallotChanges(ballot) {
 export function refusalReasons(ballot, { now, unattributedVotes }) {
   if (!ballot) return ['ballot does not exist'];
   const reasons = [];
-  if (ballot.source !== undefined && ballot.source !== 'legacy') {
+  if ((ballot.source ?? 'legacy') !== 'legacy') {
     reasons.push(`source is "${ballot.source}", not legacy`);
   }
   if (!ballot.votePeriodEnd || new Date(ballot.votePeriodEnd) > now) {
@@ -87,7 +82,7 @@ export function planUserCacheCopy(rows, existingByUserId) {
   const seen = new Set();
   for (const row of rows) {
     const userId = row.voterId;
-    const voterGroup = voterGroupForId(userId);
+    const voterGroup = responderRoleFor(userId);
     if (!voterGroup) {
       plan.badPrefix.push(userId);
       continue;
