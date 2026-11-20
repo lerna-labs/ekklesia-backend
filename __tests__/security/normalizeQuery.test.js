@@ -52,7 +52,6 @@ describe('normalizeQuery (security)', () => {
     ['status', ['live', 'closed']],
     ['search', ['alice', 'bob']],
     ['voterType', ['drep', 'pool']],
-    ['thresholdReached', ['true', 'false']],
   ])('rejects duplicate-param array on %s', (key, value) => {
     const { status, nextCalled } = runMiddleware({ [key]: value });
     expect(status).toBe(400);

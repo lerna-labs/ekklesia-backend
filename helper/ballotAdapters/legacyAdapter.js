@@ -107,7 +107,6 @@ export function toUnified(doc) {
     votePeriodStart: doc.votePeriodStart,
     votePeriodEnd: doc.votePeriodEnd,
     voteFilters: doc.voteFilters,
-    voteThreshold: doc.voteThreshold ?? null,
     ipfsHash: doc.ipfsHash ?? null,
     proposalCount: doc.proposalCount ?? null,
     singleProposal: doc.singleProposal ? doc.singleProposal.toString() : null,
