@@ -39,6 +39,7 @@ const SCALAR_QUERY_KEYS = new Set([
   'proposal',
   'includeTerminal',
   'refresh',
+  'thresholdReached',
 ]);
 
 export function normalizeQuery(req, res, next) {

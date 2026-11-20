@@ -23,9 +23,10 @@ import { deriveProposalTally } from '../helper/results/hydraTally.js';
 // tallies for every proposal that has recent activity.
 //
 // Source-aware behavior:
-//   - Legacy ballots: always tallied, stamped source: "provisional"
-//     (consistent with historical behavior — a final result is written when
-//     someone calls the archival rollup flow, out of scope for this cron).
+//   - Legacy ballots: tallied, stamped source: "provisional" (a final result
+//     is written when someone calls the archival rollup flow, out of scope
+//     for this cron). Closed legacy ballots are skipped unless opts.force is
+//     true.
 //   - Hydra ballots WITH provisionalResultsEnabled: tallied the same way;
 //     the Vote rows are populated by the broker's mirror (syncVoteRecords).
 //   - Hydra ballots WITHOUT provisionalResultsEnabled: skipped. A final

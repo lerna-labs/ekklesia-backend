@@ -20,6 +20,8 @@
 //     re-derivation path.
 //   - Skips Hydra ballots with provisionalResultsEnabled === false,
 //     since their local Vote rows are not the source of truth.
+//   - Skips closed legacy ballots, whose stored Result is kept as it is;
+//     --force overrides this.
 //
 // Usage:
 //   node __scripts/recomputeAllResults.js                       (every ballot)
