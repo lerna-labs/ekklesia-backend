@@ -20,12 +20,15 @@
 //     re-derivation path.
 //   - Skips Hydra ballots with provisionalResultsEnabled === false,
 //     since their local Vote rows are not the source of truth.
+//   - Skips closed legacy ballots, whose stored Result is kept as it is;
+//     --force overrides this.
 //
 // Usage:
 //   node __scripts/recomputeAllResults.js                       (every ballot)
 //   node __scripts/recomputeAllResults.js --ballot <id>         (one ballot)
 //   node __scripts/recomputeAllResults.js --dry-run             (no writes)
 //   node __scripts/recomputeAllResults.js --ballot <id> --dry-run
+//   node __scripts/recomputeAllResults.js --ballot <id> --force (also retally a closed legacy ballot)
 
 import process from 'process';
 import { bootstrap, teardown, parseArgs } from './scaffold/common/env.js';
@@ -35,6 +38,7 @@ import { tallyProposalProvisional } from '../crons/10minAggregateVotes.js';
 
 const { flags } = parseArgs();
 const dryRun = Boolean(flags['dry-run']);
+const force = Boolean(flags.force);
 const ballotFilterId = flags.ballot || null;
 
 await bootstrap();
@@ -73,6 +77,7 @@ for (const ballot of ballots) {
       const outcome = await tallyProposalProvisional(p._id, {
         ballotCache,
         dryRun,
+        force,
       });
       tallies[outcome] = (tallies[outcome] || 0) + 1;
     } catch (err) {
