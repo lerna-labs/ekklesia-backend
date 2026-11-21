@@ -32,7 +32,7 @@ const ADDR_TYPES = {
 };
 
 await jest.unstable_mockModule('../../schema/Ballot.js', () => ({ Ballot: {} }));
-await jest.unstable_mockModule('../../schema/Proposal.js', () => ({ Proposal: {} }));
+await jest.unstable_mockModule('../../schema/Question.js', () => ({ Question: {} }));
 await jest.unstable_mockModule('../../schema/Transaction.js', () => ({ Transaction: {} }));
 await jest.unstable_mockModule('../verifyToken.js', () => ({ verifyToken: () => ({}) }));
 await jest.unstable_mockModule('../idResolver.js', () => ({

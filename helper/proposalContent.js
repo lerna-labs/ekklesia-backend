@@ -21,7 +21,7 @@
 
 import blake from 'blakejs';
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { canonicalBytes } from './canonicalJson.js';
 
 const SCHEMA_VERSION = '1';
@@ -165,13 +165,13 @@ export async function stampProposalContentHash(proposalIdOrDoc) {
   const proposal =
     typeof proposalIdOrDoc === 'object' && proposalIdOrDoc._id
       ? proposalIdOrDoc
-      : await Proposal.findById(proposalIdOrDoc).lean();
+      : await Question.findById(proposalIdOrDoc).lean();
   if (!proposal) return null;
   const ballot = await Ballot.findById(proposal.ballotId).lean();
   if (!ballot) return null;
   const bytes = canonicalContentBytes(proposal, ballot);
   const hash = blake2b256Hex(bytes);
-  await Proposal.updateOne({ _id: proposal._id }, { $set: { contentHash: hash } });
+  await Question.updateOne({ _id: proposal._id }, { $set: { contentHash: hash } });
   return hash;
 }
 
@@ -183,13 +183,13 @@ export async function stampProposalContentHash(proposalIdOrDoc) {
 export async function ensureProposalContentHashes(ballotId) {
   const ballot = await Ballot.findById(ballotId).lean();
   if (!ballot) return 0;
-  const proposals = await Proposal.find({ ballotId }).lean();
+  const proposals = await Question.find({ ballotId }).lean();
   let stamped = 0;
   for (const p of proposals) {
     const bytes = canonicalContentBytes(p, ballot);
     const hash = blake2b256Hex(bytes);
     if (p.contentHash !== hash) {
-      await Proposal.updateOne({ _id: p._id }, { $set: { contentHash: hash } });
+      await Question.updateOne({ _id: p._id }, { $set: { contentHash: hash } });
       stamped += 1;
     }
   }

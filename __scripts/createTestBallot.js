@@ -1,5 +1,5 @@
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { connectToDatabase, disconnectFromDatabase } from '../helper/dbManager.js';
 import process from 'process';
 import { fileURLToPath } from 'url';
@@ -125,7 +125,7 @@ await ballot.save();
 console.log('Ballot created successfully', ballot._id);
 
 // default proposal with abstain
-const newDefaultProposal = new Proposal({
+const newDefaultProposal = new Question({
   title: 'Default Proposal: Abstain Allowed',
   ballotId: ballot._id,
   description: 'A default proposal with a yes/no/abstain vote.',
@@ -141,7 +141,7 @@ console.log('Proposal created successfully:', newDefaultProposal._id);
 
 // budget proposal
 // abstain allowed
-const newBudgetProposal = new Proposal({
+const newBudgetProposal = new Question({
   title: 'Budget Proposal: Abstain Allowed',
   ballotId: ballot._id,
   description:
@@ -231,7 +231,7 @@ console.log('Proposal created successfully:', newBudgetProposal._id);
 
 // scale proposal
 // abstain not allowed
-const newScaleProposal = new Proposal({
+const newScaleProposal = new Question({
   title: 'Scale Proposal: Abstain not allowed',
   ballotId: ballot._id,
   description: 'A scale proposal with a range of 150 to 2500 and a step of 50.',
@@ -257,7 +257,7 @@ console.log('Proposal created successfully:', newScaleProposal._id);
 
 // scale proposal
 // abstain allowed
-const newScaleProposalAbstainAllowed = new Proposal({
+const newScaleProposalAbstainAllowed = new Question({
   title: 'Scale Proposal: Abstain allowed',
   ballotId: ballot._id,
   description: 'A scale proposal with a range of -100 to 100 and a step of 1.',

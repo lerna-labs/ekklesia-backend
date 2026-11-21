@@ -95,7 +95,9 @@ paths:
         this to render cexplorer / IPFS links without hardcoding a network.
         Values come from `IPFS_GATEWAY_BASE`, `EXPLORER_TX_BASE`,
         `EXPLORER_ADDRESS_BASE`, `CARDANO_NETWORK` env vars (with safe
-        defaults).
+        defaults). `walletSigner` comes from `WALLETSIGNER_USER_TYPES`,
+        `WALLETSIGNER_USER_DEFAULT` and `WALLETSIGNER_MULTISIG`; login
+        enforces the same values with a 403.
       responses:
         '200':
           description: OK
@@ -103,7 +105,8 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [ipfsGatewayBase, explorerTxBase, explorerAddressBase, network]
+                required:
+                  [ipfsGatewayBase, explorerTxBase, explorerAddressBase, network, walletSigner]
                 properties:
                   ipfsGatewayBase:
                     type: string
@@ -118,6 +121,25 @@ paths:
                     type: string
                     enum: [preprod, preview, mainnet]
                     example: 'preprod'
+                  walletSigner:
+                    type: object
+                    required: [userTypes, userDefault, multisig]
+                    properties:
+                      userTypes:
+                        type: array
+                        description: Voter types login accepts on this deployment.
+                        items:
+                          type: string
+                          enum: [drep, stake, pool]
+                        example: [drep, stake, pool]
+                      userDefault:
+                        type: string
+                        enum: [drep, stake, pool]
+                        example: stake
+                      multisig:
+                        type: boolean
+                        description: Whether multisig login is available.
+                        example: true
 
   /ballots:
     get:

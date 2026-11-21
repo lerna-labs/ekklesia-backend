@@ -20,7 +20,7 @@ await jest.unstable_mockModule('../idResolver.js', () => ({
 // Mongoose / schema imports inside middleWare.js carry side-effects;
 // stub them out to keep this test fully isolated.
 await jest.unstable_mockModule('../../schema/Ballot.js', () => ({ Ballot: {} }));
-await jest.unstable_mockModule('../../schema/Proposal.js', () => ({ Proposal: {} }));
+await jest.unstable_mockModule('../../schema/Question.js', () => ({ Question: {} }));
 await jest.unstable_mockModule('../../schema/Transaction.js', () => ({ Transaction: {} }));
 await jest.unstable_mockModule('../verifyToken.js', () => ({ verifyToken: () => ({}) }));
 await jest.unstable_mockModule('../validateAddress.js', () => ({

@@ -15,10 +15,11 @@ import {
 import cookieParser from 'cookie-parser';
 import { v0Freeze } from './helper/v0Freeze.js';
 import { normalizeQuery } from './helper/normalizeQuery.js';
-import { publicGetLimiter } from './helper/rateLimiters.js';
+import { rootLimiter, baselineLimiter } from './helper/rateLimiters.js';
 import { createOgMetaMiddleware } from './helper/og/ogMeta.js';
 import { ogBallotImage, ogProposalImage } from './helper/og/ogImage.js';
 import { spaCanonicalRedirect } from './helper/spaCanonicalRedirect.js';
+import { getWalletSignerConfig } from './helper/walletSigner.js';
 
 // Initialize console with timestamps
 initializeConsole();
@@ -51,6 +52,13 @@ if (process.env.JWT_SECRET.length < 32) {
   process.exit(1);
 }
 
+try {
+  getWalletSignerConfig();
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
+
 const app = express();
 const PORT = process.env.SERVER_PORT || 3000;
 
@@ -63,15 +71,16 @@ const PORT = process.env.SERVER_PORT || 3000;
 // hops.
 app.set('trust proxy', 1);
 
-// Security headers + server-stack disclosure. Helmet defaults cover
-// X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS, and
-// removal of X-Powered-By. CSP is left disabled here because the SPA
-// build emits inline scripts; enable it after building a per-build
-// nonce/hash policy or running Content-Security-Policy-Report-Only.
+// CSP: 'unsafe-inline' script-src for the SvelteKit static bootstrap script; https: img-src for admin-supplied option images.
 app.disable('x-powered-by');
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+      },
+    },
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   }),
@@ -98,13 +107,9 @@ app.use(
     credentials: true, // Important for cookies
   }),
 );
+app.use(baselineLimiter);
 app.use('/api', checkDatabaseConnectionMW); // Check database connection for all API routes
-// Per-IP rate cap on the entire /api surface — anonymous reads are
-// otherwise free, and the aggregation-heavy routes (proposals listing,
-// results, voters) can saturate the connection pool from one shell
-// loop. Mounted before normalizeQuery so a stream of malformed-query
-// 400s is also throttled.
-app.use('/api', publicGetLimiter);
+// Rate limiting is mounted per router so CodeQL can trace it through loadRoutes.
 // Reject array/object-shaped values on known scalar query keys. Without
 // this, an extended-parser request like `?status[$ne]=null` lands in
 // route handlers as an object and crashes on `.toLowerCase()` (or
@@ -119,7 +124,14 @@ async function startServer() {
     await connectToDatabase();
 
     // Load all routes from the routes directory
-    await loadRoutes(join(__dirname, 'routes'), app);
+    // A route file that fails to import rejects here. Exit non-zero so the
+    // process manager restarts it and a deployment health check sees the failure.
+    try {
+      await loadRoutes(join(__dirname, 'routes'), app);
+    } catch (error) {
+      console.error(`Failed to load routes: ${error.message}`);
+      process.exit(1);
+    }
 
     // Serve static files from the public directory (SvelteKit assets)
     app.use(express.static(join(__dirname, 'public')));
@@ -145,8 +157,8 @@ async function startServer() {
     // the generic SPA). Gated on OG_CARDS_ENABLED — leave unset to
     // preserve the legacy single-card behavior.
     if (process.env.OG_CARDS_ENABLED === 'true') {
-      app.get('/og/ballot/:ballotId.png', ogBallotImage);
-      app.get('/og/proposal/:proposalId.png', ogProposalImage);
+      app.get('/og/ballot/:ballotId.png', rootLimiter, ogBallotImage);
+      app.get('/og/proposal/:proposalId.png', rootLimiter, ogProposalImage);
 
       const ogMeta = createOgMetaMiddleware({
         indexHtmlPath: join(__dirname, 'public', 'index.html'),
@@ -163,7 +175,7 @@ async function startServer() {
     }
 
     // Handle SPA routing - serve index.html for all non-API routes (Express 5: named wildcard)
-    app.get('/{*splat}', (req, res, next) => {
+    app.get('/{*splat}', rootLimiter, (req, res, next) => {
       // Skip API routes
       if (req.path.startsWith('/api/')) {
         return next();

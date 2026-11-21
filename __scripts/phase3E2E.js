@@ -24,7 +24,7 @@ import dotenv from 'dotenv';
 import { bootstrap, teardown, parseArgs } from './scaffold/common/env.js';
 import { loadLocalOverrides } from '../helper/envOverlay.js';
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..');
@@ -71,7 +71,7 @@ const ballotId = ballot._id.toString();
 console.log(`[phase3E2E] BALLOT=${ballotId} (${ballot.title})`);
 
 // Pick the first proposal to vote on.
-const proposal = await Proposal.findOne({ ballotId: ballot._id }).lean();
+const proposal = await Question.findOne({ ballotId: ballot._id }).lean();
 if (!proposal) {
   console.error('[phase3E2E] no proposals on ballot');
   await teardown();

@@ -23,7 +23,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import mongoose from 'mongoose';
 import { Ballot } from '../../schema/Ballot.js';
-import { Proposal } from '../../schema/Proposal.js';
+import { Question } from '../../schema/Question.js';
 
 // Tiny LRU with TTL. Map preserves insertion order, so re-inserting on
 // hit keeps the most-recently-used entries at the tail. Avoids a
@@ -633,7 +633,7 @@ export async function ogProposalImage(req, res, next) {
   try {
     const { proposalId } = req.params;
     if (!isObjectId(proposalId)) return next();
-    const proposal = await Proposal.findById(proposalId).lean();
+    const proposal = await Question.findById(proposalId).lean();
     if (!proposal) return next();
     const ballot = proposal.ballotId ? await Ballot.findById(proposal.ballotId).lean() : null;
 

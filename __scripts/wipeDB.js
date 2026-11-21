@@ -20,7 +20,7 @@ import dotenv from 'dotenv';
 import { connectToDatabase, disconnectFromDatabase } from '../helper/dbManager.js';
 import { loadLocalOverrides } from '../helper/envOverlay.js';
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { Vote } from '../schema/Vote.js';
 import { Transaction } from '../schema/Transaction.js';
 import { Session } from '../schema/Session.js';
@@ -58,7 +58,7 @@ function parseArgs(argv = process.argv.slice(2)) {
 const flags = parseArgs();
 const COLLECTIONS = {
   ballots: Ballot,
-  proposals: Proposal,
+  proposals: Question,
   votes: Vote,
   transactions: Transaction,
   sessions: Session,

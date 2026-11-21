@@ -22,7 +22,14 @@ import { getVotes, getPendingVoteCount } from '../../../helper/getVotes.js';
 import { createTransaction } from '../../../helper/createTransaction.js';
 import { PublicKey } from '@emurgo/cardano-serialization-lib-nodejs';
 import { isAuthenticated, getBallot } from '../../../helper/middleWare.js';
-import { fetchCalidusKey } from '../../../helper/koios.js';
+import { fetchCalidusKey } from '@lerna-labs/ekklesia-helpers/cardano';
+import { respondToProviderFailure } from '../../../helper/providerFailure.js';
+import { publicGetLimiter } from '../../../helper/rateLimiters.js';
+
+router.use(publicGetLimiter);
+
+// createVoterTree's getHexRoot() always returns "0x" + 64 lowercase hex chars.
+const MERKLE_ROOT_RE = /^0x[0-9a-f]{64}$/i;
 
 /**
  * @route GET /api/v0/dashboard
@@ -265,7 +272,13 @@ router.post('/:ballotId/checkout/', isAuthenticated, getBallot, async (req, res)
   // check calidus key if signType = pool
   let calidusID;
   if (signType === 'pool') {
-    const calidusKey = await fetchCalidusKey(addressBech32);
+    let calidusKey;
+    try {
+      calidusKey = await fetchCalidusKey(addressBech32);
+    } catch (error) {
+      if (respondToProviderFailure(res, error, 'Calidus key lookup')) return;
+      throw error;
+    }
     if (!calidusKey) {
       return res.status(400).json({
         status: 'error',
@@ -320,7 +333,7 @@ router.post('/:ballotId/checkout/', isAuthenticated, getBallot, async (req, res)
  *   - Ballot status is not "live"
  *   - signerAddress is missing
  *   - signType is missing
- *   - data (merkleRoot) is missing
+ *   - data (merkleRoot) is missing or not a well-formed hex string
  *   - Address validation fails
  *   - Signer address does not match authenticated userId
  *   - Transaction not found (no transaction with matching userId, ballotId, status="created", and merkleRoot)
@@ -391,13 +404,19 @@ router.put('/:ballotId/checkout', isAuthenticated, getBallot, async (req, res) =
       message: 'Missing merkleRoot in request body',
     });
   }
+  if (typeof merkleRoot !== 'string' || !MERKLE_ROOT_RE.test(merkleRoot)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid merkleRoot in request body',
+    });
+  }
 
   // GET TRANSACTION FROM DB
   const transaction = await Transaction.findOne({
     userId,
     ballotId,
     status: 'created',
-    merkleRoot,
+    merkleRoot: { $eq: merkleRoot },
   });
   if (!transaction) {
     return res.status(400).json({
@@ -407,11 +426,17 @@ router.put('/:ballotId/checkout', isAuthenticated, getBallot, async (req, res) =
   }
 
   // VERIFY SIGNATURE
-  const signatureVerification = await verifySignature(
-    stringToHex(transaction.merkleRoot),
-    userId,
-    req.body.signature,
-  );
+  let signatureVerification;
+  try {
+    signatureVerification = await verifySignature(
+      stringToHex(transaction.merkleRoot),
+      userId,
+      req.body.signature,
+    );
+  } catch (error) {
+    if (respondToProviderFailure(res, error, 'Checkout signature verification')) return;
+    throw error;
+  }
 
   if (signatureVerification.error || !signatureVerification) {
     return res.status(400).json({
@@ -684,7 +709,7 @@ router.post('/:ballotId/checkout/multisig', isAuthenticated, getBallot, checkout
  *   - signerAddress is missing
  *   - signType is missing
  *   - scriptAddress is missing
- *   - data (merkleRoot) is missing
+ *   - data (merkleRoot) is missing or not a well-formed hex string
  *   - Address validation fails
  *   - Voter is not validated/allowed to vote on this ballot
  *   - Transaction not found (no transaction with matching userId, ballotId, status in ["created","pending"], and merkleRoot)
@@ -774,13 +799,19 @@ router.put('/:ballotId/checkout/multisig', isAuthenticated, getBallot, async (re
       message: 'Missing merkleRoot in request body',
     });
   }
+  if (typeof merkleRoot !== 'string' || !MERKLE_ROOT_RE.test(merkleRoot)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid merkleRoot in request body',
+    });
+  }
 
   // GET TRANSACTION FROM DB
   const transaction = await Transaction.findOne({
     userId,
     ballotId,
     status: { $in: ['created', 'pending'] },
-    merkleRoot,
+    merkleRoot: { $eq: merkleRoot },
   });
   if (!transaction) {
     return res.status(400).json({
@@ -791,11 +822,17 @@ router.put('/:ballotId/checkout/multisig', isAuthenticated, getBallot, async (re
 
   // VERIFY SIGNATURE
   // check if party to script and verify signature
-  const isParty = await isPartyToScript(
-    stringToHex(transaction.merkleRoot),
-    userId,
-    req.body.signature,
-  );
+  let isParty;
+  try {
+    isParty = await isPartyToScript(
+      stringToHex(transaction.merkleRoot),
+      userId,
+      req.body.signature,
+    );
+  } catch (error) {
+    if (respondToProviderFailure(res, error, 'Multisig signature check')) return;
+    throw error;
+  }
   if (!isParty || isParty.error) {
     console.error('isPartyToScript verification failed', signerAddress, userId, isParty);
     return res.status(403).json({
@@ -808,11 +845,17 @@ router.put('/:ballotId/checkout/multisig', isAuthenticated, getBallot, async (re
   req.body.signature.signedAt = new Date();
   transaction.multiSig.push(req.body.signature);
   // check if multisig is complete
-  const multisigComplete = await validateScriptSignatures(
-    stringToHex(transaction.merkleRoot),
-    scriptAddress,
-    transaction.multiSig,
-  );
+  let multisigComplete;
+  try {
+    multisigComplete = await validateScriptSignatures(
+      stringToHex(transaction.merkleRoot),
+      scriptAddress,
+      transaction.multiSig,
+    );
+  } catch (error) {
+    if (respondToProviderFailure(res, error, 'Multisig completeness check')) return;
+    throw error;
+  }
   if (multisigComplete?.error) {
     console.error(
       'validateScriptSignatures failed',

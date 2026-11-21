@@ -1,6 +1,6 @@
 import { Vote } from '../schema/Vote.js';
 import { UserCache } from '../schema/UserCache.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { Ballot } from '../schema/Ballot.js';
 import { Result } from '../schema/Result.js';
 import {
@@ -94,7 +94,7 @@ export async function tallyProposalProvisional(proposalId, opts = {}) {
 
   console.log('Processing proposal:', proposalId.toString());
 
-  const proposal = await Proposal.findById(proposalId);
+  const proposal = await Question.findById(proposalId);
   if (!proposal) {
     console.error(`Proposal not found: ${proposalId}`);
     return 'skipped';
@@ -406,7 +406,7 @@ export async function writeFinalResult(ballotId, hydraData = {}) {
   const ballot = await Ballot.findById(ballotId).lean();
   if (!ballot) throw new Error(`Ballot ${ballotId} not found`);
 
-  const proposals = await Proposal.find({ ballotId }).lean();
+  const proposals = await Question.find({ ballotId }).lean();
 
   // Fetch /audit/full so we can derive per-proposal tallies from per-voter
   // evidence — matching the provisional-cron shape 1:1. Tolerant of

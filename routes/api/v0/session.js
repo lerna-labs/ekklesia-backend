@@ -14,16 +14,23 @@ import duration from 'dayjs/plugin/duration.js';
 import { generateNonce } from '@meshsdk/core';
 import { verifySignature, isPartyToScript } from '../../../helper/verifySignature.js';
 import { validateAddress, getAddressType } from '../../../helper/validateAddress.js';
-import { getScript, fetchName } from '@lerna-labs/ekklesia-helpers/cardano';
-import { fetchCalidusKey } from '../../../helper/koios.js';
-import { hydraVoterPing } from '../../../helper/hydra.js';
+import {
+  getScript,
+  fetchName,
+  fetchCalidusKey,
+  validateDrep,
+} from '@lerna-labs/ekklesia-helpers/cardano';
+import { respondToProviderFailure } from '../../../helper/providerFailure.js';
 import {
   nonceRequestLimiter,
   sessionVerificationLimiter,
   getSessionLimiter,
+  publicGetLimiter,
 } from '../../../helper/rateLimiters.js';
 
 dayjs.extend(duration);
+
+router.use(publicGetLimiter);
 
 // middleware
 import { isAuthenticated } from '../../../helper/middleWare.js';
@@ -106,6 +113,29 @@ async function clearNoncesForUser(userId) {
     nonce: null,
     createdAt: { $lt: thirtyMinutesAgo },
   });
+}
+
+const DREP_NOT_REGISTERED_MESSAGE = 'This DRep is not registered. Register as a DRep to sign in.';
+
+/**
+ * Checks that a DRep ID is registered. Returns true to continue; returns
+ * false once a response has been sent (403 for an unregistered DRep, 503 for
+ * a provider failure). Any other error propagates to the caller.
+ */
+async function requireRegisteredDrep(res, drepId, context) {
+  let registered;
+  try {
+    registered = await validateDrep(drepId);
+  } catch (error) {
+    if (respondToProviderFailure(res, error, context)) return false;
+    throw error;
+  }
+  if (!registered) {
+    console.warn(`${context}: refusing login, DRep is not registered`, drepId);
+    res.status(403).json({ status: 'error', message: DREP_NOT_REGISTERED_MESSAGE });
+    return false;
+  }
+  return true;
 }
 
 function validateScriptAddress(scriptAddress) {
@@ -255,7 +285,13 @@ router.post('/', nonceRequestLimiter, validateSessionRequest, async (req, res) =
 
   let calidusID;
   if (req.signType === 'pool') {
-    const calidusKey = await fetchCalidusKey(addressBech32);
+    let calidusKey;
+    try {
+      calidusKey = await fetchCalidusKey(addressBech32);
+    } catch (error) {
+      if (respondToProviderFailure(res, error, 'Calidus key lookup')) return;
+      throw error;
+    }
     if (!calidusKey) {
       return res.status(400).json({
         status: 'error',
@@ -322,12 +358,19 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
       return res.status(400).json({ status: 'error', message: AUTH_ERROR_MESSAGE });
     }
 
-    const isParty = await isPartyToScript(nonceData.nonce, validatedScriptAddress, signature);
+    let isParty;
+    try {
+      isParty = await isPartyToScript(nonceData.nonce, validatedScriptAddress, signature);
+    } catch (error) {
+      if (respondToProviderFailure(res, error, 'MS: isPartyToScript')) return;
+      throw error;
+    }
     // isPartyToScript returns `true` on success, `false` when a script
     // member's key signed the wrong content, or `{ error }` for every
-    // other failure. The legacy code flattened all of these into one
-    // misleading "does not belong to the MultiSig" message, so a script
-    // that simply isn't on chain looked like a membership rejection.
+    // other failure except a provider failure, which it throws. The
+    // legacy code flattened all of these into one misleading "does not
+    // belong to the MultiSig" message, so a script that simply isn't on
+    // chain looked like a membership rejection.
     // Disambiguate the cases the caller can actually act on.
     if (isParty !== true) {
       const reason = isParty && isParty.error ? isParty.error : 'signature invalid';
@@ -341,8 +384,7 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
 
       // The script hash didn't resolve on our network — almost always a
       // native script that was never published on chain, or an address
-      // from a different network. (getScript also returns falsy on a
-      // transient upstream error, hence the soft wording.)
+      // from a different network.
       if (reason === 'Script not found') {
         return res.status(400).json({
           status: 'error',
@@ -368,6 +410,11 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
         status: 'error',
         message: 'Signature verification failed',
       });
+    }
+
+    if (signType === 'drep') {
+      if (!(await requireRegisteredDrep(res, validatedScriptAddress, 'MS: DRep registration')))
+        return;
     }
 
     let token;
@@ -437,7 +484,6 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
       );
     }
     setAuthCookie(res, token, expiryDate);
-    hydraVoterPing(validatedScriptAddress);
     console.log('MS: Login successful:', signerAddress, validatedScriptAddress);
     return res.status(200).json({
       token,
@@ -472,11 +518,16 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
   try {
     signatureVerification = await verifySignature(nonceData.nonce, signerAddress, signature);
   } catch (error) {
+    if (respondToProviderFailure(res, error, 'Signature verification')) return;
     console.error('Signature verification error', error);
     return res.status(400).json({ status: 'error', message: AUTH_ERROR_MESSAGE });
   }
   if (signatureVerification?.error || !signatureVerification) {
     return res.status(400).json({ status: 'error', message: AUTH_ERROR_MESSAGE });
+  }
+
+  if (signType === 'drep') {
+    if (!(await requireRegisteredDrep(res, addressBech32, 'DRep registration'))) return;
   }
 
   let token;
@@ -527,7 +578,6 @@ router.put('/', sessionVerificationLimiter, validateSessionRequest, async (req, 
     console.error('Error upserting User lastLogin:', error);
   }
   setAuthCookie(res, token, expiryDate);
-  hydraVoterPing(addressBech32);
   console.log('Login successful:', signerAddress);
   return res.status(200).json({
     token,

@@ -8,7 +8,7 @@ const { Schema } = mongoose;
  * @typedef {Object} Vote
  * @property {String} userId - ID of the voter who cast the vote (references Voter, format depends on voterType)
  * @property {ObjectId} ballotId - ID of the ballot the vote belongs to (references Ballot)
- * @property {ObjectId} proposalId - ID of the proposal being voted on (references Proposal)
+ * @property {ObjectId} proposalId - ID of the proposal being voted on (references Question)
  * @property {Array<Number|String>} vote - Current value of the vote (may differ from submittedVote if changed)
  *                                        Array of vote option IDs (numbers) or "abstain" string.
  *                                        For scale votes, contains the numeric value.
@@ -46,7 +46,7 @@ const voteSchema = new Schema(
     proposalId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: 'Proposal',
+      ref: 'Question',
     },
     vote: {
       type: Array,

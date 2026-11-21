@@ -32,7 +32,7 @@ import { loadLocalOverrides } from '../../helper/envOverlay.js';
 import { VOTERS_BY_NAME, SINGLE_SIG_VOTER } from '../scaffold/common/fixtures.js';
 import { signCose } from '../scaffold/common/coseSign.js';
 import { connectToDatabase, disconnectFromDatabase } from '../../helper/dbManager.js';
-import { Proposal } from '../../schema/Proposal.js';
+import { Question } from '../../schema/Question.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..', '..');
@@ -157,7 +157,7 @@ function randomAnswerFor(proposal) {
 }
 
 await connectToDatabase();
-const proposals = await Proposal.find({ ballotId: flags.ballotId }).sort({ order: 1 }).lean();
+const proposals = await Question.find({ ballotId: flags.ballotId }).sort({ order: 1 }).lean();
 await disconnectFromDatabase();
 if (proposals.length === 0) {
   console.error(`No proposals found for ballot ${flags.ballotId}`);

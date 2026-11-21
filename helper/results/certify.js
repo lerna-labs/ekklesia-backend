@@ -11,7 +11,7 @@
 import blake from 'blakejs';
 import { Ballot } from '../../schema/Ballot.js';
 import { Result } from '../../schema/Result.js';
-import { Proposal } from '../../schema/Proposal.js';
+import { Question } from '../../schema/Question.js';
 import { CertifiedSnapshot } from '../../schema/CertifiedSnapshot.js';
 import { canonicalBytes } from '../canonicalJson.js';
 import { forBallot } from '../hydraClient.js';
@@ -261,7 +261,7 @@ export async function certifyBallot({
   assertSnapshotCoverage(snapshot, auditFull);
 
   const votersByUserId = votersByUserIdFromSnapshot(snapshot.voters, auditFull);
-  const proposals = await Proposal.find({ ballotId }).lean();
+  const proposals = await Question.find({ ballotId }).lean();
   const derivedPerProposal = {};
   for (const proposal of proposals) {
     const tally = deriveProposalTally({

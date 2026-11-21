@@ -46,7 +46,7 @@ function getMongoUri() {
 import express from 'express';
 import mongoose from 'mongoose';
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { Vote } from '../schema/Vote.js';
 import { User } from '../schema/User.js';
 import { UserCache } from '../schema/UserCache.js';
@@ -124,7 +124,7 @@ runDescribe('GET /voters/:userId — UserCache is optional', () => {
     // ballot, a User row carrying their resolved name, and deliberately NO
     // UserCache row — exactly the production shape that produced the 404.
     ballot = await Ballot.create(makeBallot(BALLOT_TITLE));
-    proposal = await Proposal.create(makeProposal(ballot._id));
+    proposal = await Question.create(makeProposal(ballot._id));
     await Vote.create({
       ballotId: ballot._id,
       proposalId: proposal._id,
@@ -153,7 +153,7 @@ runDescribe('GET /voters/:userId — UserCache is optional', () => {
       if (proposal) await Vote.deleteMany({ proposalId: proposal._id });
       if (ballot) {
         await UserCache.deleteMany({ ballotId: ballot._id });
-        await Proposal.deleteMany({ ballotId: ballot._id });
+        await Question.deleteMany({ ballotId: ballot._id });
         await Ballot.deleteMany({ _id: ballot._id });
       }
       await User.deleteOne({ _id: SCRIPT_DREP_ID });
@@ -194,7 +194,7 @@ runDescribe('GET /voters/:userId — UserCache is optional', () => {
     // Same voter id, but the only vote is operator-excluded — must stay
     // hidden from detail just as it is from the directory.
     const exBallot = await Ballot.create(makeBallot(BALLOT_TITLE + ' excluded'));
-    const exProposal = await Proposal.create(makeProposal(exBallot._id));
+    const exProposal = await Question.create(makeProposal(exBallot._id));
     const exVoter = EXCLUDED_ONLY_DREP_ID;
     await Vote.create({
       ballotId: exBallot._id,
@@ -210,7 +210,7 @@ runDescribe('GET /voters/:userId — UserCache is optional', () => {
       expect(res.status).toBe(404);
     } finally {
       await Vote.deleteMany({ proposalId: exProposal._id });
-      await Proposal.deleteMany({ ballotId: exBallot._id });
+      await Question.deleteMany({ ballotId: exBallot._id });
       await Ballot.deleteMany({ _id: exBallot._id });
     }
   });

@@ -67,11 +67,6 @@
       "count": 1
     }
   },
-  "helper/hydra.js": {
-    "no-undef": {
-      "count": 1
-    }
-  },
   "helper/koios.js": {
     "no-useless-assignment": {
       "count": 2
@@ -79,17 +74,6 @@
   },
   "helper/rollupBallot.js": {
     "no-useless-assignment": {
-      "count": 1
-    }
-  },
-  "helper/validateAddress.js": {
-    "no-case-declarations": {
-      "count": 15
-    },
-    "no-useless-assignment": {
-      "count": 1
-    },
-    "no-useless-catch": {
       "count": 1
     }
   },

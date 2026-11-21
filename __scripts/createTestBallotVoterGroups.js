@@ -11,7 +11,7 @@ import { dirname, join } from 'path';
 import dotenv from 'dotenv';
 
 import { Ballot } from '../schema/Ballot.js';
-import { Proposal } from '../schema/Proposal.js';
+import { Question } from '../schema/Question.js';
 import { Vote } from '../schema/Vote.js';
 import { UserCache } from '../schema/UserCache.js';
 import { connectToDatabase, disconnectFromDatabase } from '../helper/dbManager.js';
@@ -89,7 +89,7 @@ async function main() {
   // 2. Create one proposal (Yes / No). Abstain is allowed by default —
   // voters submit { abstain: true } at the wire boundary without it
   // being listed in voteOptions.
-  const proposal = new Proposal({
+  const proposal = new Question({
     ballotId: ballot._id,
     title: 'Test proposal: single choice',
     description: 'One proposal for the test ballot.',
