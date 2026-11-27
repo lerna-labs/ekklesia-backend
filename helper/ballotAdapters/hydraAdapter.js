@@ -79,7 +79,6 @@ export function toUnified(doc) {
     proposalCount: null, // populated by enrichment when applicable
     singleProposal: null,
     hydra: {
-      endpoint: doc.hydraEndpoint ?? null,
       headId: doc.hydraHeadId ?? null,
       headStatus: doc.hydraHeadStatus ?? null,
       ballotCid: doc.ballotCid ?? null,
