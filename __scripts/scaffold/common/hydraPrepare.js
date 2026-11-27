@@ -213,8 +213,8 @@ function roleWeightingFor(ballot) {
 /**
  * Build the bech32-HRP list accepted as voter credentials for this
  * ballot. Derived from voterGroups when present; legacy voterType
- * inference otherwise. `pool`-eligible ballots also accept `calidus`
- * (hot-key representation of the same SPO).
+ * inference otherwise. Pool ballots list only `pool`: the pool ID is the
+ * SPO identity, and a calidus key only signs for it.
  */
 function acceptedCredentialsFor(ballot) {
   const groups = Array.isArray(ballot?.voterGroups) ? ballot.voterGroups : [];
@@ -224,14 +224,13 @@ function acceptedCredentialsFor(ballot) {
       if (g?.group === 'drep') out.add('drep');
       else if (g?.group === 'pool') {
         out.add('pool');
-        out.add('calidus');
       } else if (g?.group === 'stake') out.add('stake');
     }
     if (out.size > 0) return [...out];
   }
   const v = (ballot?.voterType || '').toLowerCase();
   if (v.includes('drep')) return ['drep'];
-  if (v.includes('pool') || v.includes('spo') || v.includes('pledge')) return ['pool', 'calidus'];
+  if (v.includes('pool') || v.includes('spo') || v.includes('pledge')) return ['pool'];
   return ['stake'];
 }
 
