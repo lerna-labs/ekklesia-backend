@@ -42,7 +42,7 @@ jobs:
           asset="ekklesia-backend-${version}.tgz"
           git ls-files -z -- \
             server.js package.json package-lock.json .npmrc \
-            README.md LICENSE.md \
+            README.md LICENSE \
             routes helper schema crons config assets backup \
             development.config.cjs mainnet.config.cjs preprod.config.cjs \
             ':(exclude)helper/__tests__/**' \
