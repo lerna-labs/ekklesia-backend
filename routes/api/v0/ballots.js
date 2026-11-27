@@ -192,6 +192,7 @@ router.get('/', async (req, res) => {
           rollupScript: 0,
           voteAuthorityId: 0,
           voteAuthorityAddress: 0,
+          hydraEndpoint: 0,
           proposalPeriodStart: 0,
           proposalPeriodEnd: 0,
           startupScript: 0,

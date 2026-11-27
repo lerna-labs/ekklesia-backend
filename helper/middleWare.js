@@ -147,7 +147,7 @@ export async function getBallot(req, res, next) {
         '_id title description votePeriodStart votePeriodEnd voterType ' +
         'voteWeighted voterValidationScript voteFilters status source ' +
         'facets proposalSource votingPowerSource proposalPeriodStart ' +
-        'proposalPeriodEnd voteAuthorityId ipfsHash hydraEndpoint ' +
+        'proposalPeriodEnd voteAuthorityId ipfsHash ' +
         'hydraHeadId hydraHeadStatus ballotCid instancePolicyId ' +
         'provisionalResultsEnabled',
     });
