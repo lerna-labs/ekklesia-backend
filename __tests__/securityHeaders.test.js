@@ -21,7 +21,7 @@ describe('Content-Security-Policy header', () => {
     expect(directives['script-src']).toEqual([
       "'self'",
       "'unsafe-inline'",
-      'https://static.cloudflareinsights.com/beacon.min.js',
+      'https://static.cloudflareinsights.com/beacon.min.js/',
     ]);
     expect(directives['default-src']).toEqual(["'self'"]);
     expect(directives['connect-src']).toBeUndefined();
