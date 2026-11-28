@@ -1,5 +1,4 @@
 import express from 'express';
-import helmet from 'helmet';
 import { loadRoutes } from './helper/loadRoutes.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -20,6 +19,7 @@ import { createOgMetaMiddleware } from './helper/og/ogMeta.js';
 import { ogBallotImage, ogProposalImage } from './helper/og/ogImage.js';
 import { spaCanonicalRedirect } from './helper/spaCanonicalRedirect.js';
 import { getWalletSignerConfig } from './helper/walletSigner.js';
+import { securityHeaders } from './helper/securityHeaders.js';
 
 // Initialize console with timestamps
 initializeConsole();
@@ -71,20 +71,8 @@ const PORT = process.env.SERVER_PORT || 3000;
 // hops.
 app.set('trust proxy', 1);
 
-// CSP: 'unsafe-inline' script-src for the SvelteKit static bootstrap script; https: img-src for admin-supplied option images.
 app.disable('x-powered-by');
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        scriptSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", 'data:', 'https:'],
-      },
-    },
-    crossOriginEmbedderPolicy: false,
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-  }),
-);
+app.use(securityHeaders());
 
 // Middleware
 // Extended query parser so `?filter[key]=value` nests into
